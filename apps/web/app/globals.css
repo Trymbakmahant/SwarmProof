@@ -1,0 +1,16 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #0b0e14;
+  color: #e6edf3;
+}
+input, textarea, button {
+  background: #161b22;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px;
+}
+button { cursor: pointer; }
+button:hover { border-color: #58a6ff; }
+h1 { color: #ffc757; }

@@ -1,0 +1,25 @@
+{
+  "corpus": [
+    {
+      "contract": "ReentrancyVault",
+      "file": "ReentrancyVault.sol",
+      "expectedFindings": [
+        { "category": "reentrancy", "severity": "critical", "location": "withdraw" }
+      ]
+    },
+    {
+      "contract": "OverflowAuction",
+      "file": "OverflowAuction.sol",
+      "expectedFindings": [
+        { "category": "integer-overflow-underflow", "severity": "high", "location": "claimRefund" }
+      ]
+    },
+    {
+      "contract": "AccessControlAdmin",
+      "file": "AccessControlAdmin.sol",
+      "expectedFindings": [
+        { "category": "access-control", "severity": "high", "location": "setAdmin / withdrawAll" }
+      ]
+    }
+  ]
+}

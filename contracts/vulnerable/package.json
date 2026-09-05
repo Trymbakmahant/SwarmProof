@@ -1,0 +1,12 @@
+{
+  "name": "@swarmproof/vulnerable-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deliberately vulnerable Solidity corpus — ground truth for swarm grading & demo.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@swarmproof/agents": "workspace:*"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@swarmproof/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@swarmproof/agents": "workspace:*",
+    "@swarmproof/swarm": "workspace:*",
+    "@swarmproof/consensus": "workspace:*",
+    "@swarmproof/verification": "workspace:*",
+    "@swarmproof/hedera": "workspace:*",
+    "@swarmproof/payments": "workspace:*",
+    "@swarmproof/mcp": "workspace:*",
+    "@swarmproof/vulnerable-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
