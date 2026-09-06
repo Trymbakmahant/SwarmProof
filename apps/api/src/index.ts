@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import {
   createSpecialistAgents,
   SecurityTaskSchema,
+  SPECIALIST_PAYMENT_ADDRESSES,
   type SecurityTask,
 } from "@swarmproof/agents";
 import {
@@ -26,6 +27,16 @@ import {
 /* ------------------------------------------------------------------ */
 
 const env = process.env;
+
+// Optional per-agent payout address overrides (JSON in .env).
+let agentAddressOverrides: Record<string, string> = {};
+if (env.SWARMPROOF_AGENT_ADDRESSES) {
+  try {
+    agentAddressOverrides = JSON.parse(env.SWARMPROOF_AGENT_ADDRESSES) as Record<string, string>;
+  } catch {
+    console.warn("SWARMPROOF_AGENT_ADDRESSES is not valid JSON — ignoring");
+  }
+}
 const providers = {
   hedera: createAuditProofClient(env),
   payment: createPaymentProvider({
@@ -35,7 +46,10 @@ const providers = {
   }),
 };
 
-const specialists = createSpecialistAgents();
+const specialists = createSpecialistAgents({
+  ...SPECIALIST_PAYMENT_ADDRESSES,
+  ...agentAddressOverrides,
+});
 const orchestrator = new AuditOrchestrator({
   specialists,
   verification: createVerifier("mock"),
