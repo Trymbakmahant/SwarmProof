@@ -86,3 +86,6 @@ export const DEFAULT_AGENT_CONFIGS: Record<AgentRole, AgentConfig> = {
   verifier: { role: "verifier", model: "stub", temperature: 0, maxTokens: 2048, budget: 10 },
   judge: { role: "judge", model: "stub", temperature: 0, maxTokens: 2048, budget: 10 },
 };
+
+export * from "./identity.js";
+export * from "./specialists.js";

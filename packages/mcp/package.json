@@ -14,16 +14,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "start": "node dist/index.js"
+    "test": "vitest run"
   },
-  "dependencies": {
-    "@swarmproof/agents": "workspace:*",
-    "@swarmproof/swarm": "workspace:*",
-    "@swarmproof/consensus": "workspace:*",
-    "@swarmproof/verification": "workspace:*",
-    "@swarmproof/hedera": "workspace:*",
-    "@swarmproof/payments": "workspace:*",
-    "@swarmproof/plugins": "workspace:*"
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   }
 }

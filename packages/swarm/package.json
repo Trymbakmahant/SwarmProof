@@ -18,7 +18,10 @@
   },
   "dependencies": {
     "@swarmproof/agents": "workspace:*",
-    "@swarmproof/plugins": "workspace:*"
+    "@swarmproof/consensus": "workspace:*",
+    "@swarmproof/hedera": "workspace:*",
+    "@swarmproof/plugins": "workspace:*",
+    "@swarmproof/verification": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

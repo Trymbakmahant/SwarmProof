@@ -47,6 +47,94 @@ export function isDeemedCritical(severity: Severity): boolean {
   return severity === "critical" || severity === "high";
 }
 
+/* ------------------------------------------------------------------ */
+/* Normalization & clustering                                          */
+/* ------------------------------------------------------------------ */
+
+/** One specialist's raw output, keyed by agent. */
+export interface RawFinding {
+  agentId: string;
+  finding: Finding;
+}
+
+/** Normalized finding: dedup key + merged info across agents. */
+export interface NormalizedFinding {
+  key: string; // cluster identity: normalizedCategory + function-scope location
+  category: string;
+  severity: Severity;
+  locations: string[];
+  agents: string[];
+  snippets: string[];
+  finding: Finding;
+}
+
+/** Extract a stable function/contract scope from a location string. */
+export function locationScope(loc: string): string {
+  const fn = /function\s+([A-Za-z0-9_]+)/.exec(loc)?.[1];
+  const contract = /contract\s+([A-Za-z0-9_]+)/i.exec(loc)?.[1];
+  if (fn) return fn;
+  if (contract) return contract;
+  return "contract";
+}
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+};
+
+/**
+ * Normalize raw specialist findings into a per-key map, merging evidence
+ * from every independent agent that reported an equivalent finding.
+ */
+export function normalizeFindings(raw: RawFinding[]): NormalizedFinding[] {
+  const map = new Map<string, NormalizedFinding>();
+  for (const { agentId, finding } of raw) {
+    const key = `${finding.category}::${locationScope(finding.location)}`;
+    let norm = map.get(key);
+    if (!norm) {
+      norm = {
+        key,
+        category: finding.category,
+        severity: finding.severity,
+        locations: [finding.location],
+        agents: [],
+        snippets: [],
+        finding: { ...finding, id: key, evidence: [] },
+      };
+      map.set(key, norm);
+    }
+    norm.agents.push(agentId);
+    norm.locations.push(finding.location);
+    norm.snippets.push(finding.evidence.join(" | "));
+    norm.finding.evidence.push(...finding.evidence);
+    if (SEVERITY_RANK[finding.severity] > SEVERITY_RANK[norm.severity]) {
+      norm.severity = finding.severity;
+      norm.finding.severity = finding.severity;
+    }
+  }
+  return [...map.values()];
+}
+
+/** Alias kept for naming symmetry with the spec. */
+export const clusterFindings = normalizeFindings;
+
+/** Build consensus candidates from normalized findings. */
+export function toConsensusCandidates(
+  normalized: NormalizedFinding[],
+  overrides?: Record<string, { confidence: number; artifactWeight: number }>,
+): Array<{ finding: Finding; evidence: EvidenceItem[] }> {
+  return normalized.map((n) => ({
+    finding: n.finding,
+    evidence: n.agents.map((agentId) => {
+      const o = overrides?.[agentId] ?? { confidence: 0.75, artifactWeight: 1 };
+      return { agentRole: "analyzer" as const, agentId, confidence: o.confidence, artifactWeight: o.artifactWeight };
+    }),
+  }));
+}
+
 function itemWeight(e: EvidenceItem, roleWeights: Record<string, number> | undefined): number {
   // Plugin-specific weight (by agentId) wins; else built-in role weight.
   return roleWeights?.[e.agentId ?? e.agentRole] ?? ROLE_WEIGHTS[e.agentRole];
@@ -73,7 +161,7 @@ export function reachConsensus(
       (sum, e) => sum + itemWeight(e, roleWeights) * e.confidence * (e.artifactWeight || 1),
       0,
     );
-    const quorumMet = new Set(c.evidence.map((e) => e.agentRole)).size >= config.quorum;
+    const quorumMet = new Set(c.evidence.map((e) => e.agentId ?? e.agentRole)).size >= config.quorum;
     const disputed = isDeemedCritical(c.finding.severity) && !quorumMet;
     const verdict: WeightedFinding["verdict"] = exploiterRejected
       ? "rejected"

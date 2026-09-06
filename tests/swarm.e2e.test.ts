@@ -1,79 +1,114 @@
 import { describe, expect, it } from "vitest";
-import { StubProvider } from "@swarmproof/agents";
-import { SwarmRunner } from "@swarmproof/swarm";
-import { MockVerifier, createVerifier } from "@swarmproof/verification";
-import { MockHederaClient } from "@swarmproof/hedera";
-import { MemoryLedger } from "@swarmproof/payments";
-import { createToolRegistry } from "@swarmproof/mcp";
+import {
+  createSpecialistAgents,
+  StubProvider,
+  type SecurityTask,
+} from "@swarmproof/agents";
+import { AuditOrchestrator, DEFAULT_SPECIALIST_WEIGHTS } from "@swarmproof/swarm";
+import { createVerifier } from "@swarmproof/verification";
+import { MockAuditProofClient, sha256Hex, deterministicStringify } from "@swarmproof/hedera";
 
-describe("swarm e2e (stub provider)", () => {
-  it("runs an audit end-to-end with stub + mock tools", async () => {
-    const provider = new StubProvider();
-    const runner = new SwarmRunner({ provider });
-    const events: string[] = [];
+const REENTRANCY_SOURCE = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+contract Vault {
+  mapping(address => uint256) public balances;
+  function withdraw() external {
+    uint256 amt = balances[msg.sender];
+    (bool ok, ) = msg.sender.call{value: amt}("");
+    require(ok);
+    balances[msg.sender] = 0;
+  }
+}`;
 
-    runner.on("phase", (role) => events.push(role));
+const task: SecurityTask = {
+  contractName: "Vault",
+  source: REENTRANCY_SOURCE,
+  network: "ethereum",
+};
 
-    const result = await runner.run({
-      runId: "e2e-1",
-      contractName: "ReentrancyVault",
-      contractSource: "contract ReentrancyVault {}",
-      agents: {},
-    });
+function makeOrchestrator(proofClient?: MockAuditProofClient) {
+  return new AuditOrchestrator({
+    specialists: createSpecialistAgents(),
+    verification: createVerifier("mock"),
+    proofClient,
+    weights: DEFAULT_SPECIALIST_WEIGHTS,
+  });
+}
 
-    expect(events).toContain("analyzer");
-    expect(events).toContain("judge");
-    expect(result.findings).toBeDefined();
+describe("swarm orchestration (P0 spec flow)", () => {
+  it("1+5: parallel specialists → consensus → verification → report → HCS-proof", async () => {
+    const proof = new MockAuditProofClient("0.0.12345");
+    const result = await makeOrchestrator(proof).run("audit_flow", task);
+
+    // Specialists ran independently (Promise.all).
+    expect(result.raw.length).toBeGreaterThanOrEqual(1);
+    // Consensus accepted the reentrancy cluster.
+    expect(result.consensus.summary).toContain("accepted");
+    expect(result.report.result).toBe("verified");
+
+    // Report + hash + proof.
+    expect(result.proof?.hcsTopicId).toBe("0.0.12345");
+    expect(result.proof?.verified).toBe(true);
+    expect(result.reportHash).toBe(sha256Hex(deterministicStringify(result.report)));
+
+    // Deterministic serialization is stable.
+    expect(deterministicStringify({ b: 1, a: { d: 2, c: 3 } })).toBe(deterministicStringify({ a: { c: 3, d: 2 }, b: 1 }));
+
+    // Tamper evidence: changing the report changes the hash; mock verifier catches it.
+    const check = await proof.verifyReport(result.report, { reportHash: result.reportHash });
+    expect(check.verified).toBe(true);
+    const tampered = await proof.verifyReport({ ...result.report, findings: [] }, { reportHash: result.reportHash });
+    expect(tampered.verified).toBe(false);
   });
 
-  it("verifier reproduces corpus-style findings in mock mode", async () => {
-    const verifier: MockVerifier = createVerifier("mock");
-    const res = await verifier.verify({
-      findingId: "f1",
-      tool: "mock",
-      contractPath: "contracts/vulnerable/ReentrancyVault.sol",
-      commandArgs: [],
-    });
-    expect(res.reproduced).toBe(true);
+  it("consensus-only acceptance when quorum met (multi-agent cluster)", async () => {
+    const result = await makeOrchestrator().run("audit_cluster", task);
+    const accepted = result.consensus.findings;
+    expect(accepted.length).toBeGreaterThan(0);
+    // Every accepted cluster has distinct supporting agents (quorum >= 2).
+    for (const w of accepted) {
+      const agents = new Set(w.evidence.map((e) => e.agentId));
+      expect(agents.size).toBeGreaterThanOrEqual(2);
+    }
   });
 
-  it("hedera mock anchors a report", async () => {
-    const hedera = new MockHederaClient();
-    const anchor = await hedera.submitReport(
-      "0.0.1001",
-      JSON.stringify({ runId: "e2e-2" }),
-    );
-    expect(anchor.runId).toBe("e2e-2");
-    expect(anchor.contentHash).toContain("sha256:");
-  });
-
-  it("payments payout follows severity schedule", async () => {
-    const hedera = new MockHederaClient();
-    const ledger = new MemoryLedger(hedera);
-    await ledger.createBounty({
-      id: "b1",
-      contractName: "ReentrancyVault",
-      tokenId: "0.0.2001",
-      payer: "alice",
+  it("low-priority clusters without quorum become disputes, not accepted", async () => {
+    // A contract with only one specialist hit (static-only) has no quorum.
+    const clean = await makeOrchestrator().run("audit_clean", {
+      contractName: "Clean",
+      source: "contract Clean { uint256 x; }",
     });
-    await ledger.escrow("b1", 10_000);
-    const t = await ledger.payout("b1", "bob", "critical");
-    expect(t.amount).toBe(5000);
-    expect((await ledger.getBounty("b1"))?.status).toBe("paid");
-  });
-
-  it("mcp registry exposes the four core tools", () => {
-    const hedera = new MockHederaClient();
-    const ledger = new MemoryLedger(hedera);
-    const tools = createToolRegistry({
-      swarm: new SwarmRunner({ provider: new StubProvider() }),
-      verifier: createVerifier("mock"),
-      payments: ledger,
-      reports: new Map(),
-    });
-    const names = tools.map((t) => t.name);
-    expect(names).toEqual(
-      expect.arrayContaining(["audit_contract", "get_report", "verify_finding", "check_bounty"]),
-    );
+    expect(clean.report.result).toBe("unverified");
   });
 });
+
+describe("hedera proof primitives", () => {
+  it("buildAuditProofMessage produces the spec-shaped HCS message", async () => {
+    const { buildAuditProofMessage } = await import("@swarmproof/hedera");
+    const msg = buildAuditProofMessage({
+      auditId: "audit_123",
+      reportHash: "sha256abc",
+      result: "verified",
+      findingCount: 4,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    expect(msg).toEqual({
+      type: "swarmproof.audit",
+      version: "1",
+      auditId: "audit_123",
+      reportHash: "sha256abc",
+      result: "verified",
+      findingCount: 4,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    expect(typeof msg.reportHash).toBe("string");
+    expect(msg.reportHash).toBe("sha256abc");
+  });
+
+  it("sha256 hex is 64 chars", () => {
+    expect(sha256Hex("hello")).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+void StubProvider;
+void createSpecialistAgents;

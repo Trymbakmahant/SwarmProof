@@ -16,6 +16,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.62.0",
+    "@swarmproof/agents": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0"
   }

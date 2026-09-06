@@ -60,3 +60,27 @@ export class ToolVerifier implements VerificationEngine {
 export function createVerifier(mode: "mock" | "tool" = "mock"): VerificationEngine {
   return mode === "mock" ? new MockVerifier() : new ToolVerifier();
 }
+
+/* ------------------------------------------------------------------ */
+/* Verification agent — independently verifies consensus findings       */
+/* ------------------------------------------------------------------ */
+
+/** Verify a batch of (accepted) findings with the engine. */
+export async function verifyFindings(input: {
+  findings: Array<{ id: string; title: string; category: string; severity: string; location: string }>;
+  task: { contractName: string; source: string };
+  engine: VerificationEngine;
+  tool?: VerifyTool;
+}): Promise<VerificationResult[]> {
+  const tool = input.tool ?? "mock";
+  return Promise.all(
+    input.findings.map(async (f) =>
+      input.engine.verify({
+        findingId: f.id,
+        tool,
+        contractPath: f.location,
+        commandArgs: [input.task.contractName],
+      }),
+    ),
+  );
+}
