@@ -5,6 +5,7 @@ import type {
   PaymentVerification,
   RecipientShare,
 } from "./types.js";
+import type { X402PaymentPayload } from "@swarmproof/x402";
 
 /**
  * SwarmProof payment gateway.
@@ -66,7 +67,7 @@ export class PaymentGateway {
    *  - underpayment → status underpaid
    *  - unknown/garbage reference → invalid
    */
-  async confirmPayment(auditId: string, reference?: string): Promise<PaymentVerification> {
+  async confirmPayment(auditId: string, reference?: string, x402Payload?: X402PaymentPayload): Promise<PaymentVerification> {
     if (this.paidAudits.has(auditId)) {
       return {
         paymentId: this.requireRequirement(auditId).paymentId,
@@ -78,7 +79,7 @@ export class PaymentGateway {
     const requirement = this.requireRequirement(auditId);
     let verification: PaymentVerification;
     try {
-      verification = await this.provider.verifyPayment(requirement, reference);
+      verification = await this.provider.verifyPayment(requirement, reference, x402Payload);
     } catch (err) {
       return {
         paymentId: requirement.paymentId,

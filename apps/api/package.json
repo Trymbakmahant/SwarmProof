@@ -3,11 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "x402:live": "tsx scripts/x402-live-testnet.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
@@ -19,7 +30,8 @@
     "@swarmproof/verification": "workspace:*",
     "@swarmproof/hedera": "workspace:*",
     "@swarmproof/payments": "workspace:*",
-    "@swarmproof/plugins": "workspace:*"
+    "@swarmproof/plugins": "workspace:*",
+    "@swarmproof/x402": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

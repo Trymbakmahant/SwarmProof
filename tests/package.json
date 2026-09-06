@@ -14,6 +14,8 @@
     "@swarmproof/verification": "workspace:*",
     "@swarmproof/hedera": "workspace:*",
     "@swarmproof/payments": "workspace:*",
+    "@swarmproof/x402": "workspace:*",
+    "@swarmproof/api": "workspace:*",
     "@swarmproof/mcp": "workspace:*",
     "@swarmproof/plugins": "workspace:*",
     "@swarmproof/vulnerable-contracts": "workspace:*"

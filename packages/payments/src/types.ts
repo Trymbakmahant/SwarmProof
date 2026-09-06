@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { X402PaymentPayload, X402PaymentRequirements } from "@swarmproof/x402";
 
 /** One payee in the single job payment. Amounts are decimal string units of `currency`. */
 export const PaymentRecipientSchema = z.object({
@@ -19,7 +20,14 @@ export const SwarmPaymentSchema = z.object({
 export type SwarmPayment = z.infer<typeof SwarmPaymentSchema>;
 
 /** What the client sees BEFORE paying: amount, recipients, network, payment id. */
-export type PaymentRequirement = SwarmPayment & { network: string };
+export type PaymentRequirement = SwarmPayment & { network: string } & {
+  /** Canonical x402 v2 quote for the job payment when the provider speaks x402. */
+  x402?: X402PaymentRequirements;
+};
+
+export function hasX402Quote(requirement: PaymentRequirement): requirement is PaymentRequirement & { x402: X402PaymentRequirements } {
+  return Boolean((requirement as { x402?: X402PaymentRequirements }).x402);
+}
 
 export const PaymentStatusSchema = z.enum([
   "pending",
@@ -60,8 +68,16 @@ export interface PaymentProvider {
     recipients: PaymentRecipient[];
     network: string;
   }): Promise<PaymentRequirement>;
-  /** Confirm the requirement was paid (reference is provider-specific, e.g. a tx id). */
-  verifyPayment(requirement: PaymentRequirement, reference?: string): Promise<PaymentVerification>;
-  /** Demo convenience: perform the payment client-side (mock only; x402 never pays). */
+  /**
+   * Confirm the requirement was paid. `reference` is provider-specific (a
+   * Hedera tx id, a mock id, …); `x402Payload` is the signed x402 payment
+   * payload presented via the X-PAYMENT header.
+   */
+  verifyPayment(
+    requirement: PaymentRequirement,
+    reference?: string,
+    x402Payload?: X402PaymentPayload,
+  ): Promise<PaymentVerification>;
+  /** Demo convenience: perform the payment client-side (mock only; real x402 never pays). */
   pay(requirement: PaymentRequirement): Promise<PaymentVerification>;
 }

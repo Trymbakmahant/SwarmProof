@@ -127,9 +127,9 @@ describe("agent plugin ecosystem", () => {
     const calls: string[] = [];
     const provider = new StubProvider();
     const original = provider.complete.bind(provider);
-    provider.complete = async (system, m, cfg) => {
+    provider.complete = async (system, m) => {
       calls.push(system);
-      return original(system, m, cfg);
+      return original(system, m);
     };
     const plugin = {
       manifest: {

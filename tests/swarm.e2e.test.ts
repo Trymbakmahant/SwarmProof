@@ -77,6 +77,7 @@ describe("swarm orchestration (P0 spec flow)", () => {
     const clean = await makeOrchestrator().run("audit_clean", {
       contractName: "Clean",
       source: "contract Clean { uint256 x; }",
+      network: "ethereum",
     });
     expect(clean.report.result).toBe("unverified");
   });

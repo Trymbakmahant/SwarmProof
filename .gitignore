@@ -8,3 +8,7 @@ coverage/
 .next/
 out/
 .cache/
+*.tsbuildinfo
+
+# Private integration docs — never commit (keep in-repo notes local).
+hedera-integration.md

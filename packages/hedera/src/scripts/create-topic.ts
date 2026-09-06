@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   console.log(`creating HCS topic on ${network} as ${accountId} …`);
   const tx = await new TopicCreateTransaction({
-    memo: "SwarmProof audit proofs",
+    topicMemo: "SwarmProof audit proofs",
   }).execute(client);
   const receipt = await tx.getReceipt(client);
   const topicId = receipt.topicId?.toString();

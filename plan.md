@@ -184,7 +184,7 @@ swarmproof/
 | M2 | Agents + swarm with stubs | full pipeline run on one contract, JSON report out | ✅
 | M8 | Agent plugin ecosystem | registry, 3 executor types, weights, MCP/API exposure, example plugins | ✅ core |
 | M9 | **P0 gateway flow** | x402 single-payment gateway, 5 parallel specialists, cluster+consensus, verification, HCS proof, MCP thin client, .env | ✅ **this session** |
-| P0-A | x402 real payment integration | X402PaymentProvider (facilitator) — client-side pay + verify loop | 🕐 provider written, facilitator needed |
+| P0-A | **x402 real payment integration** | X402PaymentProvider (facilitator) — client-side pay + verify loop | ✅ **this session** — full x402 v2 gate: 402 challenge, quote endpoint, `@x402/hedera` signing, Blocky402 /verify+/settle, X-PAYMENT redeem, HCS payment trails, HCS-14 identity, mirror-node verification, `/supported` discovery, offline mock + e2e tests |
 | M3 | Verification | slither/forge integration, verified artifacts | 🕐 engine seam + mock; tools TBD |
 | M4 | API + Web | submit → live swarm view → report page | 🕐 API done; web visualizer TBD |
 | M5 | Hedera + payments | anchor report, bounty escrow/payout (mock + local node) | 🕐 HCS proof done (mock+real); payments via x402 |

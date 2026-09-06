@@ -1,5 +1,5 @@
 {
-  "name": "@swarmproof/payments",
+  "name": "@swarmproof/x402",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@swarmproof/x402": "workspace:*",
+    "@x402/hedera": "^2.25.0",
+    "tweetnacl": "^1.0.3",
     "zod": "^3.23.0"
   },
   "devDependencies": {
