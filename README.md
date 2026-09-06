@@ -35,12 +35,14 @@ pnpm dev:web      # dashboard on :3000
 | `packages/mcp` | `@swarmproof/mcp` | MCP server exposing audit tools |
 | `packages/payments` | `@swarmproof/payments` | Bounties, escrow, payouts |
 | `packages/hedera` | `@swarmproof/hedera` | Hedera Consensus Service + HTS |
+| `packages/plugins` | `@swarmproof/plugins` | **Agent plugin ecosystem** — registry + llm/http/function executors |
 | `contracts/vulnerable` | `@swarmproof/vulnerable-contracts` | Ground-truth vulnerable corpus |
 | `tests` | `@swarmproof/tests` | Unit + e2e suites |
 
 ## Roadmap
 
 - [x] **M0** Workspace scaffold
+- [x] **M8** Agent plugin ecosystem — anyone can plug their agent in
 - [ ] **M1** Corpus + consensus calibration
 - [ ] **M2** Agents + swarm pipeline with stubs
 - [ ] **M3** Tool verification (slither/forge)
@@ -48,5 +50,31 @@ pnpm dev:web      # dashboard on :3000
 - [ ] **M5** Hedera + payments (local node)
 - [ ] **M6** MCP server
 - [ ] **M7** Demo polish & deploy
+
+## Bring your own agent (plugin ecosystem)
+
+Anyone can plug their agent into SwarmProof — in-process function, your own LLM, or a **remote HTTP agent** living anywhere:
+
+```ts
+import { AgentRegistry, makePluginMessage } from "@swarmproof/plugins";
+
+const myAgent = {
+  manifest: {
+    id: "my-auditor", name: "My Auditor", version: "1.0.0",
+    description: "Finds X", role: "analyzer", weight: 0.4,
+  },
+  executor: { type: "http", url: "https://api.mycompany.dev/audit" },
+};
+
+const registry = new AgentRegistry();
+registry.register(myAgent); // now it audits every contract
+```
+
+- Executor types: `function` · `http` · `llm`
+- Consensus weight per plugin via `manifest.weight` (falls back to role weight)
+- Discoverable via API `GET /agents` and MCP `list_agents`
+- Built-in demo plugin: `keyword-analyzer` (live in the API)
+
+See [plan.md §12](./plan.md) for the full guide.
 
 See [plan.md](./plan.md) for architecture, prompts, and the demo script.

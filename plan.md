@@ -41,7 +41,8 @@ swarmproof/
 │   ├── verification/        # @swarmproof/verification — Slither/Foundry/PoC runner, artifacts
 │   ├── mcp/                 # @swarmproof/mcp — MCP server exposing audit tools
 │   ├── payments/            # @swarmproof/payments — bounties, escrow, payouts
-│   └── hedera/              # @swarmproof/hedera — ConsensusService + HTS client
+│   ├── hedera/              # @swarmproof/hedera — ConsensusService + HTS client
+│   └── plugins/             # @swarmproof/plugins — agent plugin ecosystem (registry + executors)
 │
 ├── contracts/
 │   └── vulnerable/          # Deliberately vulnerable Solidity contracts (test corpus)
@@ -85,6 +86,10 @@ swarmproof/
    ├─ Judge agent: summarizes, checks evidence quality
    ▼
  packages/consensus ── weight findings, confidence score, dispute round
+   ▼
+ packages/plugins ─── third-party agents (llm / http / function executors)
+   │                    run in the swarm alongside built-in roles; custom
+   │                    consensus weights via registry.weights()
    ▼
  packages/verification ── artifacts: proof files, tx traces, severity labels
    ▼
@@ -155,7 +160,17 @@ swarmproof/
 - Each contract ships `metadata.json`: list of expected findings + severity (ground truth).
 - **Prompt:** *"Write a corpus of 6–8 small deliberately vulnerable Solidity contracts, one per classic bug class (reentrancy, integer overflow, missing access control, unchecked call, price oracle manipulation, signature replay). Include metadata.json with ground-truth findings and severities for grading the swarm."*
 
-### 6.11 `tests/`
+### 6.12 `packages/plugins` — Agent Plugin Ecosystem ✅
+- **Goal: anyone can plug their own agent into SwarmProof.** A plugin = manifest (id, name, role slot, optional `weight` + `systemPrompt`) + executor.
+- Three executor types:
+  - `llm` — wrap any `LLMProvider` (OpenAI, Ollama, custom).
+  - `http` — POST contract context to any remote agent API, map response → message. *Your agent can live anywhere.*
+  - `function` — in-process TS function (thin wrappers / demo agents).
+- `AgentRegistry` — register / unregister / list / weights. `SwarmRunner` runs every registered plugin after the built-in phases (phase events `plugin:<id>`); `reachConsensus` accepts per-`agentId` weight overrides.
+- Exposed via MCP `list_agents` tool + API `GET /agents`. Example plugins: `keyword-analyzer` (function) and HTTP variant.
+- **Prompt (for building a plugin as a third party):** *"Create an AgentPlugin with manifest {id, name, version, description, role: analyzer|exploiter|verifier|judge, weight?} and an executor of type function|http|llm. Return AgentMessage(s) with content, confidence and artifactIds when you find evidence."*
+
+### 6.13 `tests/`
 - `consensus.unit.test.ts`, `swarm.e2e.test.ts` (full run against corpus), `mcp.smoke.test.ts`, `hedera.mock.test.ts`.
 - Vitest; CI-friendly (all mocks, no network).
 - **Prompt:** *"Write vitest suites: unit tests for consensus, e2e for a full swarm audit of contracts/vulnerable corpus using stub LLM + mock verification, and smoke tests for the MCP server."*
@@ -172,6 +187,7 @@ swarmproof/
 | M5 | Hedera + payments | anchor report, bounty escrow/payout (mock + local node) | ⬜ |
 | M6 | MCP server | audit tools available in any MCP client | ⬜ |
 | M7 | Polish | README, demo script, video, live deploy | ⬜ |
+| M8 | Agent plugin ecosystem | registry, 3 executor types, weights, MCP/API exposure, example plugins | ✅ core |
 
 ## 8. Agent Prompt Templates (the "prompts")
 
@@ -237,7 +253,28 @@ AuditReport  { runId, contract, consensusReport, verification[], anchorTx }
 | Runaway agent costs/time | Per-phase budget, token caps, timeout kill-switch |
 | External tools not installed | `verification` degrades to mock with a clear flag |
 
-## 11. Demo Script (hackathon)
+## 12. Agent Plugin Ecosystem (how anyone plugs in)
+
+A third party contributes an agent in 3 steps:
+
+1. **Write a plugin** — implement `AgentPlugin` (`@swarmproof/plugins`):
+   ```ts
+   // my-agent.ts
+   import { makePluginMessage } from "@swarmproof/plugins";
+   export const myAgent = {
+     manifest: {
+       id: "my-company-auditor", name: "My Auditor", version: "1.0.0",
+       description: "Finds X", role: "analyzer", weight: 0.4,
+     },
+     executor: { type: "http", url: "https://api.mycompany.dev/audit" },
+   };
+   ```
+2. **Register it** — `registry.register(myAgent)` (API/MCP do this at startup).
+3. **It runs on every audit** — SwarmRunner invokes it after the built-in phases, its messages become findings when they carry artifacts, and consensus uses its declared weight (fallback = role weight).
+
+Remote `http` agents mean your model can be **anywhere** — your own GPU, your own API, your own fine-tune. The swarm treats all agents equally.
+
+## 13. Demo Script (hackathon)
 
 1. Open web app → "Audit contract" → pick `contracts/vulnerable/ReentrancyVault.sol`.
 2. Live swarm panel: watch Analyzer → Exploiter → Verifier → Judge messages stream in.
