@@ -32,6 +32,9 @@ importers:
       '@swarmproof/payments':
         specifier: workspace:*
         version: link:../../packages/payments
+      '@swarmproof/plugins':
+        specifier: workspace:*
+        version: link:../../packages/plugins
       '@swarmproof/swarm':
         specifier: workspace:*
         version: link:../../packages/swarm
@@ -112,6 +115,9 @@ importers:
       '@swarmproof/payments':
         specifier: workspace:*
         version: link:../payments
+      '@swarmproof/plugins':
+        specifier: workspace:*
+        version: link:../plugins
       '@swarmproof/swarm':
         specifier: workspace:*
         version: link:../swarm
@@ -132,11 +138,27 @@ importers:
         specifier: ^22.0.0
         version: 22.20.1
 
+  packages/plugins:
+    dependencies:
+      '@swarmproof/agents':
+        specifier: workspace:*
+        version: link:../agents
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+
   packages/swarm:
     dependencies:
       '@swarmproof/agents':
         specifier: workspace:*
         version: link:../agents
+      '@swarmproof/plugins':
+        specifier: workspace:*
+        version: link:../plugins
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -161,6 +183,9 @@ importers:
       '@swarmproof/payments':
         specifier: workspace:*
         version: link:../packages/payments
+      '@swarmproof/plugins':
+        specifier: workspace:*
+        version: link:../packages/plugins
       '@swarmproof/swarm':
         specifier: workspace:*
         version: link:../packages/swarm

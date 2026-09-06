@@ -57,4 +57,44 @@ describe("consensus", () => {
     const score = 1 * 0.3 + 1 * 1; // analyzer + verifier max weights
     expect(score).toBeGreaterThan(0.6);
   });
+
+  it("plugin agents can carry their own consensus weight via agentId", () => {
+    // keyword-analyzer plugin declares weight 0.25; alone it should NOT cross the bar,
+    // but with a built-in verifier it passes and the plugin weight is what's used.
+    const roleWeights = { "keyword-analyzer": 0.25 };
+    const solo = reachConsensus(
+      "run-plug-1",
+      [
+        {
+          finding: finding("pf1"),
+          evidence: [
+            { agentRole: "analyzer", agentId: "keyword-analyzer", confidence: 1, artifactWeight: 1 },
+          ],
+        },
+      ],
+      undefined,
+      roleWeights,
+    );
+    expect(solo.findings).toHaveLength(0); // 0.25 < 0.6 minScore
+  });
+
+  it("plugin weight higher than role default boosts score", () => {
+    const roleWeights = { "trusted-verifier": 2.0 };
+    const report = reachConsensus(
+      "run-plug-2",
+      [
+        {
+          finding: finding("pf2"),
+          evidence: [
+            { agentRole: "verifier", agentId: "trusted-verifier", confidence: 0.5, artifactWeight: 1 },
+          ],
+        },
+      ],
+      { minScore: 0.6, quorum: 1, disputeEscalation: false },
+      roleWeights,
+    );
+    // 2.0 * 0.5 = 1.0 >= 0.6, quorum 1/1
+    expect(report.findings[0]?.score).toBe(1.0);
+    expect(report.findings[0]?.verdict).toBe("accepted");
+  });
 });

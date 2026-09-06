@@ -15,6 +15,7 @@
     "@swarmproof/hedera": "workspace:*",
     "@swarmproof/payments": "workspace:*",
     "@swarmproof/mcp": "workspace:*",
+    "@swarmproof/plugins": "workspace:*",
     "@swarmproof/vulnerable-contracts": "workspace:*"
   },
   "devDependencies": {

@@ -8,6 +8,7 @@ import type { SwarmRunner } from "@swarmproof/swarm";
 import type { ConsensusReport, WeightedFinding } from "@swarmproof/consensus";
 import type { VerificationEngine } from "@swarmproof/verification";
 import type { PaymentLedger } from "@swarmproof/payments";
+import type { AgentRegistry, AgentPlugin } from "@swarmproof/plugins";
 
 export interface MCPTool<
   TInput extends Record<string, unknown> = Record<string, unknown>,
@@ -24,6 +25,8 @@ export interface McpDeps {
   verifier: VerificationEngine;
   payments: PaymentLedger;
   reports: Map<string, ConsensusReport>;
+  /** Plugin ecosystem registry — powers list_agents. */
+  registry?: AgentRegistry;
 }
 
 export function createToolRegistry(deps: McpDeps): MCPTool[] {
@@ -45,6 +48,7 @@ export function createToolRegistry(deps: McpDeps): MCPTool[] {
           contractName: input.contractName,
           contractSource: input.source,
           agents: {},
+          plugins: deps.registry?.list() ?? [],
         });
         return { runId: result.runId, findingCount: result.findings.length };
       },
@@ -92,6 +96,38 @@ export function createToolRegistry(deps: McpDeps): MCPTool[] {
       },
       async run(input: { bountyId: string }) {
         return deps.payments.getBounty(input.bountyId);
+      },
+    },
+    {
+      name: "list_agents",
+      description:
+        "List every agent registered in the SwarmProof ecosystem (built-in roles + third-party plugins).",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      async run(): Promise<Array<Record<string, unknown>>> {
+        const plugins: AgentPlugin[] = deps.registry?.list() ?? [];
+        return [
+          ...["analyzer", "exploiter", "verifier", "judge"].map((role) => ({
+            id: `builtin:${role}`,
+            name: role.charAt(0).toUpperCase() + role.slice(1),
+            role,
+            version: "core",
+            source: "built-in",
+          })),
+          ...plugins.map((p) => ({
+            id: p.manifest.id,
+            name: p.manifest.name,
+            role: p.manifest.role,
+            version: p.manifest.version,
+            description: p.manifest.description,
+            executor: p.executor.type,
+            weight: p.manifest.weight ?? null,
+            source: "plugin",
+          })),
+        ];
       },
     },
   ];

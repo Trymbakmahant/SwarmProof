@@ -7,6 +7,7 @@ import { reachConsensus } from "@swarmproof/consensus";
 import { createVerifier } from "@swarmproof/verification";
 import { MockHederaClient } from "@swarmproof/hedera";
 import { MemoryLedger } from "@swarmproof/payments";
+import { AgentRegistry, createKeywordAnalyzerPlugin } from "@swarmproof/plugins";
 
 interface AuditRecord {
   id: string;
@@ -22,8 +23,13 @@ const verifier = createVerifier("mock");
 const reports = new Map<string, unknown>();
 const audits = new Map<string, AuditRecord>();
 
+// Plugin ecosystem: anyone can register agents. The keyword analyzer is a
+// built-in demo — third-party plugins register the same way.
+const registry = new AgentRegistry();
+registry.register(createKeywordAnalyzerPlugin());
+
 function makeSwarm(runId: string): SwarmRunner {
-  const runner = new SwarmRunner({ provider });
+  const runner = new SwarmRunner({ provider, registry });
   runner.on("finding", (f) => {
     void f;
   });
@@ -37,6 +43,8 @@ function makeSwarm(runId: string): SwarmRunner {
           { agentRole: "analyzer", confidence: 0.7, artifactWeight: 1 },
         ],
       })),
+      undefined,
+      registry.weights(),
     );
     reports.set(runId, report);
     void verifier;
@@ -47,6 +55,28 @@ function makeSwarm(runId: string): SwarmRunner {
 const app = new Hono();
 
 app.get("/health", (c) => c.json({ ok: true, service: "swarmproof-api" }));
+
+// Plugin ecosystem: list all agents available to run audits.
+app.get("/agents", (c) => {
+  const builtins = ["analyzer", "exploiter", "verifier", "judge"].map((role) => ({
+    id: `builtin:${role}`,
+    name: role,
+    role,
+    version: "core",
+    source: "built-in",
+  }));
+  const plugins = registry.list().map((p) => ({
+    id: p.manifest.id,
+    name: p.manifest.name,
+    role: p.manifest.role,
+    version: p.manifest.version,
+    description: p.manifest.description,
+    executor: p.executor.type,
+    weight: p.manifest.weight ?? null,
+    source: "plugin",
+  }));
+  return c.json({ builtins: builtins.length, plugins: plugins.length, agents: [...builtins, ...plugins] });
+});
 
 // Submit an audit job.
 app.post("/audits", async (c) => {

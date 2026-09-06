@@ -8,6 +8,7 @@ import {
   type Finding,
   type LLMProvider,
 } from "@swarmproof/agents";
+import { AgentRegistry, runPlugin, type AgentPlugin } from "@swarmproof/plugins";
 
 export interface SwarmRunInput {
   runId: string;
@@ -15,12 +16,17 @@ export interface SwarmRunInput {
   contractName: string;
   compiler?: string;
   agents: Partial<Record<AgentRole, AgentConfig>>;
+  /** Third-party agents to run after the built-in phases (plugin ecosystem). */
+  plugins?: AgentPlugin[];
+  /** Per-run user config for plugins, keyed by plugin id. */
+  pluginConfig?: Record<string, Record<string, unknown>>;
 }
 
 export type SwarmEventMap = {
   message: [AgentMessage];
   finding: [Finding];
-  phase: [AgentRole, "start" | "end"];
+  /** Phase events. With plugins the role is a free-form string (plugin role or custom). */
+  phase: [string, "start" | "end"];
   done: [{ runId: string; findings: Finding[] }];
   failed: [{ runId: string; error: string }];
 };
@@ -37,6 +43,8 @@ export interface SwarmHooks {
 export type SwarmRunnerDeps = {
   provider: LLMProvider;
   hooks?: SwarmHooks;
+  /** Ecosystem registry — plugins from it run on every audit unless overridden per-run. */
+  registry?: AgentRegistry;
 };
 
 const PHASE_ORDER: AgentRole[] = ["analyzer", "exploiter", "verifier", "judge"];
@@ -95,7 +103,9 @@ export class SwarmRunner {
     const findings: Finding[] = [];
     const hooks = this.deps.hooks ?? this.defaultHooks();
     const agents = { ...DEFAULT_AGENT_CONFIGS, ...input.agents };
+    const plugins = input.plugins ?? this.deps.registry?.list() ?? [];
 
+    // Built-in roles: the core 4-phase swarm.
     for (const role of PHASE_ORDER) {
       const config = agents[role];
       const context = { input, messages, findings };
@@ -106,16 +116,7 @@ export class SwarmRunner {
         this.events.emit("message", msg);
         messages.push(msg);
         if (msg.artifactIds && msg.artifactIds.length > 0 && msg.confidence !== undefined) {
-          // Minimal finding derivation — real parsing lands with consensus package (M2).
-          const f: Finding = {
-            id: `${input.runId}-${role}-${findings.length}`,
-            title: `Candidate from ${role}`,
-            category: "unclassified",
-            severity: "medium",
-            location: msg.content.slice(0, 80),
-            evidence: msg.artifactIds,
-            status: "proposed",
-          };
+          const f = this.deriveFinding(input, role, msg, findings);
           findings.push(f);
           this.events.emit("finding", f);
         }
@@ -123,8 +124,55 @@ export class SwarmRunner {
       this.events.emit("phase", role, "end");
     }
 
+    // Plugin ecosystem: every registered third-party agent contributes next.
+    for (const plugin of plugins) {
+      const role = plugin.manifest.role;
+      this.events.emit("phase", `plugin:${plugin.manifest.id}`, "start");
+      const produced = await runPlugin(
+        {
+          runId: input.runId,
+          pluginId: plugin.manifest.id,
+          contractName: input.contractName,
+          contractSource: input.contractSource,
+          role,
+          messages,
+          findings,
+          config: input.pluginConfig?.[plugin.manifest.id] ?? {},
+        },
+        plugin,
+      );
+      for (const msg of produced) {
+        this.events.emit("message", msg);
+        messages.push(msg);
+        if (msg.artifactIds && msg.artifactIds.length > 0 && msg.confidence !== undefined) {
+          const f = this.deriveFinding(input, role, msg, findings);
+          findings.push(f);
+          this.events.emit("finding", f);
+        }
+      }
+      this.events.emit("phase", `plugin:${plugin.manifest.id}`, "end");
+    }
+
     const result = { runId: input.runId, findings };
     this.events.emit("done", result);
     return result;
+  }
+
+  /** Minimal finding derivation — real parsing lands with consensus package (M2). */
+  private deriveFinding(
+    input: SwarmRunInput,
+    role: AgentRole,
+    msg: AgentMessage,
+    findings: Finding[],
+  ): Finding {
+    return {
+      id: `${input.runId}-${role}-${findings.length}`,
+      title: `Candidate from ${role}`,
+      category: "unclassified",
+      severity: "medium",
+      location: msg.content.slice(0, 80),
+      evidence: msg.artifactIds ?? [],
+      status: "proposed",
+    };
   }
 }

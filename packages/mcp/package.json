@@ -23,6 +23,7 @@
     "@swarmproof/consensus": "workspace:*",
     "@swarmproof/verification": "workspace:*",
     "@swarmproof/hedera": "workspace:*",
-    "@swarmproof/payments": "workspace:*"
+    "@swarmproof/payments": "workspace:*",
+    "@swarmproof/plugins": "workspace:*"
   }
 }

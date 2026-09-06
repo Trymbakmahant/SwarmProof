@@ -2,6 +2,8 @@ import type { AgentRole, Finding, Severity } from "@swarmproof/agents";
 
 export interface EvidenceItem {
   agentRole: AgentRole;
+  /** Plugin id when the evidence came from a third-party agent (plugin ecosystem). */
+  agentId?: string;
   confidence: number; // 0..1
   artifactWeight: number; // 0..1 — 1 when tool-reproduced
 }
@@ -45,22 +47,30 @@ export function isDeemedCritical(severity: Severity): boolean {
   return severity === "critical" || severity === "high";
 }
 
+function itemWeight(e: EvidenceItem, roleWeights: Record<string, number> | undefined): number {
+  // Plugin-specific weight (by agentId) wins; else built-in role weight.
+  return roleWeights?.[e.agentId ?? e.agentRole] ?? ROLE_WEIGHTS[e.agentRole];
+}
+
 /**
  * Weighted consensus over findings. Pure function.
  * score = Σ(roleWeight * confidence * artifactWeight); accepted if score >= minScore,
  * quorum met, and not explicitly rejected by an exploiter.
+ * `roleWeights` (e.g. from an AgentRegistry.weights()) lets plugin agents
+ * weight their opinion differently than the built-in role default.
  */
 export function reachConsensus(
   runId: string,
   candidates: Array<{ finding: Finding; evidence: EvidenceItem[] }>,
   config: ConsensusConfig = DEFAULT_CONFIG,
+  roleWeights?: Record<string, number>,
 ): ConsensusReport {
   const weighted: WeightedFinding[] = candidates.map((c) => {
     const exploiterRejected = c.evidence.some(
       (e) => e.agentRole === "exploiter" && e.artifactWeight === 0,
     );
     const score = c.evidence.reduce(
-      (sum, e) => sum + ROLE_WEIGHTS[e.agentRole] * e.confidence * (e.artifactWeight || 1),
+      (sum, e) => sum + itemWeight(e, roleWeights) * e.confidence * (e.artifactWeight || 1),
       0,
     );
     const quorumMet = new Set(c.evidence.map((e) => e.agentRole)).size >= config.quorum;
