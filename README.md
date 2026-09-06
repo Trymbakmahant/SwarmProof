@@ -43,13 +43,27 @@ pnpm dev:web      # dashboard on :3000
 
 - [x] **M0** Workspace scaffold
 - [x] **M8** Agent plugin ecosystem — anyone can plug their agent in
-- [ ] **M1** Corpus + consensus calibration
-- [ ] **M2** Agents + swarm pipeline with stubs
+- [x] **M9** P0 gateway flow — x402 single payment, 5 parallel specialists, cluster/consensus, verification, HCS proof, MCP thin client
+- [ ] **P0-A** x402 facilitator wiring (real client-side pay + verify)
 - [ ] **M3** Tool verification (slither/forge)
-- [ ] **M4** API + Web live swarm view
-- [ ] **M5** Hedera + payments (local node)
-- [ ] **M6** MCP server
-- [ ] **M7** Demo polish & deploy
+- [ ] **M4** Live swarm visualizer in web
+- [ ] **M6** MCP SDK transport (stdio/SSE)
+- [ ] **P1** HCS-14 identity · payment viz · proof UI
+- [ ] **P2** Reputation-weighted voting · marketplace · A2A
+
+## API (P0 flow)
+
+```
+POST /audit                      → create job + payment requirement (client sees allocation BEFORE paying)
+POST /audits/:id/pay {reference} → confirm the ONE job payment → swarm runs
+GET  /audits/:id/status          → lifecycle + payment status
+GET  /audits/:id/findings        → accepted findings + verification
+GET  /audits/:id/proof           → HCS anchor {reportHash, hcsTopicId, transactionId, consensusTimestamp, verified}
+POST /audits/:id/verify          → reproduce one finding
+GET  /agents                     → specialist directory (identities + payment addresses)
+```
+
+Env: copy `.env.example` → `.env`. No credentials required locally — mock payment + mock HCS kick in automatically. Set `HEDERA_*` + `X402_*` to go live.
 
 ## Bring your own agent (plugin ecosystem)
 

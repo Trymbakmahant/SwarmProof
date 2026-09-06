@@ -70,34 +70,34 @@ swarmproof/
 | Web | Next.js 15 | Rapid UI for the demo |
 | MCP | Official `@modelcontextprotocol/sdk` | Tool exposure to any MCP client |
 
-## 5. Architecture — How an Audit Flows
+## 5. Architecture — How an Audit Flows (implemented, P0)
 
 ```
- User submits contract address / source
-        │
-        ▼
- apps/api ──► job queued (contracts/vulnerable during demo)
-        │
-        ▼
- packages/swarm ── orchestrates the swarm run
-   ├─ Analyzer agents (2–3): static + semantic read, produce candidate findings
-   ├─ Exploiter agent: adversarial — tries to PROVE findings with PoCs
-   ├─ Verifier agents: run Slither / forge tests / PoCs against forked state
-   ├─ Judge agent: summarizes, checks evidence quality
-   ▼
- packages/consensus ── weight findings, confidence score, dispute round
-   ▼
- packages/plugins ─── third-party agents (llm / http / function executors)
-   │                    run in the swarm alongside built-in roles; custom
-   │                    consensus weights via registry.weights()
-   ▼
- packages/verification ── artifacts: proof files, tx traces, severity labels
-   ▼
- packages/hedera ── report hash → Consensus Service topic; bounty status → HTS
-   ▼
- packages/payments ── escrow release / bounty payout per verified severity
-   ▼
- MCP server / Web dashboard ← full JSON report with evidence
+ External agent / user
+      │
+      ▼
+ MCP (thin client) / HTTP
+      │
+      ▼
+ apps/api — POST /audit
+      │  ① create job (status: payment-required)
+      │  ② compute x402 payment requirement BEFORE signing
+      │     (total, recipients[6×$0.15 + gateway $0.10], network, paymentId)
+      │  ③ POST /audits/:id/pay — ONE payment for the whole job
+      ▼
+ packages/swarm — AuditOrchestrator (NO payment logic in swarm)
+      │  Promise.all([5 specialist agents])   ← independent, parallel
+      │    reentrancy · access-control · business-logic · economic · static
+      ▼
+ packages/consensus — normalize → cluster → weighted vote (quorum by agent)
+      ▼
+ packages/verification — verification agent reproduces accepted findings
+      ▼
+ Final audit report → deterministic JSON → SHA-256
+      ▼
+ packages/hedera — HCS proof message → Consensus Service (hash only, not report)
+      ▼
+ GET /audits/:id/proof  ← tamper-evident audit trail
 ```
 
 ## 6. Package-by-Package Plan
@@ -179,15 +179,19 @@ swarmproof/
 
 | # | Milestone | Deliverable | Done? |
 |---|---|---|---|
-| M0 | Workspace scaffold | pnpm workspace, tsconfigs, empty packages build | ✅ this session |
-| M1 | Corpus + consensus | vulnerable contracts + consensus unit tests green | ⬜ |
-| M2 | Agents + swarm with stubs | full pipeline run on one contract, JSON report out | ⬜ |
-| M3 | Verification | slither/forge integration, verified artifacts | ⬜ |
-| M4 | API + Web | submit → live swarm view → report page | ⬜ |
-| M5 | Hedera + payments | anchor report, bounty escrow/payout (mock + local node) | ⬜ |
-| M6 | MCP server | audit tools available in any MCP client | ⬜ |
-| M7 | Polish | README, demo script, video, live deploy | ⬜ |
+| M0 | Workspace scaffold | pnpm workspace, tsconfigs, empty packages build | ✅ |
+| M1 | Corpus + consensus | vulnerable contracts + consensus unit tests green | ✅ core |
+| M2 | Agents + swarm with stubs | full pipeline run on one contract, JSON report out | ✅
 | M8 | Agent plugin ecosystem | registry, 3 executor types, weights, MCP/API exposure, example plugins | ✅ core |
+| M9 | **P0 gateway flow** | x402 single-payment gateway, 5 parallel specialists, cluster+consensus, verification, HCS proof, MCP thin client, .env | ✅ **this session** |
+| P0-A | x402 real payment integration | X402PaymentProvider (facilitator) — client-side pay + verify loop | 🕐 provider written, facilitator needed |
+| M3 | Verification | slither/forge integration, verified artifacts | 🕐 engine seam + mock; tools TBD |
+| M4 | API + Web | submit → live swarm view → report page | 🕐 API done; web visualizer TBD |
+| M5 | Hedera + payments | anchor report, bounty escrow/payout (mock + local node) | 🕐 HCS proof done (mock+real); payments via x402 |
+| M6 | MCP server | audit tools available in any MCP client | 🕐 tool registry done; SDK transport TBD |
+| M7 | Polish | README, demo script, video, live deploy | ⬜ |
+| P1 | HCS-14 agent identity, agent registry, payment viz, proof UI | — | ⬜ |
+| P2 | Reputation-weighted voting, permissionless registration, marketplace, A2A, advanced routing | — | ⬜ |
 
 ## 8. Agent Prompt Templates (the "prompts")
 
