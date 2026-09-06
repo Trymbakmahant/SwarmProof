@@ -105,7 +105,7 @@ export class SwarmRunner {
       for (const msg of roleMessages) {
         this.events.emit("message", msg);
         messages.push(msg);
-        if (msg.artifactIds && msg.confidence !== undefined) {
+        if (msg.artifactIds && msg.artifactIds.length > 0 && msg.confidence !== undefined) {
           // Minimal finding derivation — real parsing lands with consensus package (M2).
           const f: Finding = {
             id: `${input.runId}-${role}-${findings.length}`,
