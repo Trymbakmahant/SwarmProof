@@ -1,7 +1,12 @@
-import "dotenv/config";
-import { pathToFileURL } from "node:url";
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config(); // fallback to current dir if any
 
 const env = process.env;
 const app = createApp({ env });

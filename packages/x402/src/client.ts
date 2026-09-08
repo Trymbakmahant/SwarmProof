@@ -89,6 +89,20 @@ export function defaultFetch(url: string, init: { method: string; headers: Recor
   );
 }
 
+function parseHederaPrivateKey(key: string, PrivateKeyClass: { fromString(k: string): any; fromStringECDSA?(k: string): any }): any {
+  const trimmed = key.trim();
+  if (trimmed.startsWith("0x") || (trimmed.length === 64 && !trimmed.startsWith("30"))) {
+    try {
+      if (typeof PrivateKeyClass.fromStringECDSA === "function") {
+        return PrivateKeyClass.fromStringECDSA(trimmed.replace(/^0x/, ""));
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return PrivateKeyClass.fromString(trimmed);
+}
+
 export class X402Client {
   readonly facilitator: X402FacilitatorClient;
   private readonly signer?: X402SignerMaterial;
@@ -170,11 +184,11 @@ export class X402Client {
   private async signLive(requirements: X402PaymentRequirements): Promise<X402PaymentPayload> {
     const hedera = await import("@x402/hedera");
     const { ExactHederaScheme } = await import("@x402/hedera/exact/client");
-    const network = (requirements.network.replace(/^hedera:/, "") || "testnet") as "testnet" | "mainnet";
+    const network = requirements.network.startsWith("hedera:") ? requirements.network : `hedera:${requirements.network}`;
     const signer = hedera.createClientHederaSigner(
       this.signer!.accountId,
-      hedera.PrivateKey.fromString(this.signer!.privateKey),
-      { network },
+      parseHederaPrivateKey(this.signer!.privateKey, hedera.PrivateKey),
+      { network: network as "hedera:testnet" | "hedera:mainnet" },
     );
     const scheme = new ExactHederaScheme(signer);
     const signed = await scheme.createPaymentPayload(2, requirements as never);

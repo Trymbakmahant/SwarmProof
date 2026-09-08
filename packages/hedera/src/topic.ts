@@ -29,6 +29,20 @@ export function hasTopicCredentials(config: TopicSubmitConfig): boolean {
   return Boolean(config.accountId && config.privateKey && config.topicId);
 }
 
+export function parseHederaPrivateKey(key: string, PrivateKeyClass: { fromString(k: string): any; fromStringECDSA?(k: string): any }): any {
+  const trimmed = key.trim();
+  if (trimmed.startsWith("0x") || (trimmed.length === 64 && !trimmed.startsWith("30"))) {
+    try {
+      if (typeof PrivateKeyClass.fromStringECDSA === "function") {
+        return PrivateKeyClass.fromStringECDSA(trimmed.replace(/^0x/, ""));
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return PrivateKeyClass.fromString(trimmed);
+}
+
 /** Submit a JSON-stringified message to an HCS topic. Wait-for-consensus aware. */
 export class HederaTopicClient {
   constructor(
@@ -44,7 +58,7 @@ export class HederaTopicClient {
     const { Client, PrivateKey, AccountId, TopicId, TopicMessageSubmitTransaction } = sdk;
 
     const client = Client.forName(this.config.network);
-    client.setOperator(AccountId.fromString(this.config.accountId), PrivateKey.fromString(this.config.privateKey));
+    client.setOperator(AccountId.fromString(this.config.accountId), parseHederaPrivateKey(this.config.privateKey, PrivateKey));
 
     const tx = await new TopicMessageSubmitTransaction({
       topicId: TopicId.fromString(this.config.topicId),

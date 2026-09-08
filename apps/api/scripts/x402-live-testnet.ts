@@ -14,13 +14,19 @@
  *
  * Run:  pnpm --filter @swarmproof/api x402:live
  */
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { X402Client, createFacilitator, type X402HttpRequest } from "@swarmproof/x402";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config();
+
 const env = process.env;
 const apiUrl = (env.SWARMPROOF_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
-const contractExamplePath = env.SWARMPROOF_CONTRACT_PATH ?? "../../contracts/vulnerable/ReentrancyVault.sol";
+const contractExamplePath = env.SWARMPROOF_CONTRACT_PATH ?? "../../../contracts/vulnerable/ReentrancyVault.sol";
 
 function hb(table: string, rows: Array<Array<string>>): string {
   const widths = table.split("|").map((h, i) => Math.max(h.trim().length, ...rows.map((r) => (r[i] ?? "").length)));

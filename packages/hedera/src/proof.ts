@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { parseHederaPrivateKey } from "./topic.js";
 
 export type { AgentIdentity, AgentIdentitySchema } from "@swarmproof/agents";
 export type { AgentRole } from "@swarmproof/agents";
@@ -165,7 +166,7 @@ export class HederaAuditProofClient implements AuditProofClient, AuditProofVerif
     const { Client, PrivateKey, AccountId, TopicId, TopicMessageSubmitTransaction } = sdk;
 
     const client = Client.forName(this.config.network);
-    client.setOperator(AccountId.fromString(this.config.accountId), PrivateKey.fromString(this.config.privateKey));
+    client.setOperator(AccountId.fromString(this.config.accountId), parseHederaPrivateKey(this.config.privateKey, PrivateKey));
 
     const tx = await new TopicMessageSubmitTransaction({
       topicId: TopicId.fromString(this.config.topicId),

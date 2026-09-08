@@ -39,6 +39,70 @@ Live demo (needs a funded testnet account):
 pnpm --filter @swarmproof/api x402:live
 ```
 
+### 🎬 Live Testnet Run (Terminal Output & On-Chain Verification)
+
+Running `pnpm --filter @swarmproof/api x402:live` executes the full autonomous machine-to-machine payment and audit settlement on Hedera Testnet:
+
+```text
+🐝 SwarmProof — x402 + Blocky402 live audit demo
+────────────────────────────────────────────────
+
+payer: 0.0.10119346 on hedera:testnet
+1) POST /audit — expecting HTTP 402 challenge…
+   status=402
+   WWW-Authenticate: X402 resource="http://localhost:3001/x402/audits/audit_1788849231642_g576ds"
+
+2) GET resource with Accept: application/x402+json — the quote…
+| field                  | value                      |
+| ---------------------- | -------------------------- |
+| scheme                 | exact                      |
+| network                | hedera:testnet             |
+| amount (tinybars)      | 1000000                    |
+| payTo                  | 0.0.10417474               |
+| asset                  | 0.0.0                      |
+| maxTimeoutSeconds      | 300                        |
+| feePayer (facilitator) | 0.0.7162784                |
+| auditId                | audit_1788849231642_g576ds |
+| expiresAt              | 2026-09-08T06:38:51.643Z   |
+
+   This quote is served by SwarmProof; the amount is the price of ONE audit.
+
+3) Signing payment payload (payer signs a TransferTransaction)…
+   payload x402Version=2 scheme=exact accepted.amount=1000000
+
+4) Submitting to Blocky402 facilitator: /verify then /settle…
+   verify  → isValid=true payer=0.0.10119346
+   settle  → success=true transaction=0.0.7162784@1788849225.803231622
+
+5) Replaying POST /audit with X-PAYMENT header…
+   status=201 body={"auditId":"audit_1788849231642_g576ds","status":"running","payment":{"paymentId":"x402-d63c80aa-82e4-48ef-aa1c-f3d6a1330e0f","auditId":"audit_1788849231642_g576ds","status":"paid","paidAmount":"1","paidAt":"2026-09-08T06:33:57.838Z","transactionReference":"0.0.10119346","message":"x402 paid by 0.0.10119346 (1000000 tinybars)"}}
+   audit audit_1788849231642_g576ds accepted — swarm running…
+
+6) Polling audit status…
+   [done] findings=1 payment=paid
+
+7) HCS proof:
+{
+  "auditId": "audit_1788849231642_g576ds",
+  "reportHash": "1472c9cc972ccbde5e1ea70126595b8d9b6e2972d05d79d5d319e0ad6de2667f",
+  "hcsTopicId": "0.0.10417469",
+  "transactionId": "0.0.10119346@1788849233.623260124",
+  "consensusTimestamp": "2026-09-08T06:34:01.762Z",
+  "verified": true
+}
+
+✅ End-to-end paid audit complete — no API key, no subscription.
+   Hedera transaction: 0.0.7162784@1788849225.803231622
+```
+
+#### 🔗 Verified Testnet Explorer Links
+- **x402 Settlement Transaction:** [HashScan Transaction 0.0.7162784@1788849225.803231622](https://hashscan.io/testnet/transaction/0.0.7162784@1788849225.803231622) (Settled 0.01 ℏ payment via Blocky402 facilitator)
+- **HCS Audit Proof Anchor:** [HashScan Transaction 0.0.10119346@1788849233.623260124](https://hashscan.io/testnet/transaction/0.0.10119346@1788849233.623260124) (Deterministic report hash submitted to topic)
+- **HCS Audit Topic:** [HashScan Topic 0.0.10417469](https://hashscan.io/testnet/topic/0.0.10417469)
+- **Gateway Payee Account:** [HashScan Account 0.0.10417474](https://hashscan.io/testnet/account/0.0.10417474)
+
+You can also run this interactively in your browser at `http://localhost:3000/x402` (**Payment Lab**).
+
 ## Quickstart
 
 ```bash
