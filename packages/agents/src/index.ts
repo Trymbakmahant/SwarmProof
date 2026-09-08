@@ -55,7 +55,7 @@ export interface ProviderMessage {
 
 /** LLM provider abstraction — OpenAI, Ollama, or a deterministic stub. */
 export interface LLMProvider {
-  complete(system: string, messages: ProviderMessage[], config: AgentConfig): Promise<string>;
+  complete(system: string, messages: ProviderMessage[], config?: Partial<AgentConfig>): Promise<string>;
   readonly name: string;
 }
 
@@ -89,3 +89,4 @@ export const DEFAULT_AGENT_CONFIGS: Record<AgentRole, AgentConfig> = {
 
 export * from "./identity.js";
 export * from "./specialists.js";
+export * from "./llm.js";
