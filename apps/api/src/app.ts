@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import {
   createSpecialistAgents,
   SecurityTaskSchema,
@@ -30,7 +31,13 @@ import {
   type PaymentVerification,
   type RecipientShare,
 } from "@swarmproof/payments";
-import { parseXPpaymentHeaders, type X402PaymentPayload } from "@swarmproof/x402";
+import {
+  parseXPpaymentHeaders,
+  X402Client,
+  createFacilitator,
+  type X402PaymentPayload,
+  type X402PaymentRequirements,
+} from "@swarmproof/x402";
 
 /* ------------------------------------------------------------------ */
 /* Wiring (all injectable via env; zero-config local runs use mocks)   */
@@ -91,6 +98,20 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   const gateway = new PaymentGateway(payment, network);
   const paymentProof: PaymentProofClient = opts.paymentProof ?? createPaymentProofClient(env);
   const identity: IdentityRegistrar = opts.identity ?? createIdentityRegistrar(env);
+
+  // Payment Lab signer — the "consumer agent wallet". Uses dedicated payer
+  // creds (X402_PAYER_*), falling back to the HCS operator (HEDERA_*), so a
+  // single funded testnet account can demo the full flow. Real when both a
+  // facilitator URL and creds are present; otherwise offline mock.
+  const payerFacilitator = env.X402_FACILITATOR_URL
+    ? createFacilitator({ baseUrl: env.X402_FACILITATOR_URL, apiKey: env.X402_API_TOKEN })
+    : createFacilitator({ forceMock: true });
+  const payerAccount = env.X402_PAYER_ACCOUNT_ID ?? env.HEDERA_ACCOUNT_ID;
+  const payerKey = env.X402_PAYER_PRIVATE_KEY ?? env.HEDERA_PRIVATE_KEY;
+  const payerClient = new X402Client({
+    facilitator: payerFacilitator,
+    signer: payerAccount && payerKey ? { accountId: payerAccount, privateKey: payerKey, network: env.X402_NETWORK ?? network } : undefined,
+  });
 
   // HCS-14-style identity registration for every specialist (mock offline).
   for (const agent of Object.values(specialists)) {
@@ -244,6 +265,19 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
 
   const app = new Hono();
 
+  // Browser (Payment Lab) may call the API cross-origin: allow x402 transport
+  // headers and expose the 402 challenge header to fetch().
+  app.use(
+    "*",
+    cors({
+      origin: env.SWARMPROOF_WEB_ORIGIN ?? "*",
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["content-type", "accept", "authorization", "x-api-key", "x-payment", "payment-signature"],
+      exposeHeaders: ["www-authenticate", "x-payment"],
+      maxAge: 600,
+    }),
+  );
+
   app.get("/health", (c) => {
     const isX402 = payment instanceof X402PaymentProvider;
     return c.json({
@@ -299,6 +333,82 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   });
 
   app.get("/agents", (c) => c.json({ agents: agentDirectory() }));
+
+  /* ---- Payment Lab: readiness + payer wallet signing -------------------- */
+
+  // GET /x402/status — what the browser Payment Lab needs to render:
+  // facilitator mode/URL/fee-payer, whether a payer wallet is configured, and
+  // the default quote parameters.
+  app.get("/x402/status", async (c) => {
+    const isX402 = payment instanceof X402PaymentProvider;
+    const feePayer = await payerFacilitator.feePayer(network).catch(() => undefined);
+    return c.json({
+      network,
+      x402Version: 2,
+      facilitator: {
+        mode: payerFacilitator.mode,
+        baseUrl: payerFacilitator.baseUrl,
+        feePayer: feePayer ?? undefined,
+      },
+      signer: {
+        configured: Boolean(payerAccount && payerKey),
+        accountId: payerAccount ?? null,
+        mode: payerClient.mode,
+      },
+      gateway: {
+        address: constants.gatewayAddress,
+        share: gatewayShare,
+        // A real settlement needs a real Hedera account as payee.
+        valid: /^\d{1,10}\.\d{1,10}\.\d{1,10}$/.test(constants.gatewayAddress),
+      },
+      quote: {
+        total: constants.total,
+        currency: constants.currency,
+        asset: isX402 ? undefined : (env.X402_ASSET ?? "0.0.0"),
+      },
+    });
+  });
+
+  /**
+   * POST /x402/pay — sign a quote with the configured payer wallet, verify and
+   * settle through the facilitator. Body: `{ quote }` (an x402 payment
+   * requirements object) or `{ auditId }` (reuse the audit's own quote).
+   *
+   * This is the only place the payer key is used, and it lives in the API env
+   * (never in the browser). With no facilitator/creds it returns the offline
+   * mock result so the Lab is fully testable without a funded wallet.
+   */
+  app.post("/x402/pay", async (c) => {
+    const body = await c.req
+      .json<{ quote?: X402PaymentRequirements; auditId?: string }>()
+      .catch((): { quote?: X402PaymentRequirements; auditId?: string } => ({}));
+    let quote = body.quote;
+    if (!quote && body.auditId) {
+      const record = audits.get(body.auditId);
+      quote = record?.payment?.x402;
+      if (!quote) return c.json({ error: `no x402 quote issued for audit ${body.auditId}` }, 400);
+    }
+    if (!quote) return c.json({ error: "missing quote — pass { quote } or { auditId }" }, 400);
+
+    try {
+      const payload = await payerClient.signPayment(quote);
+      const verification = await payerClient.verifyPayment(payload, quote);
+      if (!verification.isValid) {
+        return c.json({ ok: false, error: `facilitator rejected payment: ${verification.invalidMessage ?? verification.invalidReason}` }, 402);
+      }
+      const settlement = await payerClient.settlePayment(payload, quote);
+      return c.json({
+        ok: settlement.success,
+        mode: payerClient.mode,
+        payer: verification.payer ?? payerAccount ?? null,
+        paymentPayload: payload,
+        verification,
+        settlement,
+      });
+    } catch (err) {
+      return c.json({ ok: false, error: (err as Error).message }, 400);
+    }
+  });
 
   /* ---- Audit flow per spec ---------------------------------------------- */
 
