@@ -39,10 +39,10 @@ export const DEFAULT_SPECIALIST_WEIGHTS: SpecialistWeights = {
 };
 
 export interface OrchestratorDeps {
-  specialists: Record<SpecialistId, SecurityAgent>;
+  specialists: Record<SpecialistId, SecurityAgent> | Record<string, SecurityAgent>;
   verification: VerificationEngine;
   proofClient?: AuditProofClient; // optional: anchor proof when provided
-  weights?: SpecialistWeights;
+  weights?: SpecialistWeights | Record<string, number>;
   consensusConfig?: ConsensusConfig;
 }
 
@@ -101,7 +101,10 @@ export class AuditOrchestrator {
     const normalized = normalizeFindings(raw);
 
     // 3. Consensus: evidence = one entry per agent that reported the cluster.
-    const candidates = toConsensusCandidates(normalized, toEvidenceOverrides(this.deps.weights));
+    const candidates = toConsensusCandidates(
+      normalized,
+      toEvidenceOverrides(this.deps.specialists, this.deps.weights),
+    );
     const consensus = reachConsensus(
       auditId,
       candidates,
@@ -159,9 +162,13 @@ export class AuditOrchestrator {
   }
 }
 
-function toEvidenceOverrides(weights?: SpecialistWeights): Record<string, { confidence: number; artifactWeight: number }> {
+function toEvidenceOverrides(
+  specialists: Record<string, SecurityAgent>,
+  weights?: SpecialistWeights | Record<string, number>,
+): Record<string, { confidence: number; artifactWeight: number }> {
   const out: Record<string, { confidence: number; artifactWeight: number }> = {};
-  for (const id of Object.keys(weights ?? {})) {
+  const allIds = new Set([...Object.keys(specialists), ...Object.keys(weights ?? {})]);
+  for (const id of allIds) {
     out[id] = { confidence: SPECIALIST_DEFAULT_CONFIDENCE, artifactWeight: 1 };
   }
   return out;

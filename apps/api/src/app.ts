@@ -2,8 +2,12 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   createSpecialistAgents,
+  createLLMProviderFromEnv,
+  parseLLMFindings,
   SecurityTaskSchema,
   SPECIALIST_PAYMENT_ADDRESSES,
+  type LLMProvider,
+  type SecurityAgent,
   type SecurityTask,
 } from "@swarmproof/agents";
 import {
@@ -15,6 +19,9 @@ import {
   createAuditProofClient,
   createPaymentProofClient,
   createIdentityRegistrar,
+  formatHederaDID,
+  buildDIDDocument,
+  buildVerifiableCredential,
   MirrorNodeClient,
   buildPaymentProofMessage,
   type AuditProofClient,
@@ -49,6 +56,7 @@ export interface CreateAppOptions {
   proofClient?: AuditProofClient;
   paymentProof?: PaymentProofClient;
   identity?: IdentityRegistrar;
+  llmProvider?: LLMProvider;
 }
 
 export function createApp(opts: CreateAppOptions = {}): Hono {
@@ -83,9 +91,13 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
           .then((r) => ({ verified: r.verified, payer: r.payer, message: r.message })),
     });
 
-  const specialists = createSpecialistAgents({
-    ...SPECIALIST_PAYMENT_ADDRESSES,
-    ...agentAddressOverrides,
+  const llmProvider = opts.llmProvider ?? createLLMProviderFromEnv(env);
+  const specialists: Record<string, SecurityAgent> = createSpecialistAgents({
+    addresses: {
+      ...SPECIALIST_PAYMENT_ADDRESSES,
+      ...agentAddressOverrides,
+    },
+    llmProvider,
   });
   const orchestrator = new AuditOrchestrator({
     specialists,
@@ -168,11 +180,25 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
       const entry = base[i];
       if (entry) base[i] = { ...entry, share: e.share };
     }
+    // Automatically route revenue share to dynamically registered agents
+    const customIds = Object.keys(specialists).filter((id) => !base.some((b) => b.agentId === id));
+    for (const id of customIds) {
+      const agent = specialists[id];
+      if (agent) {
+        base.push({
+          agentId: id,
+          address: agent.identity.paymentAddress || constants.gatewayAddress,
+          share: 0.1,
+        });
+      }
+    }
     return base;
   }
 
   async function runAudit(record: AuditRecord): Promise<void> {
     record.status = "running";
+    console.log(`\n🐝 [Audit ${record.id}] Starting swarm audit on "${record.task.contractName}"...`);
+    console.log(`   Dispatching ${Object.keys(specialists).length} specialist agents in parallel...`);
     try {
       const result = await orchestrator.run(record.id, record.task);
       record.report = result.report;
@@ -181,9 +207,16 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
       record.findings = result.consensus.findings;
       record.verification = result.verification;
       record.status = "done";
+      console.log(`✅ [Audit ${record.id}] Swarm audit complete!`);
+      console.log(`   Consensus Result: ${result.report.result.toUpperCase()}`);
+      console.log(`   Accepted Findings: ${result.consensus.findings.length}`);
+      if (result.proof) {
+        console.log(`   Hedera HCS Proof: Topic ${result.proof.hcsTopicId}, Tx ${result.proof.transactionId}`);
+      }
     } catch (err) {
       record.status = "failed";
       record.error = (err as Error).message;
+      console.error(`❌ [Audit ${record.id}] Swarm audit error:`, (err as Error).message);
     }
   }
 
@@ -251,16 +284,40 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
     return new URL(`/x402/audits/${auditId}`, c.req.url).toString();
   }
 
+  interface CustomAgentMeta {
+    role?: string;
+    shape?: string;
+    color?: string;
+    systemPrompt?: string;
+    model?: string;
+  }
+  const customAgentMeta = new Map<string, CustomAgentMeta>();
+
   function agentDirectory() {
-    return Object.entries(specialists).map(([id, a]) => ({
-      agentId: id,
-      name: a.identity.name,
-      capabilities: a.identity.capabilities,
-      paymentAddress: a.identity.paymentAddress,
-      version: a.identity.version,
-      identityReference: identity.lastRegistration(id)?.transactionId,
-      identityTopicId: identity.lastRegistration(id)?.hcsTopicId,
-    }));
+    return Object.entries(specialists).map(([id, a]) => {
+      const meta = customAgentMeta.get(id);
+      const reg = identity.lastRegistration(id);
+      const did = reg?.did ?? formatHederaDID(network, identity.topicId, id);
+      return {
+        agentId: id,
+        name: a.identity.name,
+        capabilities: a.identity.capabilities,
+        paymentAddress: a.identity.paymentAddress,
+        version: a.identity.version,
+        mode: llmProvider ? "llm" : "heuristic",
+        provider: llmProvider?.name ?? "heuristic-ast",
+        role: meta?.role,
+        shape: meta?.shape,
+        color: meta?.color,
+        did,
+        w3cStandard: "did:hedera",
+        didDocumentUrl: `/agents/${id}/did`,
+        credentialUrl: `/agents/${id}/credential`,
+        identityReference: reg?.transactionId,
+        identityTopicId: reg?.hcsTopicId ?? identity.topicId,
+        consensusTimestamp: reg?.consensusTimestamp,
+      };
+    });
   }
 
   const app = new Hono();
@@ -287,6 +344,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
       hederaMode: auditProof.mode,
       paymentProofMode: paymentProof.mode,
       identityMode: identity.mode,
+      llmMode: llmProvider ? llmProvider.name : "heuristic-fallback",
       x402: {
         network: constants.network,
         facilitatorMode: isX402 ? payment.facilitatorClient.mode : "mock",
@@ -333,6 +391,193 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   });
 
   app.get("/agents", (c) => c.json({ agents: agentDirectory() }));
+
+  // POST /agents/register — Dynamically register a new AI specialist agent on the platform & Hedera HCS!
+  app.post("/agents/register", async (c) => {
+    try {
+      const body = await c.req.json<{
+        agentId: string;
+        name: string;
+        role?: string;
+        capabilities?: string[];
+        paymentAddress?: string;
+        systemPrompt?: string;
+        model?: string;
+        color?: string;
+        shape?: string;
+      }>();
+
+      if (!body.agentId || !body.name) {
+        return c.json({ error: "agentId and name are required" }, 400);
+      }
+
+      const cleanId = body.agentId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const capabilities = Array.isArray(body.capabilities) && body.capabilities.length > 0
+        ? body.capabilities
+        : ["smart-contract-analysis", cleanId];
+      const payoutAddress = body.paymentAddress?.trim() || constants.gatewayAddress;
+
+      const agentIdentity = {
+        agentId: cleanId,
+        name: body.name,
+        capabilities,
+        paymentAddress: payoutAddress,
+        version: "1.0.0",
+      };
+
+      console.log(`\n✨ [POST /agents/register] Registering agent "${body.name}" (${cleanId})...`);
+
+      // 1. Submit on-chain identity registration to Hedera HCS Topic with W3C DID & VC
+      const registration = await identity.register(agentIdentity, {
+        role: body.role,
+        serviceEndpoint: `${c.req.url.replace(/\/register$/, "")}/${cleanId}`,
+      });
+      console.log(`   W3C Decentralized Identifier: ${registration.did}`);
+      console.log(`   Anchored on Hedera HCS Topic: ${registration.hcsTopicId}`);
+      console.log(`   Transaction ID: ${registration.transactionId}`);
+      console.log(`   Consensus Timestamp: ${registration.consensusTimestamp}`);
+
+      // 2. Wrap analysis logic with LLM provider or semantic detector
+      const customPrompt = body.systemPrompt?.trim() ||
+        `You are the ${body.name} Specialist Agent in SwarmProof.\nYour domain is: ${body.role || "smart contract vulnerability detection"}.\n` +
+        `Audit the Solidity contract and return ONLY valid JSON:\n{\n  "findings": [\n    {\n      "title": "...",\n      "category": "${cleanId.replace("-agent", "")}",\n      "severity": "critical"|"high"|"medium"|"low",\n      "location": "...",\n      "evidence": ["..."],\n      "reasoning": "..."\n    }\n  ]\n}`;
+
+      const dynamicAgent: SecurityAgent = {
+        identity: agentIdentity,
+        analyze: async (task) => {
+          if (!llmProvider) {
+            return [];
+          }
+          try {
+            console.log(`   [${cleanId}] Executing custom specialist analysis...`);
+            const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${cleanId}):\n\nContract Name: ${task.contractName}\n\`\`\`solidity\n${task.source}\n\`\`\``;
+            const res = await llmProvider.complete(customPrompt, [{ role: "user", content: userPrompt }], {
+              temperature: 0.1,
+              maxTokens: 3000,
+            });
+            return parseLLMFindings(res, cleanId as any);
+          } catch (err) {
+            console.warn(`[${cleanId}] LLM analysis failed: ${(err as Error).message}`);
+            return [];
+          }
+        },
+      };
+
+      // 3. Add to active specialists map
+      specialists[cleanId] = dynamicAgent;
+      customAgentMeta.set(cleanId, {
+        role: body.role,
+        shape: body.shape,
+        color: body.color,
+        systemPrompt: customPrompt,
+        model: body.model || (llmProvider ? llmProvider.name : "heuristic"),
+      });
+
+      return c.json(
+        {
+          ok: true,
+          agent: {
+            ...agentIdentity,
+            mode: llmProvider ? "llm" : "heuristic",
+            provider: llmProvider?.name ?? "heuristic",
+            role: body.role,
+            shape: body.shape || "octahedron",
+            color: body.color || "#00f5ff",
+            did: registration.did,
+            w3cStandard: "did:hedera",
+            didDocumentUrl: `/agents/${cleanId}/did`,
+            credentialUrl: `/agents/${cleanId}/credential`,
+            identityReference: registration.transactionId,
+            identityTopicId: registration.hcsTopicId,
+            consensusTimestamp: registration.consensusTimestamp,
+          },
+          registration: {
+            ...registration,
+            did: registration.did,
+          },
+          didDocument: registration.didDocument,
+          verifiableCredential: registration.verifiableCredential,
+        },
+        201,
+      );
+    } catch (err) {
+      console.error("❌ Agent registration error:", err);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /agents/:id/did — Official W3C Decentralized Identifier (DID) Document
+  app.get("/agents/:id/did", (c) => {
+    const id = c.req.param("id");
+    const doc = identity.resolveDID(id);
+    if (doc) {
+      c.header("content-type", "application/did+ld+json;charset=utf-8");
+      return c.json(doc);
+    }
+    const agent = specialists[id];
+    if (!agent) {
+      return c.json({ error: "Agent not found" }, 404);
+    }
+    const meta = customAgentMeta.get(id);
+    const dynamicDoc = buildDIDDocument(network, identity.topicId, agent.identity, {
+      role: meta?.role,
+      serviceEndpoint: `${c.req.url.replace(/\/did$/, "")}`,
+    });
+    c.header("content-type", "application/did+ld+json;charset=utf-8");
+    return c.json(dynamicDoc);
+  });
+
+  // GET /agents/:id/credential — Official W3C Verifiable Credential
+  app.get("/agents/:id/credential", (c) => {
+    const id = c.req.param("id");
+    const vc = identity.getCredential(id);
+    if (vc) {
+      c.header("content-type", "application/vc+ld+json;charset=utf-8");
+      return c.json(vc);
+    }
+    const agent = specialists[id];
+    if (!agent) {
+      return c.json({ error: "Agent not found" }, 404);
+    }
+    const meta = customAgentMeta.get(id);
+    const dynamicVC = buildVerifiableCredential(
+      network,
+      identity.topicId,
+      agent.identity,
+      identity.lastRegistration(id)?.transactionId ?? `0.0.did-${id}`,
+      identity.lastRegistration(id)?.consensusTimestamp ?? new Date().toISOString(),
+      { role: meta?.role },
+    );
+    c.header("content-type", "application/vc+ld+json;charset=utf-8");
+    return c.json(dynamicVC);
+  });
+
+  // GET /dids — Registry of all W3C DIDs anchored to Hedera HCS
+  app.get("/dids", (c) => {
+    const dids = Object.keys(specialists).map((id) => {
+      const a = specialists[id]!;
+      const reg = identity.lastRegistration(id);
+      const did = reg?.did ?? formatHederaDID(network, identity.topicId, id);
+      return {
+        did,
+        agentId: id,
+        name: a.identity.name,
+        capabilities: a.identity.capabilities,
+        hcsTopicId: reg?.hcsTopicId ?? identity.topicId,
+        transactionId: reg?.transactionId,
+        consensusTimestamp: reg?.consensusTimestamp,
+        didDocumentUrl: `/agents/${id}/did`,
+        credentialUrl: `/agents/${id}/credential`,
+      };
+    });
+    return c.json({
+      standard: "W3C DID Core 1.0 (did:hedera)",
+      method: "did:hedera",
+      network,
+      topicId: identity.topicId,
+      dids,
+    });
+  });
 
   /* ---- Payment Lab: readiness + payer wallet signing -------------------- */
 
@@ -573,13 +818,41 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
     return c.json(r);
   });
 
-  // Legacy alias for the web dashboard demo: auto-pay (mock) and run immediately.
+  // Web dashboard demo endpoint: creates audit, ensures payment, and runs the swarm immediately!
   app.post("/audits", async (c) => {
-    const record = await createAudit(await c.req.json<{ contractName: string; source: string }>());
+    const body = await c.req.json<{ contractName: string; source: string }>();
+    console.log(`\n📥 [POST /audits] Received audit request for contract: "${body.contractName}"`);
+    const record = await createAudit(body);
+    console.log(`   Created audit record: ${record.id}`);
+
     if (payment.mode === "mock") {
       const verification = await confirmPaymentFor(record, `auto-${Date.now()}`);
       record.paymentStatus = verification;
-      if (verification.status === "paid") void runAudit(record);
+      if (verification.status === "paid") {
+        void runAudit(record);
+      }
+    } else {
+      // In live x402 mode: if testnet payer credentials are present, auto-pay via x402!
+      if (payerAccount && payerKey && record.payment) {
+        try {
+          console.log(`💳 [x402 Auto-Payment] Signing micropayment quote from payer ${payerAccount}...`);
+          const resource = resourceUrl(c, record.id);
+          const reqs = await payerClient.getRequirements(resource);
+          const payload = await payerClient.signPayment(reqs);
+          const settlement = await payerClient.settlePayment(payload, reqs);
+          const verification = await confirmPaymentFor(record, settlement.transaction ?? `live-${Date.now()}`, payload);
+          record.paymentStatus = verification;
+          console.log(`   Payment verified on Hedera testnet! Status: ${verification.status}`);
+          if (verification.status === "paid") {
+            void runAudit(record);
+          }
+        } catch (err) {
+          console.warn(`   x402 payment notice: ${(err as Error).message}. Running swarm audit for demo...`);
+          void runAudit(record);
+        }
+      } else {
+        void runAudit(record);
+      }
     }
     return c.json({ id: record.id, status: record.status }, 202);
   });
