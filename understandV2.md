@@ -229,9 +229,9 @@ swarmproof/
 - **Role:** The primary runtime process of SwarmProof. It acts as both the **x402-gated service** and the **orchestration gateway**.
 - **Tech Stack:** Hono, TypeScript, `@swarmproof/*` packages.
 - **Key Files:**
-  - [`src/app.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/api/src/app.ts): Main application factory (`createApp()`). Configures CORS, sets up the `PaymentGateway`, initializes specialist agents, wires `AuditOrchestrator`, and registers routes.
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/api/src/index.ts): HTTP server entry point running on port 3001 (or `PORT`).
-  - [`scripts/x402-live-testnet.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/api/scripts/x402-live-testnet.ts): Standalone CLI script demonstrating the entire live testnet payment flow using a funded Hedera account.
+  - [`src/app.ts`](apps/api/src/app.ts): Main application factory (`createApp()`). Configures CORS, sets up the `PaymentGateway`, initializes specialist agents, wires `AuditOrchestrator`, and registers routes.
+  - [`src/index.ts`](apps/api/src/index.ts): HTTP server entry point running on port 3001 (or `PORT`).
+  - [`scripts/x402-live-testnet.ts`](apps/api/scripts/x402-live-testnet.ts): Standalone CLI script demonstrating the entire live testnet payment flow using a funded Hedera account.
 - **Exposed Endpoints:**
   - `POST /audit`: The x402 gate. Returns 402 with challenge when unpaid; accepts `X-PAYMENT` header to verify and trigger the audit.
   - `GET /x402/audits/:id`: Resource endpoint serving x402 JSON payment quotes.
@@ -250,30 +250,30 @@ swarmproof/
 - **Role:** User-facing frontend for submitting audits and testing agentic payments.
 - **Tech Stack:** Next.js 15 (App Router), React 19, TypeScript.
 - **Key Files:**
-  - [`app/x402/page.tsx`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/web/app/x402/page.tsx): The **Payment Lab**. A full interactive 5-stage visualizer demonstrating:
+  - [`app/x402/page.tsx`](apps/web/app/x402/page.tsx): The **Payment Lab**. A full interactive 5-stage visualizer demonstrating:
     1. Requesting an audit and capturing HTTP 402 challenge headers.
     2. Fetching the x402 JSON quote.
     3. Signing with the consumer agent wallet and settling via Blocky402.
     4. Replaying the audit request with `X-PAYMENT`.
     5. Polling until completion and displaying the HCS proof with HashScan links.
-  - [`app/page.tsx`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/web/app/page.tsx): The default quick-submission page for contract code with a polling loop and raw JSON output.
-  - [`app/layout.tsx`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/apps/web/app/layout.tsx): Root HTML structure.
+  - [`app/page.tsx`](apps/web/app/page.tsx): The default quick-submission page for contract code with a polling loop and raw JSON output.
+  - [`app/layout.tsx`](apps/web/app/layout.tsx): Root HTML structure.
 
 ---
 
 ### 6.3 `packages/agents` — Agent Types, Prompts & Specialists
 - **Role:** Defines the shared data models, identity schemas, and working detection logic for the specialist swarm.
 - **Key Files:**
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/agents/src/index.ts): Zod schemas for `Finding`, `AgentMessage`, `Severity`, `AgentRole`, and the `LLMProvider` interface with `StubProvider`.
-  - [`src/specialists.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/agents/src/specialists.ts): Implementation of the 5 parallel specialist agents (`reentrancy-agent`, `access-control-agent`, `business-logic-agent`, `economic-agent`, `static-agent`) using AST and pattern heuristics. Defines default payment addresses.
-  - [`src/identity.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/agents/src/identity.ts): Defines `AgentIdentity` schema (agent ID, name, version, capabilities, payment address).
+  - [`src/index.ts`](packages/agents/src/index.ts): Zod schemas for `Finding`, `AgentMessage`, `Severity`, `AgentRole`, and the `LLMProvider` interface with `StubProvider`.
+  - [`src/specialists.ts`](packages/agents/src/specialists.ts): Implementation of the 5 parallel specialist agents (`reentrancy-agent`, `access-control-agent`, `business-logic-agent`, `economic-agent`, `static-agent`) using AST and pattern heuristics. Defines default payment addresses.
+  - [`src/identity.ts`](packages/agents/src/identity.ts): Defines `AgentIdentity` schema (agent ID, name, version, capabilities, payment address).
 
 ---
 
 ### 6.4 `packages/consensus` — Normalization, Clustering & Weighted Voting
 - **Role:** Pure mathematical and logical processing of raw agent outputs into clustered findings and consensus verdicts.
 - **Key Files:**
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/consensus/src/index.ts):
+  - [`src/index.ts`](packages/consensus/src/index.ts):
     - `normalizeFindings()` / `clusterFindings()`: Clusters findings across independent agents matching on `${category}::${functionScope}`.
     - `reachConsensus()`: Computes weighted scores (`score = Σ weight × confidence × artifactWeight`), evaluates quorum thresholds, handles exploiter rejections, and flags unconfirmed criticals as disputes.
     - `ROLE_WEIGHTS`: Analyzer (0.3), Exploiter (0.35), Verifier (1.0), Judge (0.4). Supports custom per-agent weight overrides.
@@ -283,46 +283,46 @@ swarmproof/
 ### 6.5 `packages/hedera` — Consensus Service, Identity & Mirror Node
 - **Role:** Hedera network integration covering HCS audit proof anchoring, HCS payment audit trails, HCS-14 agent identity, and read-only Mirror Node queries.
 - **Key Files:**
-  - [`src/proof.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/proof.ts): Deterministic JSON stringification, SHA-256 hashing, `buildAuditProofMessage()`, `MockAuditProofClient`, and `HederaAuditProofClient` (using `@hashgraph/sdk`).
-  - [`src/payment.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/payment.ts): Anchors verifiable payment distribution messages to HCS after settlement.
-  - [`src/identity.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/identity.ts): Implements HCS-14 agent identity publishing and registrar.
-  - [`src/mirrornode.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/mirrornode.ts): Public Mirror Node REST client for verifying HBAR/HTS transfers, retrieving topic messages, and verifying anchors.
-  - [`src/hts.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/hts.ts): Token associate transactions and HTS transfer transaction builders.
-  - [`src/topic.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/topic.ts): Generic HCS topic submitter utility.
-  - [`src/scripts/create-topic.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/hedera/src/scripts/create-topic.ts): CLI script to create an HCS topic on testnet.
+  - [`src/proof.ts`](packages/hedera/src/proof.ts): Deterministic JSON stringification, SHA-256 hashing, `buildAuditProofMessage()`, `MockAuditProofClient`, and `HederaAuditProofClient` (using `@hashgraph/sdk`).
+  - [`src/payment.ts`](packages/hedera/src/payment.ts): Anchors verifiable payment distribution messages to HCS after settlement.
+  - [`src/identity.ts`](packages/hedera/src/identity.ts): Implements HCS-14 agent identity publishing and registrar.
+  - [`src/mirrornode.ts`](packages/hedera/src/mirrornode.ts): Public Mirror Node REST client for verifying HBAR/HTS transfers, retrieving topic messages, and verifying anchors.
+  - [`src/hts.ts`](packages/hedera/src/hts.ts): Token associate transactions and HTS transfer transaction builders.
+  - [`src/topic.ts`](packages/hedera/src/topic.ts): Generic HCS topic submitter utility.
+  - [`src/scripts/create-topic.ts`](packages/hedera/src/scripts/create-topic.ts): CLI script to create an HCS topic on testnet.
 
 ---
 
 ### 6.6 `packages/payments` — Revenue Allocation & Gateway
 - **Role:** Computes payment splits across specialists and provides an injectable payment provider abstraction.
 - **Key Files:**
-  - [`src/allocator.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/payments/src/allocator.ts): BigInt-based financial math splitting audit fees across recipients by percentage share. Validates recipient addresses, sums, zero amounts, and prevents rounding leakage.
-  - [`src/gateway.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/payments/src/gateway.ts): `PaymentGateway` managing audit payment requirements, guarding against duplicate payment confirmations, and checking underpayment.
-  - [`src/providers/x402.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/payments/src/providers/x402.ts): The real `X402PaymentProvider` integrating with `packages/x402` and mirror node transfer checks.
-  - [`src/providers/mock.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/payments/src/providers/mock.ts): In-memory mock provider enforcing identical nonce and audit ID semantics.
+  - [`src/allocator.ts`](packages/payments/src/allocator.ts): BigInt-based financial math splitting audit fees across recipients by percentage share. Validates recipient addresses, sums, zero amounts, and prevents rounding leakage.
+  - [`src/gateway.ts`](packages/payments/src/gateway.ts): `PaymentGateway` managing audit payment requirements, guarding against duplicate payment confirmations, and checking underpayment.
+  - [`src/providers/x402.ts`](packages/payments/src/providers/x402.ts): The real `X402PaymentProvider` integrating with `packages/x402` and mirror node transfer checks.
+  - [`src/providers/mock.ts`](packages/payments/src/providers/mock.ts): In-memory mock provider enforcing identical nonce and audit ID semantics.
 
 ---
 
 ### 6.7 `packages/plugins` — Agent Plugin Ecosystem
 - **Role:** Allows third parties to contribute custom audit agents to the SwarmProof ecosystem.
 - **Key Files:**
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/plugins/src/index.ts): `AgentPlugin` manifest schema, `AgentRegistry`, and executors for `function`, `http`, and `llm`.
-  - [`src/examples.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/plugins/src/examples.ts): Built-in example plugins (`keyword-analyzer` function plugin, HTTP remote auditor plugin).
+  - [`src/index.ts`](packages/plugins/src/index.ts): `AgentPlugin` manifest schema, `AgentRegistry`, and executors for `function`, `http`, and `llm`.
+  - [`src/examples.ts`](packages/plugins/src/examples.ts): Built-in example plugins (`keyword-analyzer` function plugin, HTTP remote auditor plugin).
 
 ---
 
 ### 6.8 `packages/swarm` — Orchestration
 - **Role:** Coordinates the execution of audits across agents, consensus, verification, and ledger anchoring.
 - **Key Files:**
-  - [`src/orchestrator.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/swarm/src/orchestrator.ts): `AuditOrchestrator`. Runs the 5 specialist agents in parallel, clusters outputs, reaches consensus, runs verification, and anchors the final report hash on Hedera. (Contains zero payment logic).
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/swarm/src/index.ts): `SwarmRunner`. Legacy sequential event-emitter loop supporting phase events, hooks, and registered third-party plugins.
+  - [`src/orchestrator.ts`](packages/swarm/src/orchestrator.ts): `AuditOrchestrator`. Runs the 5 specialist agents in parallel, clusters outputs, reaches consensus, runs verification, and anchors the final report hash on Hedera. (Contains zero payment logic).
+  - [`src/index.ts`](packages/swarm/src/index.ts): `SwarmRunner`. Legacy sequential event-emitter loop supporting phase events, hooks, and registered third-party plugins.
 
 ---
 
 ### 6.9 `packages/verification` — Tool Runner
 - **Role:** Independent reproduction of candidate vulnerabilities using static/dynamic analysis tools.
 - **Key Files:**
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/verification/src/index.ts):
+  - [`src/index.ts`](packages/verification/src/index.ts):
     - `VerificationEngine` interface (`verify(req)`).
     - `MockVerifier`: Deterministic keyword/tool simulator for CI/offline use.
     - `ToolVerifier`: Seam for executing external binaries (`solc`, `slither`, `forge test`).
@@ -333,42 +333,42 @@ swarmproof/
 ### 6.10 `packages/x402` — x402 v2 Protocol Implementation
 - **Role:** Full implementation of the x402 v2 payment specification for Hedera testnet and the Blocky402 facilitator.
 - **Key Files:**
-  - [`src/types.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/types.ts): Types for `X402PaymentRequirements`, `X402PaymentPayload`, `X402ResourceEnvelope`, Blocky402 `/supported`, `/verify`, `/settle` requests/responses, and `X-PAYMENT` header utilities.
-  - [`src/client.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/client.ts): Consumer agent client: parses 402 challenge headers, fetches quotes, signs transactions using `@x402/hedera`, requests facilitator verification and settlement, and redeems `X-PAYMENT`.
-  - [`src/facilitator.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/facilitator.ts): Wire client communicating with Blocky402 facilitator (`MockFacilitatorClient` and `X402FacilitatorClient`).
-  - [`src/server.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/server.ts): Server-side helpers: generating 402 challenge headers, parsing `X-PAYMENT` and `PAYMENT-SIGNATURE` headers, and validating payment parameters.
-  - [`src/money.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/money.ts): Precision integer USD-to-tinybar conversion (`usdToTinybars`, `tinybarsToUsd`).
-  - [`src/jwt.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/jwt.ts) & [`src/keys.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/x402/src/keys.ts): Ed25519 cryptographic signing utilities.
+  - [`src/types.ts`](packages/x402/src/types.ts): Types for `X402PaymentRequirements`, `X402PaymentPayload`, `X402ResourceEnvelope`, Blocky402 `/supported`, `/verify`, `/settle` requests/responses, and `X-PAYMENT` header utilities.
+  - [`src/client.ts`](packages/x402/src/client.ts): Consumer agent client: parses 402 challenge headers, fetches quotes, signs transactions using `@x402/hedera`, requests facilitator verification and settlement, and redeems `X-PAYMENT`.
+  - [`src/facilitator.ts`](packages/x402/src/facilitator.ts): Wire client communicating with Blocky402 facilitator (`MockFacilitatorClient` and `X402FacilitatorClient`).
+  - [`src/server.ts`](packages/x402/src/server.ts): Server-side helpers: generating 402 challenge headers, parsing `X-PAYMENT` and `PAYMENT-SIGNATURE` headers, and validating payment parameters.
+  - [`src/money.ts`](packages/x402/src/money.ts): Precision integer USD-to-tinybar conversion (`usdToTinybars`, `tinybarsToUsd`).
+  - [`src/jwt.ts`](packages/x402/src/jwt.ts) & [`src/keys.ts`](packages/x402/src/keys.ts): Ed25519 cryptographic signing utilities.
 
 ---
 
 ### 6.11 `packages/mcp` — Model Context Protocol Thin Client
 - **Role:** Exposes SwarmProof's audit capabilities to MCP-compatible AI environments.
 - **Key Files:**
-  - [`src/index.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/mcp/src/index.ts): Defines MCP tools (`audit_contract`, `get_audit_status`, `get_findings`, `verify_finding`, `get_audit_proof`, `list_agents`) wrapped around `SwarmProofApiClient`.
+  - [`src/index.ts`](packages/mcp/src/index.ts): Defines MCP tools (`audit_contract`, `get_audit_status`, `get_findings`, `verify_finding`, `get_audit_proof`, `list_agents`) wrapped around `SwarmProofApiClient`.
 
 ---
 
 ### 6.12 `contracts/vulnerable` — Vulnerable Contract Corpus
 - **Role:** Ground-truth testing corpus used for verifying detectors, consensus calibration, and demo runs.
 - **Key Files:**
-  - [`ReentrancyVault.sol`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/contracts/vulnerable/ReentrancyVault.sol): Classic reentrancy vulnerability (`.call{value:}` before balance zeroing).
-  - [`AccessControlAdmin.sol`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/contracts/vulnerable/AccessControlAdmin.sol): Missing access controls on critical state-changing functions.
-  - [`OverflowAuction.sol`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/contracts/vulnerable/OverflowAuction.sol): Integer arithmetic boundary conditions.
-  - [`metadata.json`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/contracts/vulnerable/metadata.json): Ground truth labels (expected categories, severities, locations) used to benchmark swarm precision and recall.
+  - [`ReentrancyVault.sol`](contracts/vulnerable/ReentrancyVault.sol): Classic reentrancy vulnerability (`.call{value:}` before balance zeroing).
+  - [`AccessControlAdmin.sol`](contracts/vulnerable/AccessControlAdmin.sol): Missing access controls on critical state-changing functions.
+  - [`OverflowAuction.sol`](contracts/vulnerable/OverflowAuction.sol): Integer arithmetic boundary conditions.
+  - [`metadata.json`](contracts/vulnerable/metadata.json): Ground truth labels (expected categories, severities, locations) used to benchmark swarm precision and recall.
 
 ---
 
 ### 6.13 `tests/` — Automated Vitest Test Suite
 - **Role:** Comprehensive offline unit and end-to-end testing (46 passing tests).
 - **Key Files:**
-  - [`consensus.unit.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/consensus.unit.test.ts) (6 tests): Quorum verification, score thresholds, dispute escalation, clustering logic.
-  - [`payments.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/payments.test.ts) (9 tests): BigInt financial allocations, address validation, double-spend guarding, underpayment handling.
-  - [`x402.unit.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/x402.unit.test.ts) (11 tests): Conversion math, wire format parsing, mock facilitator behavior.
-  - [`plugins.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/plugins.test.ts) (8 tests): Plugin registration, function/HTTP/LLM execution, custom weights.
-  - [`swarm.e2e.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/swarm.e2e.test.ts) (5 tests): Full swarm run against corpus, mock verification, and ledger receipt verification.
-  - [`x402.e2e.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/x402.e2e.test.ts) (4 tests): In-process end-to-end test of the full HTTP 402 flow (challenge -> quote -> sign -> settle -> redeem -> audit).
-  - [`mcp.test.ts`](file:///Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/tests/mcp.test.ts) (3 tests): Full execution of `audit_contract` and audit query tools.
+  - [`consensus.unit.test.ts`](tests/consensus.unit.test.ts) (6 tests): Quorum verification, score thresholds, dispute escalation, clustering logic.
+  - [`payments.test.ts`](tests/payments.test.ts) (9 tests): BigInt financial allocations, address validation, double-spend guarding, underpayment handling.
+  - [`x402.unit.test.ts`](tests/x402.unit.test.ts) (11 tests): Conversion math, wire format parsing, mock facilitator behavior.
+  - [`plugins.test.ts`](tests/plugins.test.ts) (8 tests): Plugin registration, function/HTTP/LLM execution, custom weights.
+  - [`swarm.e2e.test.ts`](tests/swarm.e2e.test.ts) (5 tests): Full swarm run against corpus, mock verification, and ledger receipt verification.
+  - [`x402.e2e.test.ts`](tests/x402.e2e.test.ts) (4 tests): In-process end-to-end test of the full HTTP 402 flow (challenge -> quote -> sign -> settle -> redeem -> audit).
+  - [`mcp.test.ts`](tests/mcp.test.ts) (3 tests): Full execution of `audit_contract` and audit query tools.
 
 ---
 

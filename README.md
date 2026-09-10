@@ -26,9 +26,25 @@ then replay POST /audit with X-PAYMENT      → 201 auditId — swarm runs → H
 
 - `GET /supported` — service + agent **discovery directory** (x402 capabilities, pricing, agents)
 - HCS **payment audit trails** anchored for every settled audit
-- **HCS-14 agent identity** published per specialist (visible via `GET /agents`)
+- **W3C Decentralized Identifiers (`did:hedera`) & Verifiable Credentials** anchored to Hedera HCS Topic
+- **HCS-14 agent identity** published per specialist (visible via `GET /agents`, `GET /dids`)
 - Settled asset configurable: HBAR (`0.0.0`) or any **HTS token** (`X402_ASSET`)
 - Mirror-node verification for direct-transfer payments (no facilitator needed)
+
+## 🆔 W3C Decentralized Identity & Verifiable Credentials (did:hedera)
+
+SwarmProof treats AI auditing agents not as ephemeral database rows, but as **sovereign, cryptographically verifiable autonomous actors**:
+
+1. **W3C `did:hedera` Conformance:**
+   Every specialist agent is assigned a W3C-compliant decentralized identifier:
+   `did:hedera:testnet:0.0.10417469_<agentId>`
+   anchored to the Hedera Consensus Service topic `0.0.10417469`.
+2. **W3C DID Core 1.0 Documents (`GET /agents/:id/did`):**
+   Exposes canonical JSON-LD DID Documents containing Ed25519 verification methods, `blockchainAccountId` links (`hedera:testnet:<accountId>`), authentication keys, and service endpoints.
+3. **W3C Verifiable Credentials (`GET /agents/:id/credential`):**
+   Issues cryptographic `SwarmSecurityAuditorCredential` verifiable credentials asserting the agent's audit role, capabilities, and consensus authority, backed by an immutable Hedera consensus timestamp and transaction ID proof.
+4. **Interactive W3C DID Explorer & Registration:**
+   The Web Dashboard (`apps/web`) features live 3D Orbit agent inspection, instant one-click DID copy, and interactive JSON-LD viewers for both DID Documents and Verifiable Credentials. Anyone can register new specialists dynamically via the UI or `POST /agents/register`.
 
 Offline by default: with no `X402_FACILITATOR_URL` a mock facilitator runs the exact same wire
 flow (CI-safe). Go live by adding the env vars — see `.env.example`.
@@ -136,13 +152,22 @@ pnpm dev:web      # dashboard on :3000
 - [x] **M8** Agent plugin ecosystem — anyone can plug their agent in
 - [x] **M9** P0 gateway flow — x402 single payment, 5 parallel specialists, cluster/consensus, verification, HCS proof, MCP thin client
 - [x] **P0-A** x402 facilitator wiring — real Blocky402 flow (402 gate, quote, `@x402/hedera` signing, verify/settle, X-PAYMENT), `/supported` discovery, HCS payment trails + HCS-14 identity, mirror-node verification
+- [x] **M10** W3C Decentralized Identity (`did:hedera`) & Verifiable Credentials (`SwarmSecurityAuditorCredential`)
+- [x] **M4** Live 3D swarm visualizer in web (`Three.js`) with Fullscreen Theater Mode (`F`/`Esc`)
 - [ ] **M3** Tool verification (slither/forge)
-- [ ] **M4** Live swarm visualizer in web
 - [ ] **M6** MCP SDK transport (stdio/SSE)
 - [ ] **P1** Scheduled-transaction payouts · payment viz · proof UI
 - [ ] **P2** Reputation-weighted voting · marketplace · A2A negotiation · UCP discovery
 
-## API (P0 flow)
+## 🌌 3D Interactive Swarm Visualizer & Fullscreen Theater
+
+SwarmProof features an interactive **Three.js 3D orbital deck**:
+* **Specialist Agent Geometries:** Each specialist agent orbits the consensus core rendered as a distinct 3D mathematical primitive (💎 Octahedron, 🛡️ Dodecahedron, ♾️ Torus Knot, 💠 Icosahedron, ⚙️ Gyroscopic Prism).
+* **Real-time Consensus Particle Beams:** Visualizes data packets flowing between agents and the Hedera consensus core during audit phases.
+* **Agent Inspector & Live W3C JSON-LD Viewer:** Click any agent in 3D to view its credentials, capabilities, and inspect its live W3C DID Core 1.0 Document & Verifiable Credential directly in the browser.
+* **Immersive Fullscreen Mode:** Toggle with one click or press **`F`** / **`Esc`** for a full-screen theater view with adaptive `ResizeObserver` viewport rendering.
+
+## API (P0 flow & W3C DID Services)
 
 ```
 POST /audit                      → x402 gate (402 + WWW-Authenticate) or run with X-PAYMENT
@@ -152,7 +177,11 @@ GET  /audits/:id/status          → lifecycle + payment status + HCS payment tr
 GET  /audits/:id/findings        → accepted findings + verification
 GET  /audits/:id/proof           → HCS anchor {reportHash, hcsTopicId, transactionId, consensusTimestamp, verified}
 POST /audits/:id/verify          → reproduce one finding
-GET  /agents                     → specialist directory (identities + HCS-14 payment addresses)
+GET  /agents                     → specialist directory (identities + W3C DIDs + payment addresses)
+GET  /agents/:id/did             → W3C DID Core 1.0 Document (application/did+ld+json)
+GET  /agents/:id/credential      → W3C Verifiable Credential (application/vc+ld+json)
+GET  /dids                      → W3C DID registry index of all active specialists
+POST /agents/register            → dynamically register agent + anchor W3C DID & VC on Hedera HCS
 GET  /supported                  → x402 discovery: capabilities, services, pricing, agents
 ```
 
