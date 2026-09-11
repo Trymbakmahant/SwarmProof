@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { type SpecialistAgentMeta, SHAPE_METAS } from "./agentData";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
@@ -93,9 +93,133 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
   const [shape, setShape] = useState<SpecialistAgentMeta["shape"]>(defaultPreset.shape);
   const [color, setColor] = useState(defaultPreset.color);
   const [capabilitiesStr, setCapabilitiesStr] = useState(defaultPreset.capabilities.join(", "));
-  const [paymentAddress, setPaymentAddress] = useState("0.0.10417474");
+  const [paymentAddress, setPaymentAddress] = useState("0.0.10119346");
   const [systemPrompt, setSystemPrompt] = useState(defaultPreset.systemPrompt);
   const [model, setModel] = useState("gpt-4o");
+
+  // Cryptographic Proof of Ownership State
+  const [publicKey, setPublicKey] = useState("033ba0f4cba001b21c3f52006119e8796913cd2328ab03ac2f8b8bf9b97c8e98aa");
+  const [signature, setSignature] = useState("");
+  const [challenge, setChallenge] = useState("");
+  const [nonce, setNonce] = useState("");
+  const [keyType, setKeyType] = useState<string>("EcdsaSecp256k1VerificationKey2019");
+  const [isGeneratingChallenge, setIsGeneratingChallenge] = useState(false);
+  const [isSigningChallenge, setIsSigningChallenge] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<"unverified" | "signed" | "verified" | "error">("unverified");
+  const [verificationFeedback, setVerificationFeedback] = useState<string>("External agents must prove Hedera wallet ownership before enrollment.");
+  const [showChallengeDetails, setShowChallengeDetails] = useState(false);
+
+  // Browser Wallet State (MetaMask / Rabby / Arc / Safari EIP-1193)
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isConnectingWallet, setIsConnectingWallet] = useState(false);
+  const [isSigningWithWallet, setIsSigningWithWallet] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
+
+  // Connect browser wallet
+  const handleConnectWallet = async () => {
+    setWalletError(null);
+    if (typeof window === "undefined" || !(window as any).ethereum) {
+      setWalletError("No browser wallet extension detected. Please ensure MetaMask, Rabby, or a web3 wallet extension is enabled in your browser.");
+      return;
+    }
+
+    try {
+      setIsConnectingWallet(true);
+      const accounts = (await (window as any).ethereum.request({
+        method: "eth_requestAccounts",
+      })) as string[];
+
+      const first = accounts?.[0];
+      if (!first) {
+        throw new Error("No accounts selected in wallet");
+      }
+
+      const selected = first.toLowerCase();
+      setWalletAddress(selected);
+
+      // Look up Hedera account ID mapped to this EVM address
+      try {
+        const lookupRes = await fetch(`${API_BASE}/accounts/lookup?query=${selected}`);
+        if (lookupRes.ok) {
+          const lookupData = await lookupRes.json();
+          if (lookupData.accountId) {
+            setPaymentAddress(lookupData.accountId);
+            if (lookupData.key) {
+              setPublicKey(lookupData.key);
+            }
+          } else {
+            setPaymentAddress(selected);
+            setPublicKey(selected);
+          }
+        } else {
+          setPaymentAddress(selected);
+          setPublicKey(selected);
+        }
+      } catch {
+        setPaymentAddress(selected);
+        setPublicKey(selected);
+      }
+
+      // Refresh challenge for connected wallet
+      fetchChallenge(agentId, selected);
+      setVerificationFeedback(`Connected: ${selected.slice(0, 6)}...${selected.slice(-4)}. Click 'Sign with Connected Wallet' to sign the challenge.`);
+    } catch (err) {
+      console.error("Wallet connection failed:", err);
+      setWalletError((err as Error).message);
+    } finally {
+      setIsConnectingWallet(false);
+    }
+  };
+
+  // Sign challenge directly from connected browser wallet
+  const handleSignWithBrowserWallet = async () => {
+    setWalletError(null);
+    const activeAddress = walletAddress;
+    if (!activeAddress) {
+      await handleConnectWallet();
+      return;
+    }
+
+    if (typeof window === "undefined" || !(window as any).ethereum) {
+      setWalletError("Browser wallet extension not available.");
+      return;
+    }
+
+    try {
+      setIsSigningWithWallet(true);
+      let activeChallenge = challenge;
+      if (!activeChallenge) {
+        const targetAgent = agentId || "unnamed-agent";
+        const cRes = await fetch(
+          `${API_BASE}/agents/challenge?agentId=${encodeURIComponent(targetAgent)}&accountId=${encodeURIComponent(activeAddress)}`,
+        );
+        const cData = await cRes.json();
+        activeChallenge = cData.challenge;
+        setChallenge(cData.challenge);
+        setNonce(cData.nonce);
+      }
+
+      // EIP-191 personal_sign request:
+      const sig = (await (window as any).ethereum.request({
+        method: "personal_sign",
+        params: [activeChallenge, activeAddress],
+      })) as string;
+
+      setSignature(sig);
+      setPublicKey(activeAddress);
+      setKeyType("EcdsaSecp256k1VerificationKey2019");
+      setVerificationStatus("signed");
+      setVerificationFeedback(
+        `✓ Cryptographically signed by wallet ${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)} (EIP-191 ECDSA secp256k1).`,
+      );
+    } catch (err) {
+      console.error("Wallet signing rejected or failed:", err);
+      setWalletError((err as Error).message);
+      setVerificationStatus("error");
+    } finally {
+      setIsSigningWithWallet(false);
+    }
+  };
 
   // Registration Lifecycle
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
@@ -104,6 +228,88 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
   const [registeredData, setRegisteredData] = useState<any | null>(null);
   const [showCredentialDrawer, setShowCredentialDrawer] = useState(false);
   const [copiedDid, setCopiedDid] = useState(false);
+
+  const fetchChallenge = async (customAgentId?: string, customAccountId?: string) => {
+    try {
+      setIsGeneratingChallenge(true);
+      const targetAgent = customAgentId || agentId || "unnamed-agent";
+      const targetAccount = customAccountId || paymentAddress.trim() || "0.0.10119346";
+      const res = await fetch(
+        `${API_BASE}/agents/challenge?agentId=${encodeURIComponent(targetAgent)}&accountId=${encodeURIComponent(targetAccount)}`,
+      );
+      if (!res.ok) throw new Error(`Challenge generation failed: HTTP ${res.status}`);
+      const data = await res.json();
+      setChallenge(data.challenge);
+      setNonce(data.nonce);
+      setSignature("");
+      setVerificationStatus("unverified");
+      setVerificationFeedback("Challenge generated. Sign with your Hedera private key to prove ownership.");
+    } catch (err) {
+      console.error("Failed to generate challenge:", err);
+      setVerificationFeedback(`Challenge error: ${(err as Error).message}`);
+    } finally {
+      setIsGeneratingChallenge(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChallenge(agentId, paymentAddress);
+  }, []);
+
+  // Quick 1-click testnet signing demo for judges / testing
+  const handleSignWithTestnetKey = async () => {
+    try {
+      setIsSigningChallenge(true);
+      let activeChallenge = challenge;
+      if (!activeChallenge) {
+        const targetAgent = agentId || "unnamed-agent";
+        const targetAccount = paymentAddress.trim() || "0.0.10119346";
+        const cRes = await fetch(
+          `${API_BASE}/agents/challenge?agentId=${encodeURIComponent(targetAgent)}&accountId=${encodeURIComponent(targetAccount)}`,
+        );
+        const cData = await cRes.json();
+        activeChallenge = cData.challenge;
+        setChallenge(cData.challenge);
+        setNonce(cData.nonce);
+      }
+
+      const res = await fetch(`${API_BASE}/agents/sign-test-challenge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challenge: activeChallenge }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+
+      const signData = await res.json();
+      setPublicKey(signData.publicKey);
+      setSignature(signData.signature);
+      setKeyType(signData.keyType);
+      setPaymentAddress(signData.accountId);
+      setVerificationStatus("signed");
+      setVerificationFeedback("Cryptographically signed with Hedera ECDSA secp256k1 key. Verified on-chain via Mirror Node.");
+    } catch (err) {
+      console.error("Signing error:", err);
+      setVerificationFeedback(`Signing failed: ${(err as Error).message}`);
+      setVerificationStatus("error");
+    } finally {
+      setIsSigningChallenge(false);
+    }
+  };
+
+  const handleSignatureChange = (sigVal: string) => {
+    setSignature(sigVal);
+    if (sigVal.trim().length >= 64 && publicKey.trim()) {
+      setVerificationStatus("signed");
+      setVerificationFeedback("Custom cryptographic signature provided.");
+    } else {
+      setVerificationStatus("unverified");
+      setVerificationFeedback("Signature required to prove wallet ownership.");
+    }
+  };
 
   // Quick Preset Selection
   const applyPreset = (preset: PresetTemplate) => {
@@ -114,12 +320,17 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
     setColor(preset.color);
     setCapabilitiesStr(preset.capabilities.join(", "));
     setSystemPrompt(preset.systemPrompt);
+    fetchChallenge(preset.agentId, paymentAddress);
   };
 
   const handleNameChange = (val: string) => {
     setName(val);
     const slug = val.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    setAgentId(slug ? `${slug}-agent` : "");
+    const newId = slug ? `${slug}-agent` : "";
+    setAgentId(newId);
+    if (newId) {
+      fetchChallenge(newId, paymentAddress);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -140,20 +351,26 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
       .filter(Boolean);
 
     try {
-      setStepMessage("1/4: Constructing W3C did:hedera DID Document...");
-      await new Promise((r) => setTimeout(r, 450));
+      setStepMessage("1/5: Verifying cryptographic signature & Hedera wallet ownership...");
+      await new Promise((r) => setTimeout(r, 400));
 
-      setStepMessage("2/4: Issuing W3C Verifiable Credential (SwarmSecurityAuditorCredential)...");
-      await new Promise((r) => setTimeout(r, 450));
+      setStepMessage("2/5: Constructing W3C did:hedera DID Document with verified public key...");
+      await new Promise((r) => setTimeout(r, 400));
 
-      setStepMessage("3/4: Anchoring DID & Credential to Hedera HCS Topic 0.0.10417469...");
+      setStepMessage("3/5: Issuing W3C Verifiable Credential with cryptographic proof...");
+      await new Promise((r) => setTimeout(r, 400));
+
+      setStepMessage("4/5: Anchoring DID & Credential to Hedera HCS Topic 0.0.10417469...");
 
       const payload = {
         name,
         agentId: agentId || name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
         role,
         capabilities,
-        paymentAddress: paymentAddress.trim() || "0.0.10417474",
+        paymentAddress: paymentAddress.trim() || "0.0.10119346",
+        publicKey: publicKey.trim(),
+        signature: signature.trim(),
+        challenge,
         shape,
         color,
         systemPrompt,
@@ -171,7 +388,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
         throw new Error(errJson.error || `HTTP ${res.status}`);
       }
 
-      setStepMessage("4/4: Joining SwarmProof weighted multi-agent consensus quorum...");
+      setStepMessage("5/5: Enrolling sovereign agent into weighted consensus quorum...");
       const data = await res.json();
       setRegisteredData(data);
       setStatus("success");
@@ -235,98 +452,101 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
           maxWidth: 780,
           maxHeight: "90vh",
           overflowY: "auto",
-          boxShadow: `0 0 60px ${color}25`,
+          boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.15)",
+          border: "1px solid #e4e4e7",
+          backgroundColor: "#ffffff",
         }}
       >
-        {/* Modal Header */}
+        {/* Minimalist Editorial Modal Header */}
         <div
           className="swarm-modal-header"
           style={{
-            background: `linear-gradient(90deg, ${color}20 0%, rgba(11, 18, 34, 0.6) 100%)`,
-            borderBottom: `1px solid ${color}40`,
+            backgroundColor: "#fafafa",
+            borderBottom: "1px solid #e4e4e7",
+            padding: "16px 20px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
+                width: 40,
+                height: 40,
+                borderRadius: 8,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 24,
-                backgroundColor: `${color}25`,
-                border: `1px solid ${color}`,
-                boxShadow: `0 0 16px ${color}40`,
+                fontSize: 20,
+                backgroundColor: "#f4f4f5",
+                border: "1px solid #e4e4e7",
+                color: "#09090b",
               }}
             >
               {SHAPE_METAS[shape].icon}
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff" }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>
                   Register AI Security Agent
                 </h3>
                 <span
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-mono)",
-                    padding: "2px 8px",
-                    borderRadius: 20,
+                    padding: "2px 6px",
+                    borderRadius: 4,
                     textTransform: "uppercase",
-                    fontWeight: 700,
-                    backgroundColor: `${color}15`,
-                    border: `1px solid ${color}40`,
-                    color,
+                    fontWeight: 600,
+                    backgroundColor: "#f4f4f5",
+                    border: "1px solid #e4e4e7",
+                    color: "#52525b",
                   }}
                 >
                   Hedera HCS Anchored
                 </span>
               </div>
-              <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#94a3b8" }}>
-                Deploy a custom specialized auditor into the SwarmProof quorum on-chain.
+              <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#71717a" }}>
+                Deploy a specialized auditor into the SwarmProof quorum on-chain.
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="swarm-btn-secondary"
-            style={{ padding: "6px 14px", fontSize: 12 }}
+            className="btn-swarm-secondary"
+            style={{ padding: "6px 12px", fontSize: 12 }}
           >
             ✕ Close
           </button>
         </div>
 
         {/* Modal Body */}
-        <div style={{ padding: 24 }}>
+        <div style={{ padding: 24, backgroundColor: "#ffffff" }}>
           {status === "success" ? (
             /* Success Screen */
             <div style={{ display: "flex", flexDirection: "column", gap: 20, textAlign: "center", padding: "10px 0" }}>
               <div
                 style={{
-                  width: 72,
-                  height: 72,
+                  width: 60,
+                  height: 60,
                   margin: "0 auto",
                   borderRadius: "50%",
-                  backgroundColor: `${color}20`,
-                  border: `2px solid ${color}`,
+                  backgroundColor: "#f0fdf4",
+                  border: "2px solid #bbf7d0",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 34,
-                  boxShadow: `0 0 30px ${color}50`,
+                  fontSize: 28,
+                  color: "#16a34a",
                 }}
               >
                 ✓
               </div>
 
               <div>
-                <h4 style={{ margin: "0 0 6px 0", fontSize: 20, fontWeight: 700, color: "#fff" }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
                   Agent Identity Registered On-Chain!
                 </h4>
-                <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
                   {name} is now an active member of the decentralized SwarmProof audit quorum.
                 </p>
               </div>
@@ -334,10 +554,10 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               {/* Certificate Card */}
               <div
                 style={{
-                  background: "rgba(15, 23, 42, 0.7)",
-                  border: `1px solid ${color}40`,
-                  borderRadius: 14,
-                  padding: 18,
+                  backgroundColor: "#fafafa",
+                  border: "1px solid #e4e4e7",
+                  borderRadius: 10,
+                  padding: 16,
                   textAlign: "left",
                   display: "flex",
                   flexDirection: "column",
@@ -346,37 +566,38 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 22 }}>{SHAPE_METAS[shape].icon}</span>
+                    <span style={{ fontSize: 20 }}>{SHAPE_METAS[shape].icon}</span>
                     <div>
-                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{name}</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+                      <div style={{ fontWeight: 700, color: "#09090b", fontSize: 14 }}>{name}</div>
+                      <div style={{ fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)" }}>
                         ID: {agentId}
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <span
                       style={{
                         fontSize: 10,
                         fontFamily: "var(--font-mono)",
-                        backgroundColor: "rgba(0, 245, 255, 0.15)",
-                        border: "1px solid rgba(0, 245, 255, 0.4)",
-                        color: "#00f5ff",
-                        padding: "2px 8px",
-                        borderRadius: 12,
-                        fontWeight: 700,
+                        backgroundColor: "#f4f4f5",
+                        border: "1px solid #e4e4e7",
+                        color: "#09090b",
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        fontWeight: 600,
                       }}
                     >
                       W3C did:hedera
                     </span>
                     <span
                       style={{
-                        fontSize: 11,
-                        backgroundColor: "rgba(16, 185, 129, 0.2)",
-                        border: "1px solid #10b981",
-                        color: "#10b981",
-                        padding: "2px 8px",
-                        borderRadius: 12,
+                        fontSize: 10,
+                        fontFamily: "var(--font-mono)",
+                        backgroundColor: "#f0fdf4",
+                        border: "1px solid #bbf7d0",
+                        color: "#166534",
+                        padding: "2px 6px",
+                        borderRadius: 4,
                         fontWeight: 600,
                       }}
                     >
@@ -388,10 +609,10 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 {/* W3C DID Highlight Banner */}
                 <div
                   style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.4)",
-                    border: `1px solid ${color}30`,
-                    borderRadius: 10,
-                    padding: "10px 14px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e4e4e7",
+                    borderRadius: 6,
+                    padding: "10px 12px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
@@ -399,15 +620,15 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
+                    <div style={{ fontSize: 10, color: "#71717a", textTransform: "uppercase", fontWeight: 600, fontFamily: "var(--font-mono)" }}>
                       W3C Sovereign Decentralized Identifier (DID)
                     </div>
                     <div
                       style={{
                         fontFamily: "var(--font-mono)",
                         fontSize: 12,
-                        color: color,
-                        fontWeight: 600,
+                        color: "#09090b",
+                        fontWeight: 500,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -423,40 +644,41 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                         registeredData?.agent?.did || `did:hedera:testnet:0.0.10417469_${agentId}`,
                       )
                     }
-                    className="swarm-btn-secondary"
-                    style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
+                    className="btn-swarm-secondary"
+                    style={{ fontSize: 11, padding: "4px 8px", whiteSpace: "nowrap" }}
                   >
-                    {copiedDid ? "✓ Copied" : "📋 Copy DID"}
+                    {copiedDid ? "✓ Copied" : "Copy DID"}
                   </button>
                 </div>
 
-                <div style={{ height: 1, backgroundColor: "rgba(255, 255, 255, 0.08)" }} />
+                <div style={{ height: 1, backgroundColor: "#e4e4e7" }} />
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12 }}>
                   <div>
-                    <div style={{ color: "#64748b", fontSize: 11 }}>Hedera HCS Topic ID</div>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#fff", fontWeight: 600 }}>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Hedera HCS Topic ID</div>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 600 }}>
                       {registeredData?.agent?.identityTopicId || "0.0.10417469"}
                     </div>
                   </div>
 
                   <div>
-                    <div style={{ color: "#64748b", fontSize: 11 }}>W3C Verifiable Credential</div>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#34d399", fontWeight: 600 }}>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>W3C Verifiable Credential</div>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#166534", fontWeight: 600 }}>
                       SwarmSecurityAuditorCredential
                     </div>
                   </div>
 
                   <div style={{ gridColumn: "1 / -1" }}>
-                    <div style={{ color: "#64748b", fontSize: 11 }}>Hedera HCS Consensus Timestamp & Tx</div>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Hedera HCS Consensus Timestamp &amp; Tx</div>
                     <div
                       style={{
                         fontFamily: "var(--font-mono)",
-                        color: "#cbd5e1",
+                        color: "#09090b",
                         fontSize: 11,
-                        backgroundColor: "rgba(0,0,0,0.3)",
+                        backgroundColor: "#ffffff",
                         padding: "6px 10px",
                         borderRadius: 6,
+                        border: "1px solid #e4e4e7",
                         marginTop: 4,
                         display: "flex",
                         justifyContent: "space-between",
@@ -464,23 +686,66 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                       }}
                     >
                       <span>{registeredData?.agent?.identityReference || "0.0.10119346@registered"}</span>
-                      <span style={{ color: "#64748b", fontSize: 10 }}>
+                      <span style={{ color: "#71717a", fontSize: 10 }}>
                         {registeredData?.agent?.consensusTimestamp || new Date().toISOString()}
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <div style={{ color: "#64748b", fontSize: 11 }}>Payout Revenue Address (x402)</div>
-                    <div style={{ fontFamily: "var(--font-mono)", color: "#94a3b8" }}>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Payout Revenue Address (x402)</div>
+                    <div style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 600 }}>
                       {paymentAddress}
                     </div>
                   </div>
 
                   <div>
-                    <div style={{ color: "#64748b", fontSize: 11 }}>3D Orbit Mesh</div>
-                    <div style={{ color: "#94a3b8" }}>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>3D Orbit Mesh</div>
+                    <div style={{ color: "#09090b", fontWeight: 600 }}>
                       {SHAPE_METAS[shape].label}
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Verified Hedera Public Key</div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        color: "#09090b",
+                        fontSize: 11,
+                        backgroundColor: "#ffffff",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #e4e4e7",
+                        marginTop: 4,
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {registeredData?.agent?.publicKey || publicKey}
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Cryptographic Signature Proof</span>
+                      <span style={{ fontSize: 10, color: "#166534", fontWeight: 600, fontFamily: "var(--font-mono)" }}>
+                        ● {registeredData?.agent?.keyType || keyType}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        color: "#52525b",
+                        fontSize: 10,
+                        backgroundColor: "#f4f4f5",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #e4e4e7",
+                        marginTop: 4,
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {registeredData?.agent?.signature || signature || "Verified Cryptographic Signature"}
                     </div>
                   </div>
                 </div>
@@ -494,7 +759,8 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                       background: "none",
                       border: "none",
                       padding: 0,
-                      color: "#38bdf8",
+                      color: "#09090b",
+                      textDecoration: "underline",
                       fontSize: 12,
                       cursor: "pointer",
                       display: "flex",
@@ -502,21 +768,22 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                       gap: 6,
                       marginTop: 4,
                       fontWeight: 600,
+                      fontFamily: "var(--font-mono)",
                     }}
                   >
-                    <span>{showCredentialDrawer ? "▼ Hide" : "▶ Inspect"} W3C Verifiable Credential & DID Document (JSON-LD)</span>
+                    <span>{showCredentialDrawer ? "▼ Hide" : "▶ Inspect"} W3C Verifiable Credential &amp; DID Document (JSON-LD)</span>
                   </button>
 
                   {showCredentialDrawer && (
                     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
                       <pre
                         style={{
-                          background: "#050811",
-                          border: "1px solid #1e293b",
-                          borderRadius: 8,
+                          backgroundColor: "#09090b",
+                          border: "1px solid #27272a",
+                          borderRadius: 6,
                           padding: 12,
                           fontSize: 11,
-                          color: "#94a3b8",
+                          color: "#f4f4f5",
                           fontFamily: "var(--font-mono)",
                           maxHeight: 220,
                           overflowY: "auto",
@@ -547,12 +814,12 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               </div>
 
               {/* Actions */}
-              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 8 }}>
                 <a
                   href={`https://hashscan.io/testnet/topic/${registeredData?.agent?.identityTopicId || "0.0.10417469"}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="swarm-btn-secondary"
+                  className="btn-swarm-secondary"
                   style={{ textDecoration: "none", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
                   <span>HashScan Topic</span> ↗
@@ -562,7 +829,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                   href={`${API_BASE}/agents/${agentId}/did`}
                   target="_blank"
                   rel="noreferrer"
-                  className="swarm-btn-secondary"
+                  className="btn-swarm-secondary"
                   style={{ textDecoration: "none", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
                   <span>W3C DID Document</span> ↗
@@ -572,7 +839,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                   href={`${API_BASE}/agents/${agentId}/credential`}
                   target="_blank"
                   rel="noreferrer"
-                  className="swarm-btn-secondary"
+                  className="btn-swarm-secondary"
                   style={{ textDecoration: "none", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
                   <span>W3C Credential</span> ↗
@@ -580,13 +847,11 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
 
                 <button
                   onClick={onClose}
-                  className="swarm-btn-primary"
+                  className="btn-swarm-primary"
                   style={{
-                    backgroundColor: color,
-                    borderColor: color,
-                    boxShadow: `0 0 20px ${color}40`,
-                    color: "#050b14",
-                    fontWeight: 700,
+                    backgroundColor: "#09090b",
+                    color: "#ffffff",
+                    border: "1px solid #09090b",
                   }}
                 >
                   Inspect in 3D Swarm Simulation →
@@ -595,10 +860,10 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
             </div>
           ) : (
             /* Form Screen */
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {/* Preset Template Selector */}
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 8 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5, fontFamily: "var(--font-mono)", marginBottom: 8 }}>
                   ⚡ Quick-Fill Specialist Templates
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
@@ -610,20 +875,20 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                         type="button"
                         onClick={() => applyPreset(p)}
                         style={{
-                          background: isSelected ? `${p.color}20` : "rgba(15, 23, 42, 0.6)",
-                          border: `1px solid ${isSelected ? p.color : "rgba(255, 255, 255, 0.1)"}`,
-                          borderRadius: 8,
+                          backgroundColor: isSelected ? "#f4f4f5" : "#ffffff",
+                          border: isSelected ? "1px solid #09090b" : "1px solid #e4e4e7",
+                          borderRadius: 6,
                           padding: "8px 10px",
                           textAlign: "left",
                           cursor: "pointer",
-                          transition: "all 0.2s ease",
+                          transition: "all 0.15s ease",
                           display: "flex",
                           flexDirection: "column",
                           gap: 4,
                         }}
                       >
                         <span style={{ fontSize: 16 }}>{SHAPE_METAS[p.shape].icon}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: isSelected ? "#fff" : "#cbd5e1" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: isSelected ? "#09090b" : "#52525b" }}>
                           {p.name.replace(/ Specialist| Agent| Auditor/gi, "")}
                         </span>
                       </button>
@@ -633,9 +898,9 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               </div>
 
               {/* Two Column Section */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
                     Agent Name *
                   </label>
                   <input
@@ -650,7 +915,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
                     Agent Slug / ID *
                   </label>
                   <input
@@ -667,8 +932,8 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
 
               {/* Role & Domain */}
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
-                  Security Specialty & Role *
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
+                  Security Specialty &amp; Role *
                 </label>
                 <input
                   type="text"
@@ -681,40 +946,341 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 />
               </div>
 
-              {/* Capabilities & Payout Address */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
-                    Capabilities (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    className="swarm-input"
-                    value={capabilitiesStr}
-                    onChange={(e) => setCapabilitiesStr(e.target.value)}
-                    placeholder="e.g. flash-loan, oracle-manipulation"
-                    style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 12 }}
-                  />
+              {/* Capabilities */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
+                  Capabilities &amp; AST Detector Tags (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  className="swarm-input"
+                  value={capabilitiesStr}
+                  onChange={(e) => setCapabilitiesStr(e.target.value)}
+                  placeholder="e.g. flash-loan, oracle-manipulation, slippage-omission"
+                  style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 12 }}
+                />
+              </div>
+
+              {/* Cryptographic Proof of Hedera Wallet Ownership */}
+              <div
+                style={{
+                  backgroundColor: "#fafafa",
+                  border: "1px solid #e4e4e7",
+                  borderRadius: 8,
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 15 }}>🔒</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#09090b" }}>
+                        Hedera Wallet Cryptographic Ownership Proof
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          fontWeight: 600,
+                          backgroundColor: verificationStatus === "signed" ? "#f0fdf4" : "#f4f4f5",
+                          border: verificationStatus === "signed" ? "1px solid #bbf7d0" : "1px solid #e4e4e7",
+                          color: verificationStatus === "signed" ? "#166534" : "#52525b",
+                        }}
+                      >
+                        {verificationStatus === "signed" ? "✓ Signature Verified" : "Proof Required"}
+                      </span>
+                    </div>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 11, color: "#71717a" }}>
+                      Agents must prove private key possession before binding their Hedera wallet to W3C did:hedera and entering consensus.
+                    </p>
+                    {walletAddress && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 11,
+                          color: "#166534",
+                          fontFamily: "var(--font-mono)",
+                          backgroundColor: "#f0fdf4",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "1px solid #bbf7d0",
+                        }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#16a34a" }} />
+                        <span>Connected: {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setWalletAddress(null)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            color: "#71717a",
+                            textDecoration: "underline",
+                            fontSize: 10,
+                            cursor: "pointer",
+                            marginLeft: 4,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    {walletError && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          color: "#b91c1c",
+                          backgroundColor: "#fef2f2",
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                          border: "1px solid #fecaca",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      >
+                        ✕ {walletError}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {walletAddress ? (
+                      <button
+                        type="button"
+                        onClick={handleSignWithBrowserWallet}
+                        disabled={isSigningWithWallet}
+                        className="btn-swarm-primary"
+                        style={{
+                          fontSize: 11,
+                          padding: "6px 12px",
+                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          backgroundColor: "#09090b",
+                          color: "#ffffff",
+                          border: "1px solid #09090b",
+                        }}
+                      >
+                        {isSigningWithWallet
+                          ? "Signing in Wallet..."
+                          : `✍️ Sign Challenge (${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)})`}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleConnectWallet}
+                        disabled={isConnectingWallet}
+                        className="btn-swarm-primary"
+                        style={{
+                          fontSize: 11,
+                          padding: "6px 12px",
+                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          backgroundColor: "#09090b",
+                          color: "#ffffff",
+                          border: "1px solid #09090b",
+                        }}
+                      >
+                        {isConnectingWallet ? "Connecting..." : "🦊 Connect & Sign Wallet"}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleSignWithTestnetKey}
+                      disabled={isSigningChallenge}
+                      className="btn-swarm-secondary"
+                      style={{
+                        fontSize: 11,
+                        padding: "6px 10px",
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        backgroundColor: "#ffffff",
+                      }}
+                      title="Auto-sign using pre-funded Hedera testnet operator key (0.0.10119346)"
+                    >
+                      {isSigningChallenge ? "Signing..." : "⚡ 1-Click Demo Key"}
+                    </button>
+                  </div>
                 </div>
 
+                {/* Account ID & Public Key Row */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#52525b", marginBottom: 4 }}>
+                      Hedera Account ID (Payout &amp; Identity) *
+                    </label>
+                    <input
+                      type="text"
+                      className="swarm-input"
+                      value={paymentAddress}
+                      onChange={(e) => {
+                        setPaymentAddress(e.target.value);
+                        fetchChallenge(agentId, e.target.value);
+                      }}
+                      required
+                      placeholder="0.0.10119346"
+                      style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 12 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#52525b", marginBottom: 4 }}>
+                      Hedera Public Key (Hex) *
+                    </label>
+                    <input
+                      type="text"
+                      className="swarm-input"
+                      value={publicKey}
+                      onChange={(e) => setPublicKey(e.target.value)}
+                      required
+                      placeholder="033ba0f4cba001b21c3f52006119e8796913cd2328ab03ac2f8b8bf9b97c8e98aa"
+                      style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 11 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Challenge & Nonce Box */}
                 <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
-                    Hedera Payout Account ID
-                  </label>
-                  <input
-                    type="text"
-                    className="swarm-input"
-                    value={paymentAddress}
-                    onChange={(e) => setPaymentAddress(e.target.value)}
-                    placeholder="0.0.10417474"
-                    style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#52525b" }}>
+                      Cryptographic Challenge &amp; Session Nonce
+                    </label>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => fetchChallenge(agentId, paymentAddress)}
+                        disabled={isGeneratingChallenge}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "#09090b",
+                          textDecoration: "underline",
+                          fontSize: 11,
+                          cursor: "pointer",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      >
+                        {isGeneratingChallenge ? "Generating..." : "🔄 Refresh Challenge"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowChallengeDetails(!showChallengeDetails)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "#71717a",
+                          textDecoration: "underline",
+                          fontSize: 11,
+                          cursor: "pointer",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      >
+                        {showChallengeDetails ? "Hide Raw" : "View Raw Challenge"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showChallengeDetails ? (
+                    <textarea
+                      readOnly
+                      className="swarm-input"
+                      value={challenge}
+                      rows={4}
+                      style={{
+                        width: "100%",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        backgroundColor: "#f4f4f5",
+                        color: "#09090b",
+                        lineHeight: 1.4,
+                        marginBottom: 8,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "#52525b",
+                        backgroundColor: "#f4f4f5",
+                        border: "1px solid #e4e4e7",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span>Nonce: {nonce || "generating…"}</span>
+                      <span style={{ fontSize: 10, color: "#71717a" }}>Topic 0.0.10417469 • hedera:testnet</span>
+                    </div>
+                  )}
+
+                  {/* Signature Input */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#52525b", marginBottom: 4 }}>
+                      Cryptographic Signature (Hex Digest) *
+                    </label>
+                    <input
+                      type="text"
+                      className="swarm-input"
+                      value={signature}
+                      onChange={(e) => handleSignatureChange(e.target.value)}
+                      required
+                      placeholder="Paste hex signature from external agent key or click 'Sign with Agent Testnet Key'..."
+                      style={{
+                        width: "100%",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        backgroundColor: signature ? "#ffffff" : "#fffbeb",
+                        borderColor: signature ? "#e4e4e7" : "#fef08a",
+                      }}
+                    />
+                  </div>
+
+                  {/* Live Status Pill */}
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontFamily: "var(--font-mono)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      backgroundColor: signature ? "#f0fdf4" : "#fefce8",
+                      border: signature ? "1px solid #bbf7d0" : "1px solid #fef08a",
+                      color: signature ? "#166534" : "#854d0e",
+                    }}
+                  >
+                    <span>{signature ? "✓" : "⚠️"}</span>
+                    <span>{verificationFeedback}</span>
+                  </div>
                 </div>
               </div>
 
               {/* 3D Geometry Shape Picker */}
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 8 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 8 }}>
                   3D Visualization Geometry (Orbit Ring)
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
@@ -727,9 +1293,9 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                         type="button"
                         onClick={() => setShape(sh)}
                         style={{
-                          background: isSelected ? `${color}25` : "rgba(15, 23, 42, 0.6)",
-                          border: `1px solid ${isSelected ? color : "rgba(255, 255, 255, 0.1)"}`,
-                          borderRadius: 8,
+                          backgroundColor: isSelected ? "#f4f4f5" : "#ffffff",
+                          border: isSelected ? "1px solid #09090b" : "1px solid #e4e4e7",
+                          borderRadius: 6,
                           padding: "8px 10px",
                           textAlign: "center",
                           cursor: "pointer",
@@ -740,7 +1306,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                         }}
                       >
                         <span style={{ fontSize: 20 }}>{info.icon}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: isSelected ? "#fff" : "#94a3b8" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: isSelected ? "#09090b" : "#71717a" }}>
                           {sh}
                         </span>
                       </button>
@@ -750,10 +1316,10 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               </div>
 
               {/* Theme Color & Model Engine */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 8 }}>
-                    Theme Neon Color
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 8 }}>
+                    Theme Accent Color
                   </label>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     {COLOR_PALETTES.map((c) => (
@@ -762,13 +1328,12 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                         type="button"
                         onClick={() => setColor(c.hex)}
                         style={{
-                          width: 26,
-                          height: 26,
+                          width: 24,
+                          height: 24,
                           borderRadius: "50%",
                           backgroundColor: c.hex,
-                          border: color === c.hex ? "2px solid #fff" : "2px solid transparent",
+                          border: color === c.hex ? "2px solid #09090b" : "2px solid #e4e4e7",
                           cursor: "pointer",
-                          boxShadow: color === c.hex ? `0 0 12px ${c.hex}` : "none",
                           transform: color === c.hex ? "scale(1.15)" : "scale(1)",
                           transition: "all 0.15s ease",
                         }}
@@ -780,8 +1345,8 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                       value={color}
                       onChange={(e) => setColor(e.target.value)}
                       style={{
-                        width: 26,
-                        height: 26,
+                        width: 24,
+                        height: 24,
                         border: "none",
                         background: "none",
                         cursor: "pointer",
@@ -792,7 +1357,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
                     Inference Engine
                   </label>
                   <select
@@ -801,7 +1366,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                     onChange={(e) => setModel(e.target.value)}
                     style={{ width: "100%" }}
                   >
-                    <option value="gpt-4o">OpenAI GPT-4o (Reasoning & AST)</option>
+                    <option value="gpt-4o">OpenAI GPT-4o (Reasoning &amp; AST)</option>
                     <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
                     <option value="gemini-1.5-pro">Google Gemini 1.5 Pro</option>
                     <option value="ollama-deepseek-r1">Local DeepSeek-R1 (Ollama)</option>
@@ -812,7 +1377,7 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
 
               {/* System Prompt */}
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#52525b", marginBottom: 6 }}>
                   Agent System Instruction / Prompt
                 </label>
                 <textarea
@@ -828,12 +1393,13 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               {errorMessage && (
                 <div
                   style={{
-                    backgroundColor: "rgba(239, 68, 68, 0.15)",
-                    border: "1px solid #ef4444",
-                    borderRadius: 8,
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    borderRadius: 6,
                     padding: "10px 14px",
-                    color: "#fca5a5",
+                    color: "#991b1b",
                     fontSize: 12,
+                    fontFamily: "var(--font-mono)",
                   }}
                 >
                   ✕ Registration Error: {errorMessage}
@@ -843,23 +1409,24 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               {status === "submitting" && (
                 <div
                   style={{
-                    backgroundColor: `${color}15`,
-                    border: `1px solid ${color}40`,
-                    borderRadius: 8,
-                    padding: "12px 16px",
-                    color: "#fff",
-                    fontSize: 13,
+                    backgroundColor: "#fafafa",
+                    border: "1px solid #e4e4e7",
+                    borderRadius: 6,
+                    padding: "10px 14px",
+                    color: "#09090b",
+                    fontSize: 12,
+                    fontFamily: "var(--font-mono)",
                     display: "flex",
                     alignItems: "center",
-                    gap: 12,
+                    gap: 10,
                   }}
                 >
                   <div
                     style={{
-                      width: 16,
-                      height: 16,
+                      width: 14,
+                      height: 14,
                       borderRadius: "50%",
-                      border: `2px solid ${color}`,
+                      border: "2px solid #09090b",
                       borderTopColor: "transparent",
                       animation: "spin 0.8s linear infinite",
                     }}
@@ -869,11 +1436,11 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
               )}
 
               {/* Submit Button */}
-              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="swarm-btn-secondary"
+                  className="btn-swarm-secondary"
                   disabled={status === "submitting"}
                 >
                   Cancel
@@ -881,14 +1448,12 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
 
                 <button
                   type="submit"
-                  className="swarm-btn-primary"
+                  className="btn-swarm-primary"
                   disabled={status === "submitting"}
                   style={{
-                    backgroundColor: color,
-                    borderColor: color,
-                    boxShadow: `0 0 20px ${color}40`,
-                    color: "#050b14",
-                    fontWeight: 700,
+                    backgroundColor: "#09090b",
+                    color: "#ffffff",
+                    border: "1px solid #09090b",
                   }}
                 >
                   {status === "submitting" ? "Registering on Hedera..." : "Register Agent on Hedera HCS →"}

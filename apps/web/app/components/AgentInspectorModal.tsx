@@ -82,30 +82,31 @@ export function AgentInspectorModal({
       <div
         className="swarm-modal-window"
         onClick={(e) => e.stopPropagation()}
-        style={{ boxShadow: `0 0 50px ${agent.color}20` }}
+        style={{ boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.15)", border: "1px solid #e4e4e7", backgroundColor: "#ffffff" }}
       >
-        {/* Header with Glowing Accent Banner */}
+        {/* Minimalist Editorial Modal Header */}
         <div
           className="swarm-modal-header"
           style={{
-            background: `linear-gradient(90deg, ${agent.color}15 0%, rgba(11, 18, 34, 0.4) 100%)`,
+            backgroundColor: "#fafafa",
+            borderBottom: "1px solid #e4e4e7",
+            padding: "16px 20px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* Shape Badge */}
             <div
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
+                width: 40,
+                height: 40,
+                borderRadius: 8,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 22,
-                backgroundColor: `${agent.color}20`,
-                border: `1px solid ${agent.color}`,
-                color: agent.color,
-                boxShadow: `0 0 16px ${agent.color}30`,
+                fontSize: 18,
+                backgroundColor: "#f4f4f5",
+                border: "1px solid #e4e4e7",
+                color: "#09090b",
               }}
             >
               {agent.shape === "octahedron" && "💎"}
@@ -117,24 +118,24 @@ export function AgentInspectorModal({
 
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#fff" }}>{agent.name}</h3>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>{agent.name}</h3>
                 <span
                   style={{
                     fontSize: 10,
                     fontFamily: "var(--font-mono)",
-                    padding: "2px 8px",
-                    borderRadius: 20,
+                    padding: "2px 6px",
+                    borderRadius: 4,
                     textTransform: "uppercase",
-                    fontWeight: 700,
-                    backgroundColor: `${agent.color}15`,
-                    border: `1px solid ${agent.color}40`,
-                    color: agent.color,
+                    fontWeight: 600,
+                    backgroundColor: "#f4f4f5",
+                    border: "1px solid #e4e4e7",
+                    color: "#52525b",
                   }}
                 >
                   {agent.shapeLabel}
                 </span>
               </div>
-              <p style={{ margin: "3px 0 0 0", fontSize: 12, color: "#94a3b8" }}>{agent.role}</p>
+              <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#71717a" }}>{agent.role}</p>
             </div>
           </div>
 
@@ -142,29 +143,29 @@ export function AgentInspectorModal({
             type="button"
             onClick={onClose}
             className="btn-swarm-secondary"
-            style={{ width: 34, height: 34, padding: 0, borderRadius: 10, fontSize: 14 }}
+            style={{ width: 32, height: 32, padding: 0, borderRadius: 6, fontSize: 14 }}
           >
             ✕
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border-color)", background: "#080d19" }}>
+        <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid #e4e4e7", backgroundColor: "#ffffff" }}>
           <button
             type="button"
             onClick={() => setActiveTab("findings")}
             style={{
               flex: 1,
-              padding: "12px 16px",
+              padding: "10px 14px",
               fontSize: 12,
-              fontWeight: 600,
+              fontWeight: activeTab === "findings" ? 600 : 500,
               background: "transparent",
               borderRadius: 0,
-              borderBottom: activeTab === "findings" ? "2px solid #00f5ff" : "2px solid transparent",
-              color: activeTab === "findings" ? "#fff" : "#94a3b8",
+              borderBottom: activeTab === "findings" ? "2px solid #09090b" : "2px solid transparent",
+              color: activeTab === "findings" ? "#09090b" : "#71717a",
             }}
           >
-            Findings & Detections ({agentFindings.length > 0 ? agentFindings.length : 1})
+            Findings ({agentFindings.length > 0 ? agentFindings.length : 1})
           </button>
 
           <button
@@ -172,18 +173,18 @@ export function AgentInspectorModal({
             onClick={() => setActiveTab("thoughts")}
             style={{
               flex: 1,
-              padding: "12px 16px",
+              padding: "10px 14px",
               fontSize: 12,
-              fontWeight: 600,
+              fontWeight: activeTab === "thoughts" ? 600 : 500,
               background: "transparent",
               borderRadius: 0,
-              borderBottom: activeTab === "thoughts" ? "2px solid #00f5ff" : "2px solid transparent",
-              color: activeTab === "thoughts" ? "#fff" : "#94a3b8",
+              borderBottom: activeTab === "thoughts" ? "2px solid #09090b" : "2px solid transparent",
+              color: activeTab === "thoughts" ? "#09090b" : "#71717a",
             }}
           >
-            Live Thought Stream
+            Thought Stream
             {(isSimulating || isAuditing) && (
-              <span className="pulse-dot" style={{ backgroundColor: "#00f5ff", marginLeft: 6 }} />
+              <span className="pulse-dot" style={{ backgroundColor: "#09090b", marginLeft: 6 }} />
             )}
           </button>
 
@@ -192,25 +193,25 @@ export function AgentInspectorModal({
             onClick={() => setActiveTab("identity")}
             style={{
               flex: 1,
-              padding: "12px 16px",
+              padding: "10px 14px",
               fontSize: 12,
-              fontWeight: 600,
+              fontWeight: activeTab === "identity" ? 600 : 500,
               background: "transparent",
               borderRadius: 0,
-              borderBottom: activeTab === "identity" ? "2px solid #00f5ff" : "2px solid transparent",
-              color: activeTab === "identity" ? "#fff" : "#94a3b8",
+              borderBottom: activeTab === "identity" ? "2px solid #09090b" : "2px solid transparent",
+              color: activeTab === "identity" ? "#09090b" : "#71717a",
             }}
           >
-            Hedera Identity & x402
+            Hedera Identity &amp; x402
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="swarm-modal-body">
+        <div className="swarm-modal-body" style={{ backgroundColor: "#ffffff", padding: 20 }}>
           {activeTab === "findings" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "#94a3b8" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, color: "#71717a", fontFamily: "var(--font-mono)" }}>
                   Domain Detection Results:
                 </span>
                 <button
@@ -218,7 +219,7 @@ export function AgentInspectorModal({
                   onClick={handleSimulate}
                   disabled={isSimulating || isAuditing}
                   className="btn-swarm-primary"
-                  style={{ fontSize: 11, padding: "6px 14px" }}
+                  style={{ fontSize: 11, padding: "5px 12px" }}
                 >
                   ⚡ {isSimulating ? "Analyzing Code…" : "Trigger Domain Scan"}
                 </button>
@@ -229,29 +230,29 @@ export function AgentInspectorModal({
                   <div
                     key={finding.id || idx}
                     style={{
-                      padding: 16,
-                      borderRadius: 14,
-                      background: "#0f172a",
-                      border: "1px solid var(--border-color)",
+                      padding: 14,
+                      borderRadius: 8,
+                      backgroundColor: "#fafafa",
+                      border: "1px solid #e4e4e7",
                       display: "flex",
                       flexDirection: "column",
                       gap: 8,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{finding.title}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: "#09090b" }}>{finding.title}</span>
                       <span className={`swarm-tag swarm-tag-${finding.severity.toLowerCase()}`}>
                         {finding.severity}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#cbd5e1", background: "#070b14", padding: "6px 10px", borderRadius: 8, border: "1px solid #1e293b" }}>
+                    <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#52525b", backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e4e4e7" }}>
                       📍 Location: {finding.location || finding.locations?.join(", ") || "contract"}
                     </div>
 
                     {(finding.evidence || finding.snippets) && (
-                      <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-                        <span style={{ fontWeight: 600, color: "#94a3b8" }}>Evidence:</span>
+                      <div style={{ fontSize: 12, color: "#52525b" }}>
+                        <span style={{ fontWeight: 600, color: "#09090b" }}>Evidence:</span>
                         <ul style={{ margin: "4px 0 0 0", paddingLeft: 18, fontSize: 11 }}>
                           {(finding.evidence || finding.snippets || []).map((ev, i) => (
                             <li key={i}>{ev}</li>
@@ -265,36 +266,36 @@ export function AgentInspectorModal({
                 /* Sample domain finding representation */
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 14,
-                    background: "#0f172a",
-                    border: "1px solid var(--border-color)",
+                    padding: 14,
+                    borderRadius: 8,
+                    backgroundColor: "#fafafa",
+                    border: "1px solid #e4e4e7",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 10,
+                    gap: 8,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{agent.sampleFinding.title}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#09090b" }}>{agent.sampleFinding.title}</span>
                     <span className={`swarm-tag swarm-tag-${agent.sampleFinding.severity}`}>
                       {agent.sampleFinding.severity}
                     </span>
                   </div>
 
-                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#cbd5e1", background: "#070b14", padding: "6px 10px", borderRadius: 8, border: "1px solid #1e293b" }}>
+                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#52525b", backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e4e4e7" }}>
                     📍 Location: {agent.sampleFinding.location}
                   </div>
 
-                  <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-                    <span style={{ fontWeight: 600, color: "#94a3b8" }}>Detection Evidence:</span>
-                    <p style={{ margin: "4px 0 0 0", fontSize: 11, fontFamily: "var(--font-mono)", background: "#060911", padding: 8, borderRadius: 6, border: "1px solid #1e293b" }}>
+                  <div style={{ fontSize: 12, color: "#52525b" }}>
+                    <span style={{ fontWeight: 600, color: "#09090b" }}>Detection Evidence:</span>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 11, fontFamily: "var(--font-mono)", backgroundColor: "#09090b", color: "#f4f4f5", padding: "8px 10px", borderRadius: 6, border: "1px solid #27272a" }}>
                       {agent.sampleFinding.evidence}
                     </p>
                   </div>
 
-                  <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-                    <span style={{ fontWeight: 600, color: "#94a3b8" }}>Specialist Reasoning:</span>
-                    <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 12, color: "#52525b" }}>
+                    <span style={{ fontWeight: 600, color: "#09090b" }}>Specialist Reasoning:</span>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#52525b", lineHeight: 1.5 }}>
                       {agent.sampleFinding.reasoning}
                     </p>
                   </div>
@@ -304,20 +305,20 @@ export function AgentInspectorModal({
               {/* 3D Shape Rationale Card */}
               <div
                 style={{
-                  padding: 14,
-                  borderRadius: 14,
-                  background: "#090f1d",
-                  border: "1px solid #1a2538",
+                  padding: 12,
+                  borderRadius: 8,
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #e4e4e7",
                   fontSize: 12,
-                  color: "#94a3b8",
+                  color: "#52525b",
                   display: "flex",
                   alignItems: "flex-start",
                   gap: 10,
                 }}
               >
-                <span style={{ fontSize: 18 }}>💡</span>
+                <span style={{ fontSize: 16 }}>💡</span>
                 <div>
-                  <strong style={{ color: "#e2e8f0" }}>3D Shape Representation: </strong>
+                  <strong style={{ color: "#09090b" }}>3D Representation: </strong>
                   {agent.shapeRationale}
                 </div>
               </div>
@@ -327,26 +328,26 @@ export function AgentInspectorModal({
           {activeTab === "thoughts" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "#94a3b8" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, color: "#71717a", fontFamily: "var(--font-mono)" }}>
                   Real-time Neural Thought Stream:
                 </span>
-                <span style={{ color: "#00f5ff", fontSize: 11, fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span className="pulse-dot" style={{ backgroundColor: "#00f5ff" }} />
+                <span style={{ color: "#09090b", fontSize: 11, fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span className="pulse-dot" style={{ backgroundColor: "#16a34a" }} />
                   Live Swarm Broadcast
                 </span>
               </div>
 
               <div
                 style={{
-                  padding: 16,
-                  borderRadius: 14,
-                  background: "#060a14",
-                  border: "1px solid #162035",
+                  padding: 12,
+                  borderRadius: 8,
+                  backgroundColor: "#09090b",
+                  border: "1px solid #27272a",
                   maxHeight: 280,
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 8,
+                  gap: 6,
                 }}
               >
                 {agent.simulatedThoughts.map((thought, idx) => {
@@ -355,31 +356,31 @@ export function AgentInspectorModal({
                     <div
                       key={idx}
                       style={{
-                        padding: 10,
-                        borderRadius: 8,
-                        background: isCurrent ? "#101b33" : "transparent",
-                        borderLeft: isCurrent ? "3px solid #00f5ff" : "3px solid transparent",
-                        color: isCurrent ? "#38bdf8" : "#64748b",
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        backgroundColor: isCurrent ? "#18181b" : "transparent",
+                        borderLeft: isCurrent ? "2px solid #ffffff" : "2px solid transparent",
+                        color: isCurrent ? "#ffffff" : "#71717a",
                         fontSize: 11,
                         fontFamily: "var(--font-mono)",
                         display: "flex",
                         alignItems: "flex-start",
-                        gap: 10,
-                        transition: "all 0.2s ease",
+                        gap: 8,
+                        transition: "all 0.15s ease",
                       }}
                     >
-                      <span style={{ color: "#475569", userSelect: "none" }}>[{idx + 1}]</span>
-                      <p style={{ margin: 0, lineHeight: 1.5 }}>{thought}</p>
+                      <span style={{ color: "#52525b", userSelect: "none" }}>[{idx + 1}]</span>
+                      <p style={{ margin: 0, lineHeight: 1.4 }}>{thought}</p>
                     </div>
                   );
                 })}
               </div>
 
-              <div style={{ padding: 14, borderRadius: 12, background: "#0a1020", border: "1px solid #1c273c" }}>
-                <strong style={{ color: "#e2e8f0", fontSize: 12, display: "block", marginBottom: 4 }}>
+              <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                <strong style={{ color: "#09090b", fontSize: 12, display: "block", marginBottom: 4 }}>
                   Specialist Domain System Prompt:
                 </strong>
-                <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: 11, color: "#52525b", lineHeight: 1.5 }}>
                   {agent.systemPromptSummary}
                 </p>
               </div>
@@ -391,10 +392,10 @@ export function AgentInspectorModal({
               {/* W3C Sovereign DID Header Card */}
               <div
                 style={{
-                  backgroundColor: "rgba(0, 245, 255, 0.05)",
-                  border: `1px solid ${agent.color}40`,
-                  borderRadius: 14,
-                  padding: "14px 16px",
+                  backgroundColor: "#fafafa",
+                  border: "1px solid #e4e4e7",
+                  borderRadius: 8,
+                  padding: "12px 14px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
@@ -405,12 +406,12 @@ export function AgentInspectorModal({
                     style={{
                       fontSize: 10,
                       fontFamily: "var(--font-mono)",
-                      backgroundColor: `${agent.color}20`,
-                      color: agent.color,
-                      border: `1px solid ${agent.color}50`,
-                      padding: "2px 8px",
-                      borderRadius: 10,
-                      fontWeight: 700,
+                      backgroundColor: "#f4f4f5",
+                      color: "#09090b",
+                      border: "1px solid #e4e4e7",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      fontWeight: 600,
                       textTransform: "uppercase",
                     }}
                   >
@@ -418,12 +419,13 @@ export function AgentInspectorModal({
                   </span>
                   <span
                     style={{
-                      fontSize: 11,
-                      backgroundColor: "rgba(16, 185, 129, 0.15)",
-                      border: "1px solid #10b981",
-                      color: "#10b981",
-                      padding: "2px 8px",
-                      borderRadius: 10,
+                      fontSize: 10,
+                      fontFamily: "var(--font-mono)",
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      color: "#166534",
+                      padding: "2px 6px",
+                      borderRadius: 4,
                       fontWeight: 600,
                     }}
                   >
@@ -432,7 +434,7 @@ export function AgentInspectorModal({
                 </div>
 
                 <div>
-                  <span style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", fontWeight: 700 }}>
+                  <span style={{ color: "#71717a", fontSize: 10, textTransform: "uppercase", fontWeight: 600, fontFamily: "var(--font-mono)" }}>
                     W3C Decentralized Identifier (DID URI):
                   </span>
                   <div
@@ -442,19 +444,19 @@ export function AgentInspectorModal({
                       justifyContent: "space-between",
                       gap: 8,
                       marginTop: 4,
-                      background: "rgba(0,0,0,0.4)",
+                      backgroundColor: "#ffffff",
                       padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #1e293b",
+                      borderRadius: 6,
+                      border: "1px solid #e4e4e7",
                     }}
                   >
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",
-                        color: "#fff",
+                        color: "#09090b",
                         fontSize: 12,
                         wordBreak: "break-all",
-                        fontWeight: 600,
+                        fontWeight: 500,
                       }}
                     >
                       {agent.did || `did:hedera:testnet:${agent.identityTopicId || "0.0.10417469"}_${agent.id}`}
@@ -467,47 +469,47 @@ export function AgentInspectorModal({
                             `did:hedera:testnet:${agent.identityTopicId || "0.0.10417469"}_${agent.id}`,
                         )
                       }
-                      className="swarm-btn-secondary"
+                      className="btn-swarm-secondary"
                       style={{ fontSize: 11, padding: "4px 8px", whiteSpace: "nowrap" }}
                     >
-                      {copiedDid ? "✓ Copied" : "📋 Copy"}
+                      {copiedDid ? "✓ Copied" : "Copy"}
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* Identity & Payment Details Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)" }}>
-                  <span style={{ color: "#94a3b8", display: "block", fontSize: 11, marginBottom: 4 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                  <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 2, fontFamily: "var(--font-mono)" }}>
                     Hedera HCS Topic:
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#2dd4bf", fontWeight: 700, fontSize: 13 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700, fontSize: 13 }}>
                     {agent.identityTopicId || "0.0.10417469"}
                   </span>
-                  <p style={{ margin: "4px 0 0 0", fontSize: 10, color: "#64748b" }}>Anchor on Hedera Testnet</p>
+                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>Anchor on Hedera Testnet</p>
                 </div>
 
-                <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)" }}>
-                  <span style={{ color: "#94a3b8", display: "block", fontSize: 11, marginBottom: 4 }}>
+                <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                  <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 2, fontFamily: "var(--font-mono)" }}>
                     Payout Revenue Share (x402):
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#f59e0b", fontWeight: 700, fontSize: 13 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700, fontSize: 13 }}>
                     {agent.paymentAddress || "0.0.10417474"}
                   </span>
-                  <p style={{ margin: "4px 0 0 0", fontSize: 10, color: "#64748b" }}>Direct micropayment allocation</p>
+                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>Direct micropayment allocation</p>
                 </div>
               </div>
 
               {agent.identityReference && (
-                <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)" }}>
-                  <span style={{ color: "#94a3b8", display: "block", fontSize: 11, marginBottom: 4 }}>
+                <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                  <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 2, fontFamily: "var(--font-mono)" }}>
                     On-Chain Identity Transaction Reference:
                   </span>
                   <span
                     style={{
                       fontFamily: "var(--font-mono)",
-                      color: agent.color,
+                      color: "#09090b",
                       fontSize: 11,
                       wordBreak: "break-all",
                     }}
@@ -515,7 +517,7 @@ export function AgentInspectorModal({
                     {agent.identityReference}
                   </span>
                   {agent.consensusTimestamp && (
-                    <p style={{ margin: "4px 0 0 0", fontSize: 10, color: "#64748b" }}>
+                    <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>
                       Consensus Timestamp: {agent.consensusTimestamp}
                     </p>
                   )}
@@ -523,8 +525,8 @@ export function AgentInspectorModal({
               )}
 
               {/* Capabilities */}
-              <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)" }}>
-                <span style={{ color: "#94a3b8", display: "block", fontSize: 11, marginBottom: 8 }}>
+              <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 6, fontFamily: "var(--font-mono)" }}>
                   Specialist Verified Capabilities:
                 </span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -532,13 +534,13 @@ export function AgentInspectorModal({
                     <span
                       key={cap}
                       style={{
-                        padding: "4px 10px",
-                        borderRadius: 8,
-                        background: "#162035",
-                        color: "#38bdf8",
+                        padding: "3px 8px",
+                        borderRadius: 4,
+                        backgroundColor: "#f4f4f5",
+                        color: "#18181b",
                         fontFamily: "var(--font-mono)",
                         fontSize: 10,
-                        border: "1px solid rgba(56, 189, 248, 0.2)",
+                        border: "1px solid #e4e4e7",
                       }}
                     >
                       {cap}
@@ -548,19 +550,19 @@ export function AgentInspectorModal({
               </div>
 
               {/* Interactive W3C JSON-LD Inspector Buttons */}
-              <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <strong style={{ color: "#fff", fontSize: 12 }}>W3C Cryptographic Proofs:</strong>
+              <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <strong style={{ color: "#09090b", fontSize: 12 }}>W3C Cryptographic Proofs:</strong>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       type="button"
                       onClick={() => setViewJsonMode(viewJsonMode === "did" ? "none" : "did")}
-                      className="swarm-btn-secondary"
+                      className="btn-swarm-secondary"
                       style={{
                         fontSize: 11,
-                        padding: "4px 8px",
-                        background: viewJsonMode === "did" ? "rgba(0, 245, 255, 0.2)" : undefined,
-                        borderColor: viewJsonMode === "did" ? "#00f5ff" : undefined,
+                        padding: "3px 8px",
+                        backgroundColor: viewJsonMode === "did" ? "#09090b" : "#ffffff",
+                        color: viewJsonMode === "did" ? "#ffffff" : "#18181b",
                       }}
                     >
                       {viewJsonMode === "did" ? "Hide DID Doc" : "DID Document"}
@@ -568,12 +570,12 @@ export function AgentInspectorModal({
                     <button
                       type="button"
                       onClick={() => setViewJsonMode(viewJsonMode === "credential" ? "none" : "credential")}
-                      className="swarm-btn-secondary"
+                      className="btn-swarm-secondary"
                       style={{
                         fontSize: 11,
-                        padding: "4px 8px",
-                        background: viewJsonMode === "credential" ? "rgba(16, 185, 129, 0.2)" : undefined,
-                        borderColor: viewJsonMode === "credential" ? "#10b981" : undefined,
+                        padding: "3px 8px",
+                        backgroundColor: viewJsonMode === "credential" ? "#09090b" : "#ffffff",
+                        color: viewJsonMode === "credential" ? "#ffffff" : "#18181b",
                       }}
                     >
                       {viewJsonMode === "credential" ? "Hide Credential" : "Verifiable Credential"}
@@ -584,12 +586,12 @@ export function AgentInspectorModal({
                 {viewJsonMode !== "none" && (
                   <pre
                     style={{
-                      background: "#050811",
-                      border: "1px solid #1e293b",
-                      borderRadius: 8,
+                      backgroundColor: "#09090b",
+                      border: "1px solid #27272a",
+                      borderRadius: 6,
                       padding: 12,
                       fontSize: 11,
-                      color: "#94a3b8",
+                      color: "#f4f4f5",
                       fontFamily: "var(--font-mono)",
                       maxHeight: 220,
                       overflowY: "auto",
@@ -670,26 +672,18 @@ export function AgentInspectorModal({
               </div>
 
               {/* External Verification Links */}
-              <div style={{ padding: 14, borderRadius: 14, background: "#090f1d", border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div>
-                  <strong style={{ color: "#fff", display: "block", fontSize: 12 }}>Hedera Mirror Node Verification:</strong>
-                  <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>testnet.mirrornode.hedera.com</span>
+                  <strong style={{ color: "#09090b", display: "block", fontSize: 12 }}>Hedera Mirror Node Verification:</strong>
+                  <span style={{ fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)" }}>testnet.mirrornode.hedera.com</span>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 6 }}>
                   <a
                     href={`http://localhost:3001/agents/${agent.id}/did`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      background: "#162035",
-                      color: "#38bdf8",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(56, 189, 248, 0.3)",
-                      textDecoration: "none",
-                    }}
+                    className="btn-swarm-secondary"
+                    style={{ fontSize: 11, padding: "5px 10px", textDecoration: "none" }}
                   >
                     DID Document ↗
                   </a>
@@ -697,16 +691,8 @@ export function AgentInspectorModal({
                     href={`http://localhost:3001/agents/${agent.id}/credential`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      background: "#162035",
-                      color: "#34d399",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(52, 211, 153, 0.3)",
-                      textDecoration: "none",
-                    }}
+                    className="btn-swarm-secondary"
+                    style={{ fontSize: 11, padding: "5px 10px", textDecoration: "none" }}
                   >
                     W3C Credential ↗
                   </a>
@@ -714,16 +700,8 @@ export function AgentInspectorModal({
                     href={`https://hashscan.io/testnet/topic/${agent.identityTopicId || "0.0.10417469"}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      background: "#1a263d",
-                      color: "#00f5ff",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      border: "1px solid rgba(0, 245, 255, 0.3)",
-                      textDecoration: "none",
-                    }}
+                    className="btn-swarm-secondary"
+                    style={{ fontSize: 11, padding: "5px 10px", textDecoration: "none" }}
                   >
                     HashScan ↗
                   </a>
@@ -734,15 +712,15 @@ export function AgentInspectorModal({
         </div>
 
         {/* Footer */}
-        <div className="swarm-modal-footer">
-          <span style={{ fontSize: 11, color: "#64748b" }}>
-            Powered by SwarmProof Multi-Agent Consensus Protocol
+        <div className="swarm-modal-footer" style={{ backgroundColor: "#fafafa", borderTop: "1px solid #e4e4e7", padding: "12px 20px" }}>
+          <span style={{ fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)" }}>
+            SwarmProof Consensus Protocol • did:hedera
           </span>
           <button
             type="button"
             onClick={onClose}
             className="btn-swarm-secondary"
-            style={{ fontSize: 12, padding: "8px 18px" }}
+            style={{ fontSize: 12, padding: "6px 14px" }}
           >
             Close Inspector
           </button>
