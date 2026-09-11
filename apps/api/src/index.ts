@@ -21,6 +21,7 @@ if (isMain) {
     console.log(`  payment provider : ${env.X402_FACILITATOR_URL ? "x402" : "mock (offline)"}${env.X402_FACILITATOR_URL ? ` @ ${env.X402_FACILITATOR_URL}` : " — set X402_FACILITATOR_URL to go live"}`);
     console.log(`  hedera HCS       : ${env.HEDERA_ACCOUNT_ID && env.HEDERA_PRIVATE_KEY && env.HEDERA_TOPIC_ID ? `hedera @ ${env.HEDERA_TOPIC_ID}` : "offline mock"}`);
     console.log(`  network          : ${env.PAYMENT_NETWORK ?? "hedera:testnet"}`);
+    console.log(`  AI LLM provider  : ${env.ANTHROPIC_API_KEY ? "Anthropic Claude (" + (env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet") + ")" : env.OPENAI_API_KEY ? "OpenAI (" + (env.OPENAI_MODEL ?? "gpt-4o-mini") + (env.OPENAI_BASE_URL ? ` @ ${env.OPENAI_BASE_URL}` : "") + ")" : env.OLLAMA_BASE_URL ? "Local Ollama (" + (env.OLLAMA_MODEL ?? "deepseek-coder-v2") + ")" : "heuristic AST detector (set OPENAI_API_KEY or ANTHROPIC_API_KEY for real LLMs)"}`);
     console.log(`  try: curl -i -X POST http://localhost:${info.port}/audit -H 'content-type: application/json' -d '{"contractName":"V","source":"contract V {}"}'`);
   });
 } else {
