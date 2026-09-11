@@ -13,3 +13,4 @@ out/
 # Private integration docs — never commit (keep in-repo notes local).
 hedera-integration.md
 stage3.md
+LOCK_IN_ROADMAP.md

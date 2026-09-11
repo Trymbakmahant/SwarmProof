@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.62.0",
-    "@swarmproof/agents": "workspace:*"
+    "@swarmproof/agents": "workspace:*",
+    "ethers": "^6.17.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
