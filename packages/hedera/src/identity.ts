@@ -411,6 +411,113 @@ export function buildIdentityMessage(
   };
 }
 
+export interface HCS14QualificationMessage {
+  type: "hcs-14.qualification";
+  version: "1";
+  did: string;
+  agentId: string;
+  role: string;
+  benchmarkScore: number;
+  passed: boolean;
+  timestamp: string;
+  topicId: string;
+  signature?: string;
+  evidence?: {
+    contractName?: string;
+    truePositivesCount?: number;
+    falsePositivesCount?: number;
+    precision?: number;
+    recall?: number;
+    f1Score?: number;
+  };
+}
+
+export interface AgentQualificationRecord {
+  agentId: string;
+  did: string;
+  role: string;
+  benchmarkScore: number;
+  passed: boolean;
+  hcsTopicId: string;
+  transactionId: string;
+  consensusTimestamp: string;
+  message: HCS14QualificationMessage;
+  verifiableCredential: AgentVerifiableCredential;
+}
+
+export function buildQualificationMessage(
+  network: string,
+  topicId: string,
+  identity: AgentIdentity,
+  role: string,
+  benchmarkScore: number,
+  passed: boolean,
+  evidence?: HCS14QualificationMessage["evidence"],
+  options?: RegisterIdentityOptions,
+): HCS14QualificationMessage {
+  const did = formatHederaDID(network, topicId, identity.agentId);
+  return {
+    type: "hcs-14.qualification",
+    version: "1",
+    did,
+    agentId: identity.agentId,
+    role,
+    benchmarkScore,
+    passed,
+    timestamp: new Date().toISOString(),
+    topicId,
+    evidence,
+    ...(options?.signature ? { signature: options.signature.replace(/^0x/, "") } : {}),
+  };
+}
+
+export function buildQualifiedAuditorCredential(
+  network: string,
+  topicId: string,
+  identity: AgentIdentity,
+  role: string,
+  benchmarkScore: number,
+  txId: string,
+  consensusTimestamp: string,
+  options?: RegisterIdentityOptions,
+): AgentVerifiableCredential {
+  const did = formatHederaDID(network, topicId, identity.agentId);
+  const cleanNet = network.includes("mainnet") ? "mainnet" : "testnet";
+
+  return {
+    "@context": ["https://www.w3.org/2018/credentials/v1", "https://identity.hedera.com/vc/v1"],
+    id: `vc:hedera:${cleanNet}:${topicId}:${identity.agentId}:qualification`,
+    type: ["VerifiableCredential", "SwarmSecurityAuditorCredential"],
+    issuer: {
+      id: `did:hedera:${cleanNet}:${topicId}`,
+      name: "SwarmProof Decentralized Security Quorum",
+    },
+    issuanceDate: consensusTimestamp,
+    credentialSubject: {
+      id: did,
+      agentId: identity.agentId,
+      name: identity.name,
+      role: `Qualified ${role} Specialist`,
+      capabilities: identity.capabilities ?? [role],
+      paymentAddress: identity.paymentAddress,
+      authorizedQuorum: true,
+      trustScore: benchmarkScore,
+      auditSpecialty: role,
+      ...(options?.publicKey ? { publicKeyHex: options.publicKey.replace(/^0x/, "") } : {}),
+    },
+    proof: {
+      type: "HederaHCSConsensusProof",
+      created: consensusTimestamp,
+      verificationMethod: `${did}#key-1`,
+      topicId,
+      transactionId: txId,
+      consensusTimestamp,
+      proofPurpose: "assertionMethod",
+      ...(options?.signature ? { signature: options.signature.replace(/^0x/, "") } : {}),
+    },
+  };
+}
+
 export interface IdentityRegistration {
   agentId: string;
   did: string;
@@ -427,10 +534,20 @@ export interface IdentityRegistrar {
   readonly topicId: string;
   readonly network: string;
   register(identity: AgentIdentity, options?: RegisterIdentityOptions): Promise<IdentityRegistration>;
+  qualifyAgent(
+    identity: AgentIdentity,
+    role: string,
+    benchmarkScore: number,
+    passed: boolean,
+    evidence?: HCS14QualificationMessage["evidence"],
+    options?: RegisterIdentityOptions,
+  ): Promise<AgentQualificationRecord>;
   lastRegistration(agentId: string): IdentityRegistration | undefined;
+  getQualification(agentId: string): AgentQualificationRecord | undefined;
   resolveDID(didUriOrAgentId: string): AgentDIDDocument | undefined;
   getCredential(agentId: string): AgentVerifiableCredential | undefined;
   allRegistrations(): IdentityRegistration[];
+  allQualifications(): AgentQualificationRecord[];
 }
 
 export class MockIdentityRegistrar implements IdentityRegistrar {
@@ -438,6 +555,7 @@ export class MockIdentityRegistrar implements IdentityRegistrar {
   readonly topicId: string;
   readonly network: string;
   private registrations = new Map<string, IdentityRegistration>();
+  private qualifications = new Map<string, AgentQualificationRecord>();
   private seq = 0;
 
   constructor(topicId = "0.0.mock-identity-topic", network = "testnet") {
@@ -476,8 +594,62 @@ export class MockIdentityRegistrar implements IdentityRegistrar {
     return registration;
   }
 
+  async qualifyAgent(
+    identity: AgentIdentity,
+    role: string,
+    benchmarkScore: number,
+    passed: boolean,
+    evidence?: HCS14QualificationMessage["evidence"],
+    options?: RegisterIdentityOptions,
+  ): Promise<AgentQualificationRecord> {
+    this.seq += 1;
+    const txId = `0.0.qualtrx-${this.seq}-${Date.now()}`;
+    const timestamp = new Date().toISOString();
+    const did = formatHederaDID(this.network, this.topicId, identity.agentId);
+
+    const message = buildQualificationMessage(
+      this.network,
+      this.topicId,
+      identity,
+      role,
+      benchmarkScore,
+      passed,
+      evidence,
+      options,
+    );
+    const verifiableCredential = buildQualifiedAuditorCredential(
+      this.network,
+      this.topicId,
+      identity,
+      role,
+      benchmarkScore,
+      txId,
+      timestamp,
+      options,
+    );
+
+    const record: AgentQualificationRecord = {
+      agentId: identity.agentId,
+      did,
+      role,
+      benchmarkScore,
+      passed,
+      hcsTopicId: this.topicId,
+      transactionId: txId,
+      consensusTimestamp: timestamp,
+      message,
+      verifiableCredential,
+    };
+    this.qualifications.set(identity.agentId, record);
+    return record;
+  }
+
   lastRegistration(agentId: string): IdentityRegistration | undefined {
     return this.registrations.get(agentId);
+  }
+
+  getQualification(agentId: string): AgentQualificationRecord | undefined {
+    return this.qualifications.get(agentId);
   }
 
   resolveDID(didUriOrAgentId: string): AgentDIDDocument | undefined {
@@ -496,6 +668,10 @@ export class MockIdentityRegistrar implements IdentityRegistrar {
   allRegistrations(): IdentityRegistration[] {
     return Array.from(this.registrations.values());
   }
+
+  allQualifications(): AgentQualificationRecord[] {
+    return Array.from(this.qualifications.values());
+  }
 }
 
 export class HederaIdentityRegistrar implements IdentityRegistrar {
@@ -503,6 +679,7 @@ export class HederaIdentityRegistrar implements IdentityRegistrar {
   readonly topicId: string;
   readonly network: string;
   private registrations = new Map<string, IdentityRegistration>();
+  private qualifications = new Map<string, AgentQualificationRecord>();
 
   constructor(private readonly config: TopicSubmitConfig, private readonly submitDelayMs = 2000) {
     this.topicId = config.topicId;
@@ -542,8 +719,63 @@ export class HederaIdentityRegistrar implements IdentityRegistrar {
     return registration;
   }
 
+  async qualifyAgent(
+    identity: AgentIdentity,
+    role: string,
+    benchmarkScore: number,
+    passed: boolean,
+    evidence?: HCS14QualificationMessage["evidence"],
+    options?: RegisterIdentityOptions,
+  ): Promise<AgentQualificationRecord> {
+    const did = formatHederaDID(this.network, this.topicId, identity.agentId);
+    const message = buildQualificationMessage(
+      this.network,
+      this.topicId,
+      identity,
+      role,
+      benchmarkScore,
+      passed,
+      evidence,
+      options,
+    );
+
+    // Anchor qualification proof to Hedera Consensus Service Topic
+    const topic = new HederaTopicClient(this.config, this.submitDelayMs);
+    const submitted = await topic.submit(JSON.stringify(message));
+
+    const verifiableCredential = buildQualifiedAuditorCredential(
+      this.network,
+      this.topicId,
+      identity,
+      role,
+      benchmarkScore,
+      submitted.transactionId,
+      submitted.consensusTimestamp,
+      options,
+    );
+
+    const record: AgentQualificationRecord = {
+      agentId: identity.agentId,
+      did,
+      role,
+      benchmarkScore,
+      passed,
+      hcsTopicId: this.topicId,
+      transactionId: submitted.transactionId,
+      consensusTimestamp: submitted.consensusTimestamp,
+      message,
+      verifiableCredential,
+    };
+    this.qualifications.set(identity.agentId, record);
+    return record;
+  }
+
   lastRegistration(agentId: string): IdentityRegistration | undefined {
     return this.registrations.get(agentId);
+  }
+
+  getQualification(agentId: string): AgentQualificationRecord | undefined {
+    return this.qualifications.get(agentId);
   }
 
   resolveDID(didUriOrAgentId: string): AgentDIDDocument | undefined {
@@ -561,6 +793,10 @@ export class HederaIdentityRegistrar implements IdentityRegistrar {
 
   allRegistrations(): IdentityRegistration[] {
     return Array.from(this.registrations.values());
+  }
+
+  allQualifications(): AgentQualificationRecord[] {
+    return Array.from(this.qualifications.values());
   }
 }
 

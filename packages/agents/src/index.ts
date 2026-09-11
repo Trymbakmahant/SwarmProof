@@ -90,3 +90,4 @@ export const DEFAULT_AGENT_CONFIGS: Record<AgentRole, AgentConfig> = {
 export * from "./identity.js";
 export * from "./specialists.js";
 export * from "./llm.js";
+export * from "./benchmarks/index.js";

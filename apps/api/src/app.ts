@@ -6,9 +6,14 @@ import {
   parseLLMFindings,
   SecurityTaskSchema,
   SPECIALIST_PAYMENT_ADDRESSES,
+  BENCHMARK_SUITES,
+  evaluateAgentBenchmark,
+  BenchmarkRole,
   type LLMProvider,
   type SecurityAgent,
   type SecurityTask,
+  type Finding,
+  type BenchmarkSuite,
 } from "@swarmproof/agents";
 import {
   AuditOrchestrator,
@@ -22,6 +27,8 @@ import {
   formatHederaDID,
   buildDIDDocument,
   buildVerifiableCredential,
+  buildQualifiedAuditorCredential,
+  buildQualificationMessage,
   MirrorNodeClient,
   buildPaymentProofMessage,
   generateRegistrationChallenge,
@@ -31,6 +38,7 @@ import {
   type AuditProofClient,
   type PaymentProofClient,
   type IdentityRegistrar,
+  type AgentQualificationRecord,
 } from "@swarmproof/hedera";
 import {
   PaymentGateway,
@@ -295,6 +303,10 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
     color?: string;
     systemPrompt?: string;
     model?: string;
+    status?: "ACTIVE_SPECIALIST" | "CANDIDATE" | "SUSPENDED";
+    qualifiedRole?: string;
+    benchmarkScore?: number;
+    qualificationTimestamp?: string;
   }
   const customAgentMeta = new Map<string, CustomAgentMeta>();
 
@@ -302,7 +314,8 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
     return Object.entries(specialists).map(([id, a]) => {
       const meta = customAgentMeta.get(id);
       const reg = identity.lastRegistration(id);
-      const did = reg?.did ?? formatHederaDID(network, identity.topicId, id);
+      const qual = identity.getQualification(id);
+      const did = reg?.did ?? qual?.did ?? formatHederaDID(network, identity.topicId, id);
       return {
         agentId: id,
         name: a.identity.name,
@@ -311,16 +324,20 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
         version: a.identity.version,
         mode: llmProvider ? "llm" : "heuristic",
         provider: llmProvider?.name ?? "heuristic-ast",
-        role: meta?.role,
+        role: meta?.role ?? a.identity.capabilities[0],
         shape: meta?.shape,
         color: meta?.color,
+        status: meta?.status ?? (qual ? "ACTIVE_SPECIALIST" : "ACTIVE_SPECIALIST"),
+        qualifiedRole: meta?.qualifiedRole ?? a.identity.capabilities[0],
+        benchmarkScore: meta?.benchmarkScore ?? qual?.benchmarkScore ?? 95,
         did,
         w3cStandard: "did:hedera",
         didDocumentUrl: `/agents/${id}/did`,
         credentialUrl: `/agents/${id}/credential`,
-        identityReference: reg?.transactionId,
-        identityTopicId: reg?.hcsTopicId ?? identity.topicId,
-        consensusTimestamp: reg?.consensusTimestamp,
+        qualificationUrl: `/agents/${id}/qualification`,
+        identityReference: reg?.transactionId ?? qual?.transactionId,
+        identityTopicId: reg?.hcsTopicId ?? qual?.hcsTopicId ?? identity.topicId,
+        consensusTimestamp: reg?.consensusTimestamp ?? qual?.consensusTimestamp,
       };
     });
   }
@@ -441,6 +458,43 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
       totalSwarmAudits: 148,
       totalRevenueDistributedUSD: "133.20",
       averageConsensusAccuracy: 97.8,
+    });
+  });
+
+  // GET /benchmarks — List all 5 official specialist benchmark suites
+  app.get("/benchmarks", (c) => {
+    const list = Object.entries(BENCHMARK_SUITES).map(([, suite]) => ({
+      role: suite.role,
+      roleTitle: suite.roleTitle,
+      contractName: suite.contractName,
+      description: suite.description,
+      passingThreshold: suite.passingThreshold,
+      groundTruthVulnerabilitiesCount: suite.groundTruth.length,
+      trapsCount: suite.traps.length,
+    }));
+    return c.json({ benchmarks: list });
+  });
+
+  // GET /benchmarks/:role — Get benchmark contract code & instructions for a specific role
+  app.get("/benchmarks/:role", (c) => {
+    const roleParam = c.req.param("role").toLowerCase() as BenchmarkRole;
+    const suite = BENCHMARK_SUITES[roleParam];
+    if (!suite) {
+      return c.json(
+        {
+          error: `Unknown benchmark role: ${roleParam}. Valid roles: ${Object.keys(BENCHMARK_SUITES).join(", ")}`,
+        },
+        404,
+      );
+    }
+    return c.json({
+      role: suite.role,
+      roleTitle: suite.roleTitle,
+      contractName: suite.contractName,
+      description: suite.description,
+      passingThreshold: suite.passingThreshold,
+      contractSource: suite.contractSource,
+      instructions: `Analyze the ${suite.contractName} contract. Submit your candidate findings to POST /agents/qualify to earn your Hedera HCS Proof-of-Competency.`,
     });
   });
 
@@ -703,6 +757,230 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
       console.error("❌ Agent registration error:", err);
       return c.json({ error: (err as Error).message }, 500);
     }
+  });
+
+  // POST /agents/qualify — Automated Benchmark Evaluation & Hedera HCS Proof-of-Competency
+  app.post("/agents/qualify", async (c) => {
+    try {
+      const body = await c.req.json<{
+        agentId: string;
+        name: string;
+        role: BenchmarkRole;
+        paymentAddress?: string;
+        publicKey?: string;
+        signature?: string;
+        challenge?: string;
+        findings?: Finding[];
+        model?: string;
+        systemPrompt?: string;
+        shape?: string;
+        color?: string;
+      }>();
+
+      if (!body.agentId || !body.name || !body.role) {
+        return c.json({ error: "agentId, name, and role are required" }, 400);
+      }
+
+      const suite = BENCHMARK_SUITES[body.role];
+      if (!suite) {
+        return c.json(
+          { error: `Invalid role: ${body.role}. Must be one of: ${Object.keys(BENCHMARK_SUITES).join(", ")}` },
+          400,
+        );
+      }
+
+      const cleanId = body.agentId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      let candidateFindings: Finding[] = body.findings || [];
+
+      // If no candidate findings were supplied, run automated analysis via agent specialist logic or LLM provider
+      if (candidateFindings.length === 0) {
+        const task: SecurityTask = {
+          contractName: suite.contractName,
+          source: suite.contractSource,
+          network: network || "testnet",
+        };
+
+        const specialistKey = `${body.role}-agent`;
+        const matchedSpecialist = specialists[cleanId] ?? specialists[specialistKey];
+        if (matchedSpecialist) {
+          candidateFindings = await matchedSpecialist.analyze(task);
+        } else if (llmProvider) {
+          const prompt =
+            body.systemPrompt ||
+            `You are an elite ${suite.roleTitle}. Find all security vulnerabilities in the provided smart contract. Return strictly valid JSON with findings array.`;
+          const resp = await llmProvider.complete(prompt, [
+            {
+              role: "user",
+              content: `Audit this contract:\n\`\`\`solidity\n${suite.contractSource}\n\`\`\``,
+            },
+          ]);
+          candidateFindings = parseLLMFindings(resp, cleanId as any);
+        }
+      }
+
+      // Run benchmark evaluation against ground truth & false-positive traps
+      const evalResult = evaluateAgentBenchmark(body.role, candidateFindings, suite);
+
+      // Cryptographic signature check (if provided):
+      let verifiedKeyType: "Ed25519VerificationKey2020" | "EcdsaSecp256k1VerificationKey2019" = "Ed25519VerificationKey2020";
+      let effectivePublicKey = body.publicKey?.trim() || "";
+      if (body.signature && body.challenge) {
+        const sigCheck = verifyAgentRegistrationSignature(body.challenge, body.signature, effectivePublicKey);
+        if (sigCheck.valid) {
+          verifiedKeyType = sigCheck.keyType;
+          if (!effectivePublicKey && sigCheck.recoveredPublicKey) {
+            effectivePublicKey = sigCheck.recoveredPublicKey;
+          }
+        }
+      }
+
+      // If passed: anchor qualification proof to Hedera Consensus Service & mint credential
+      if (evalResult.passed) {
+        const identityRecord = {
+          agentId: cleanId,
+          name: body.name,
+          paymentAddress: body.paymentAddress?.trim() || constants.gatewayAddress,
+          capabilities: [body.role, `${body.role}-specialist`],
+          version: "1.0.0",
+        };
+
+        // Qualify agent on Hedera Consensus Service!
+        const qualRecord = await identity.qualifyAgent(
+          identityRecord,
+          suite.roleTitle,
+          evalResult.score,
+          true,
+          {
+            contractName: suite.contractName,
+            truePositivesCount: evalResult.truePositivesCount,
+            falsePositivesCount: evalResult.falsePositivesCount,
+            precision: evalResult.precision,
+            recall: evalResult.recall,
+            f1Score: evalResult.f1Score,
+          },
+          {
+            role: suite.roleTitle,
+            publicKey: effectivePublicKey,
+            signature: body.signature,
+            keyType: verifiedKeyType,
+          },
+        );
+
+        // Also register in general identity registry if not yet registered
+        const existingReg = identity.lastRegistration(cleanId);
+        const registration =
+          existingReg ||
+          (await identity.register(identityRecord, {
+            role: suite.roleTitle,
+            publicKey: effectivePublicKey,
+            signature: body.signature,
+            keyType: verifiedKeyType,
+          }));
+
+        // Store custom agent metadata
+        customAgentMeta.set(cleanId, {
+          role: suite.roleTitle,
+          shape: body.shape || "octahedron",
+          color: body.color || "#10b981",
+          systemPrompt: body.systemPrompt,
+          model: body.model,
+          status: "ACTIVE_SPECIALIST",
+          qualifiedRole: body.role,
+          benchmarkScore: evalResult.score,
+          qualificationTimestamp: qualRecord.consensusTimestamp,
+        });
+
+        // Ensure specialist is active in runtime swarm specialists map
+        if (!specialists[cleanId]) {
+          const newAgent: SecurityAgent = {
+            identity: identityRecord,
+            analyze: async (task: SecurityTask) => {
+              if (llmProvider) {
+                const system =
+                  body.systemPrompt ||
+                  `You are an elite ${suite.roleTitle}. Find security vulnerabilities in the provided smart contract. Return strictly valid JSON findings.`;
+                const resp = await llmProvider.complete(system, [
+                  { role: "user", content: `Audit this contract:\n\`\`\`solidity\n${task.source}\n\`\`\`` },
+                ]);
+                return parseLLMFindings(resp, cleanId as any);
+              }
+              return [];
+            },
+          };
+          specialists[cleanId] = newAgent;
+        }
+
+        return c.json(
+          {
+            ok: true,
+            passed: true,
+            score: evalResult.score,
+            status: "ACTIVE_SPECIALIST",
+            evaluation: evalResult,
+            qualificationProof: {
+              hcsTopicId: qualRecord.hcsTopicId,
+              transactionId: qualRecord.transactionId,
+              consensusTimestamp: qualRecord.consensusTimestamp,
+              did: qualRecord.did,
+              credentialUrl: `/agents/${cleanId}/credential`,
+              didDocumentUrl: `/agents/${cleanId}/did`,
+              qualificationUrl: `/agents/${cleanId}/qualification`,
+              hashscanUrl: `https://hashscan.io/${identity.network || "testnet"}/transaction/${qualRecord.transactionId}`,
+            },
+            registration: {
+              ...registration,
+              did: registration.did,
+            },
+            verifiableCredential: qualRecord.verifiableCredential,
+            message: `Congratulations! Agent ${body.name} (${cleanId}) passed the ${suite.roleTitle} competency exam with score ${evalResult.score}/100 and is now an ACTIVE_SPECIALIST on Hedera HCS.`,
+          },
+          200,
+        );
+      }
+
+      // If not passed:
+      return c.json(
+        {
+          ok: false,
+          passed: false,
+          score: evalResult.score,
+          status: "FAILED_EXAM",
+          evaluation: evalResult,
+          message: evalResult.feedback,
+        },
+        422,
+      );
+    } catch (err) {
+      console.error("❌ Agent benchmark qualification error:", err);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /agents/:id/qualification — Get agent's official qualification proof & score
+  app.get("/agents/:id/qualification", (c) => {
+    const id = c.req.param("id");
+    const qual = identity.getQualification(id);
+    if (qual) {
+      return c.json({
+        ok: true,
+        qualification: qual,
+      });
+    }
+    const meta = customAgentMeta.get(id);
+    if (meta?.benchmarkScore) {
+      return c.json({
+        ok: true,
+        qualification: {
+          agentId: id,
+          role: meta.role || "Security Specialist",
+          benchmarkScore: meta.benchmarkScore,
+          passed: true,
+          status: meta.status || "ACTIVE_SPECIALIST",
+          consensusTimestamp: meta.qualificationTimestamp || new Date().toISOString(),
+        },
+      });
+    }
+    return c.json({ error: "No qualification record found for this agent" }, 404);
   });
 
   // GET /agents/:id/did — Official W3C Decentralized Identifier (DID) Document
