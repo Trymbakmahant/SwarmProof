@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { type SpecialistAgentMeta, SHAPE_METAS } from "./agentData";
+import { AgentCompetencyExamView } from "./AgentCompetencyExamView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
 
@@ -85,6 +86,9 @@ const COLOR_PALETTES = [
 ];
 
 export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModalProps) {
+  // Active Tab: V2 Competency Exam (recommended) or Custom Manual Configuration
+  const [activeTab, setActiveTab] = useState<"exam" | "custom">("exam");
+
   // Form State
   const defaultPreset = AGENT_PRESETS[0]!;
   const [name, setName] = useState(defaultPreset.name);
@@ -481,12 +485,12 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 color: "#09090b",
               }}
             >
-              {SHAPE_METAS[shape].icon}
+              {activeTab === "exam" ? "🧪" : SHAPE_METAS[shape].icon}
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Register AI Security Agent
+                  {activeTab === "exam" ? "Agent Competency Exam & HCS Proof" : "Register AI Security Agent"}
                 </h3>
                 <span
                   style={{
@@ -505,7 +509,9 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 </span>
               </div>
               <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#71717a" }}>
-                Deploy a specialized auditor into the SwarmProof quorum on-chain.
+                {activeTab === "exam"
+                  ? "Prove specialist competency against on-chain benchmark suites to earn cryptographic Hedera credentials."
+                  : "Deploy a specialized auditor into the SwarmProof quorum on-chain."}
               </p>
             </div>
           </div>
@@ -516,6 +522,77 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
             style={{ padding: "6px 12px", fontSize: 12 }}
           >
             ✕ Close
+          </button>
+        </div>
+
+        {/* Dual Tab Switcher Bar */}
+        <div
+          style={{
+            display: "flex",
+            borderBottom: "1px solid #e4e4e7",
+            backgroundColor: "#fcfcfc",
+            padding: "0 20px",
+            gap: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab("exam")}
+            style={{
+              padding: "12px 16px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: activeTab === "exam" ? "#09090b" : "#71717a",
+              borderBottom: activeTab === "exam" ? "2px solid #09090b" : "2px solid transparent",
+              background: "none",
+              borderTop: "none",
+              borderLeft: "none",
+              borderRight: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>🧪</span>
+            <span>Take Competency Exam &amp; HCS Proof</span>
+            <span
+              style={{
+                fontSize: 10,
+                backgroundColor: activeTab === "exam" ? "#10b98115" : "#f4f4f5",
+                color: activeTab === "exam" ? "#059669" : "#71717a",
+                padding: "2px 6px",
+                borderRadius: 4,
+                fontWeight: 700,
+              }}
+            >
+              V2 Recommended
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("custom")}
+            style={{
+              padding: "12px 16px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: activeTab === "custom" ? "#09090b" : "#71717a",
+              borderBottom: activeTab === "custom" ? "2px solid #09090b" : "2px solid transparent",
+              background: "none",
+              borderTop: "none",
+              borderLeft: "none",
+              borderRight: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>⚙️</span>
+            <span>Manual Specialist Config</span>
           </button>
         </div>
 
@@ -858,6 +935,20 @@ export function RegisterAgentModal({ onClose, onRegistered }: RegisterAgentModal
                 </button>
               </div>
             </div>
+          ) : activeTab === "exam" ? (
+            /* V2 Benchmark & Competency Exam Flow */
+            <AgentCompetencyExamView
+              onQualified={(newAgent) => {
+                onRegistered(newAgent);
+                onClose();
+              }}
+              onCancel={onClose}
+              initialWalletAddress={walletAddress}
+              initialPaymentAddress={paymentAddress}
+              initialPublicKey={publicKey}
+              initialSignature={signature}
+              initialChallenge={challenge}
+            />
           ) : (
             /* Form Screen */
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
