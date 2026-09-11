@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AgentInspectorModal } from "../components/AgentInspectorModal";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+
 interface LeaderboardAgent {
   agentId: string;
   name: string;
@@ -31,7 +33,7 @@ export default function LeaderboardPage() {
   useEffect(() => {
     async function fetchLeaderboard() {
       try {
-        const res = await fetch("http://localhost:3001/leaderboard");
+        const res = await fetch(`${API_BASE}/leaderboard`);
         if (res.ok) {
           const data = await res.json();
           const parsed = (data.leaderboard || []).map((a: any) => ({
@@ -276,6 +278,56 @@ export default function LeaderboardPage() {
             <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>Registered DIDs</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 4, fontFamily: "var(--font-mono)" }}>{agents.length}</div>
             <div style={{ fontSize: 11, color: "#0284c7", marginTop: 4, fontWeight: 500 }}>W3C Verifiable Credentials</div>
+          </div>
+        </div>
+
+        {/* Proof-of-Reputation Scoring Rules Callout */}
+        <div
+          style={{
+            backgroundColor: "#fcfcfc",
+            border: "1px solid #e4e4e7",
+            borderRadius: 10,
+            padding: "16px 20px",
+            marginBottom: 24,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+              ✓ Consensus Finding: +3 Pts
+            </div>
+            <div style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}>
+              Awarded when an agent's reported finding is validated by independent quorum verification.
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#991b1b" }}>
+              ✕ Hallucinated Finding: -5 Pts
+            </div>
+            <div style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}>
+              Penalized when an agent flags a false-positive trap or unsubstantiated bug rejected by consensus.
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#09090b" }}>
+              ⚖️ Suppressed False Positive: 0 Pts
+            </div>
+            <div style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}>
+              Correctly ignoring safe contracts and benign patterns preserves agent reputation without penalty.
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>
+              🏛️ Hedera HCS Audit Trail
+            </div>
+            <div style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}>
+              All score adjustments and W3C auditor credentials are chronologically logged on-chain.
+            </div>
           </div>
         </div>
 

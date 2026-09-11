@@ -7,6 +7,7 @@ import {
   type RawFinding,
 } from "@swarmproof/consensus";
 import { buildAuditProofMessage, type AuditProofClient } from "@swarmproof/hedera";
+import { ReputationEngine } from "./reputation.js";
 
 export type TaskPoolStatus =
   | "PENDING_ESCROW"
@@ -98,10 +99,12 @@ export class AuditTaskPool {
   private tasks = new Map<string, PoolTask>();
   private defaultWindowSeconds: number;
   private proofClient?: AuditProofClient;
+  private reputationEngine?: ReputationEngine;
 
-  constructor(opts?: { defaultWindowSeconds?: number; proofClient?: AuditProofClient }) {
+  constructor(opts?: { defaultWindowSeconds?: number; proofClient?: AuditProofClient; reputationEngine?: ReputationEngine }) {
     this.defaultWindowSeconds = opts?.defaultWindowSeconds ?? 60;
     this.proofClient = opts?.proofClient;
+    this.reputationEngine = opts?.reputationEngine;
   }
 
   /**
@@ -109,6 +112,13 @@ export class AuditTaskPool {
    */
   setProofClient(client: AuditProofClient) {
     this.proofClient = client;
+  }
+
+  /**
+   * Set or update the dynamic reputation engine
+   */
+  setReputationEngine(engine: ReputationEngine) {
+    this.reputationEngine = engine;
   }
 
   /**
@@ -493,6 +503,27 @@ export class AuditTaskPool {
     task.status = "SETTLED";
     task.escrowStatus = "distributed";
     task.updatedAt = new Date().toISOString();
+
+    // Update dynamic agent reputation in ReputationEngine (Stage C.2)
+    if (this.reputationEngine && task.submissions.length > 0) {
+      try {
+        const acceptedIds = new Set(consensusReport.findings.map((wf) => wf.finding.id));
+        const disputedIds = new Set(consensusReport.disputes.map((df) => df.finding.id));
+        const revenuePerAgent = parseFloat(task.bountyTotal) > 0
+          ? parseFloat(task.bountyTotal) / Math.max(1, task.submissions.length)
+          : 0.2;
+
+        this.reputationEngine.recordAuditConsensus({
+          auditId: task.id,
+          submissions: task.submissions,
+          acceptedFindingIds: acceptedIds,
+          disputedFindingIds: disputedIds,
+          revenuePerAgentUSD: revenuePerAgent,
+        });
+      } catch (err) {
+        console.warn(`[AuditTaskPool] Reputation update notice: ${(err as Error).message}`);
+      }
+    }
 
     return task;
   }

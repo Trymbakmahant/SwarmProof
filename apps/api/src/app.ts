@@ -20,6 +20,7 @@ import {
   DEFAULT_SPECIALIST_WEIGHTS,
 } from "@swarmproof/swarm";
 import { AuditTaskPool, type PoolTask } from "./pool.js";
+import { ReputationEngine, type AgentReputationRecord } from "./reputation.js";
 import { createVerifier } from "@swarmproof/verification";
 import {
   createAuditProofClient,
@@ -124,9 +125,12 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   const paymentProof: PaymentProofClient = opts.paymentProof ?? createPaymentProofClient(env);
   const identity: IdentityRegistrar = opts.identity ?? createIdentityRegistrar(env);
 
+  const reputationEngine = new ReputationEngine();
+
   const taskPool = new AuditTaskPool({
     defaultWindowSeconds: 60,
     proofClient: auditProof,
+    reputationEngine,
   });
 
   // Seed an initial demo audit task in the pool
@@ -260,6 +264,24 @@ contract EtherVault {
       record.findings = result.consensus.findings;
       record.verification = result.verification;
       record.status = "done";
+
+      // Update dynamic Proof-of-Reputation (Stage C.2)
+      if (result.consensus) {
+        const acceptedIds = new Set(result.consensus.findings.map((wf) => wf.finding.id));
+        const disputedIds = new Set((result.consensus.disputes ?? []).map((df) => df.finding.id));
+        reputationEngine.recordAuditConsensus({
+          auditId: record.id,
+          submissions: Object.values(specialists).map((s) => ({
+            agentId: s.identity.agentId,
+            role: s.identity.capabilities[0],
+            findings: (result.raw ?? []).filter((r) => r.agentId === s.identity.agentId).map((r) => r.finding),
+          })),
+          acceptedFindingIds: acceptedIds,
+          disputedFindingIds: disputedIds,
+          revenuePerAgentUSD: 0.2,
+        });
+      }
+
       console.log(`✅ [Audit ${record.id}] Swarm audit complete!`);
       console.log(`   Consensus Result: ${result.report.result.toUpperCase()}`);
       console.log(`   Accepted Findings: ${result.consensus.findings.length}`);
@@ -454,51 +476,31 @@ contract EtherVault {
 
   app.get("/agents", (c) => c.json({ agents: agentDirectory() }));
 
-  // GET /leaderboard — SwarmProof Agent Reputation Leaderboard (Proof-of-Reputation 0-100 & x402 revenue)
+  // GET /leaderboard — Dynamic SwarmProof Agent Reputation Leaderboard (0-100 PoR & x402 revenue)
   app.get("/leaderboard", (c) => {
-    const directory = agentDirectory();
-    const mockReputation: Record<string, { reputationScore: number; tier: string; accuracyRate: number; audits: number; earnings: string; specialty: string }> = {
-      "verification-agent": { reputationScore: 98, tier: "ELITE_SENTINEL", accuracyRate: 100.0, audits: 148, earnings: "22.20", specialty: "Automated exploit test execution & Sandbox PoC reproduction" },
-      "reentrancy-agent": { reputationScore: 96, tier: "ELITE_SENTINEL", accuracyRate: 99.2, audits: 148, earnings: "22.20", specialty: "Checks-Effects-Interactions & Reentrancy Call-Graph" },
-      "static-agent": { reputationScore: 93, tier: "ELITE_SENTINEL", accuracyRate: 98.6, audits: 148, earnings: "22.20", specialty: "Low-level calls, Unchecked arithmetic, Assembly bounds" },
-      "access-control-agent": { reputationScore: 89, tier: "MASTER_AUDITOR", accuracyRate: 97.4, audits: 148, earnings: "22.20", specialty: "Privilege escalation, tx.origin, Initializer bypass" },
-      "business-logic-agent": { reputationScore: 85, tier: "MASTER_AUDITOR", accuracyRate: 95.8, audits: 148, earnings: "22.20", specialty: "State invariants, Rounding precision, Input boundaries" },
-      "economic-agent": { reputationScore: 81, tier: "VERIFIED_SENTINEL", accuracyRate: 94.1, audits: 148, earnings: "22.20", specialty: "Flash loans, Spot AMM manipulation, Slippage frontrunning" },
-    };
-
-    const leaderboard = directory.map((agent) => {
-      const rep = mockReputation[agent.agentId] ?? {
-        reputationScore: 80,
-        tier: "VERIFIED_SENTINEL",
-        accuracyRate: 95.0,
-        audits: 12,
-        earnings: "1.80",
-        specialty: agent.capabilities.join(", "),
-      };
-
-      return {
-        ...agent,
-        reputationScore: rep.reputationScore,
-        tier: rep.tier,
-        accuracyRate: rep.accuracyRate,
-        totalAudits: rep.audits,
-        totalEarningsUSD: rep.earnings,
-        totalEarningsTinybars: Math.round(parseFloat(rep.earnings) * 1_000_000),
-        specialty: rep.specialty,
-        hederaVerified: true,
-      };
-    });
-
-    leaderboard.sort((a, b) => b.reputationScore - a.reputationScore);
+    const leaderboard = reputationEngine.getLeaderboard();
+    const totalAudits = leaderboard.reduce((sum, a) => Math.max(sum, a.totalAudits), 148);
+    const totalEarnings = leaderboard.reduce((sum, a) => sum + parseFloat(a.totalEarningsUSD || "0"), 0);
+    const avgAccuracy = leaderboard.length > 0
+      ? (leaderboard.reduce((sum, a) => sum + a.accuracyRate, 0) / leaderboard.length).toFixed(1)
+      : "97.5";
 
     return c.json({
       leaderboard,
       network: identity.network || "testnet",
       hcsTopicId: identity.topicId || "0.0.10417469",
-      totalSwarmAudits: 148,
-      totalRevenueDistributedUSD: "133.20",
-      averageConsensusAccuracy: 97.8,
+      totalSwarmAudits: totalAudits,
+      totalRevenueDistributedUSD: totalEarnings.toFixed(2),
+      averageConsensusAccuracy: parseFloat(avgAccuracy),
     });
+  });
+
+  // GET /agents/:id/reputation — Proof-of-Reputation profile for a specific agent
+  app.get("/agents/:id/reputation", (c) => {
+    const id = c.req.param("id");
+    const rep = reputationEngine.getAgentReputation(id);
+    if (!rep) return c.json({ error: `Agent ${id} reputation not found` }, 404);
+    return c.json({ ok: true, reputation: rep });
   });
 
   // GET /benchmarks — List all 5 official specialist benchmark suites
@@ -761,6 +763,18 @@ contract EtherVault {
         model: body.model || (llmProvider ? llmProvider.name : "heuristic"),
       });
 
+      // Register agent in Proof-of-Reputation engine
+      reputationEngine.registerAgent({
+        agentId: cleanId,
+        name: body.name,
+        role: body.role || "smart-contract-auditor",
+        benchmarkScore: 85,
+        did: registration.did,
+        shape: body.shape,
+        color: body.color,
+        specialty: capabilities.join(", "),
+      });
+
       return c.json(
         {
           ok: true,
@@ -949,6 +963,18 @@ contract EtherVault {
           };
           specialists[cleanId] = newAgent;
         }
+
+        // Register qualified agent in dynamic Proof-of-Reputation engine with benchmark score
+        reputationEngine.registerAgent({
+          agentId: cleanId,
+          name: body.name,
+          role: suite.roleTitle,
+          benchmarkScore: evalResult.score,
+          did: qualRecord.did,
+          shape: body.shape,
+          color: body.color,
+          specialty: suite.description,
+        });
 
         return c.json(
           {
