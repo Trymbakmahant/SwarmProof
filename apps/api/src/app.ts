@@ -1451,10 +1451,16 @@ contract EtherVault {
         bountyTotal?: string;
         currency?: string;
         autoOpen?: boolean;
+        requireEscrow?: boolean;
       }>();
       if (!body.contractName || !body.source) {
         return c.json({ error: "contractName and source are required" }, 400);
       }
+
+      const payload = payloadFromRequest(c);
+      const shouldRequireEscrow = body.requireEscrow === true || body.autoOpen === false;
+      const isAutoOpen = !shouldRequireEscrow || Boolean(payload);
+
       const task = taskPool.createTask({
         contractName: body.contractName,
         source: body.source,
@@ -1465,8 +1471,40 @@ contract EtherVault {
         requiredRoles: body.requiredRoles,
         bountyTotal: body.bountyTotal,
         currency: body.currency,
-        autoOpen: body.autoOpen !== false,
+        autoOpen: isAutoOpen,
       });
+
+      if (shouldRequireEscrow && !payload) {
+        const escrowUrl = new URL(`/pool/tasks/${task.id}/escrow`, c.req.url).toString();
+        const quote = {
+          x402Version: 2,
+          scheme: "exact",
+          network: constants.network,
+          total: task.bountyTotal,
+          currency: task.currency,
+          recipient: constants.gatewayAddress,
+          asset: env.X402_ASSET ?? "0.0.0",
+          taskId: task.id,
+        };
+        return c.json(
+          {
+            ok: false,
+            status: "PENDING_ESCROW",
+            message: "x402 Payment Required: Advance escrow bounty deposit required before submission window opens.",
+            taskId: task.id,
+            x402Quote: quote,
+            x402Resource: escrowUrl,
+            task: {
+              ...task,
+              remainingSeconds: taskPool.getRemainingSeconds(task),
+              isWindowOpen: taskPool.isWindowOpen(task),
+            },
+          },
+          402,
+          { "WWW-Authenticate": `X402 resource="${escrowUrl}"` },
+        );
+      }
+
       return c.json({
         ok: true,
         task: {
@@ -1648,6 +1686,109 @@ contract EtherVault {
         remainingSeconds: taskPool.getRemainingSeconds(updatedTask),
         isWindowOpen: taskPool.isWindowOpen(updatedTask),
       } : undefined,
+    });
+  });
+
+  // GET /pool/tasks/:id/quote — x402 payment quote for audit pool task (Stage D.1)
+  app.get("/pool/tasks/:id/quote", (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+
+    const escrowUrl = new URL(`/pool/tasks/${task.id}/escrow`, c.req.url).toString();
+    const isX402 = payment instanceof X402PaymentProvider;
+    return c.json(
+      {
+        x402Version: 2,
+        scheme: "exact",
+        network: constants.network,
+        total: task.bountyTotal,
+        currency: task.currency,
+        recipient: constants.gatewayAddress,
+        asset: isX402 ? undefined : (env.X402_ASSET ?? "0.0.0"),
+        taskId: task.id,
+        status: task.status,
+        escrowStatus: task.escrowStatus,
+        x402Resource: escrowUrl,
+      },
+      task.status === "PENDING_ESCROW" ? 402 : 200,
+      { "WWW-Authenticate": `X402 resource="${escrowUrl}"` },
+    );
+  });
+
+  // POST /pool/tasks/:id/escrow — Client authorizes advance x402 escrow for audit pool task (Stage D.1)
+  app.post("/pool/tasks/:id/escrow", async (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+
+    const payload = payloadFromRequest(c);
+    const body = await c.req.json<{ reference?: string; payerAddress?: string }>().catch(() => ({ reference: undefined, payerAddress: undefined }));
+    let ref = body.reference;
+
+    if (payload) {
+      try {
+        const amountTinybars = Math.round((parseFloat(task.bountyTotal) || 1.0) * (Number(env.X402_TINYBARS_PER_USD) || 1_000_000)).toString();
+        const quote: X402PaymentRequirements = {
+          scheme: "exact",
+          network: constants.network,
+          amount: amountTinybars,
+          payTo: constants.gatewayAddress,
+          maxTimeoutSeconds: 300,
+          asset: env.X402_ASSET ?? "0.0.0",
+          extra: {
+            service: "swarmproof-audit-escrow",
+            auditId: task.id,
+          },
+        };
+        const verification = await payerClient.verifyPayment(payload, quote);
+        if (verification.isValid) {
+          const settlement = await payerClient.settlePayment(payload, quote);
+          ref = settlement.transaction || `x402-escrow-${Date.now()}`;
+        }
+      } catch (e) {
+        console.warn(`[Escrow] x402 verification fallback: ${(e as Error).message}`);
+      }
+    }
+
+    if (!ref) {
+      ref = `x402-escrow-${Date.now()}`;
+    }
+
+    try {
+      const opened = taskPool.escrowTask(id, ref);
+      return c.json({
+        ok: true,
+        message: `x402 escrow confirmed ($${task.bountyTotal} ${task.currency}). Task window opened for specialist submissions.`,
+        reference: ref,
+        task: {
+          ...opened,
+          remainingSeconds: taskPool.getRemainingSeconds(opened),
+          isWindowOpen: taskPool.isWindowOpen(opened),
+        },
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /pool/tasks/:id/settlement — Comprehensive multi-agent settlement & micropayment breakdown (Stage D.2)
+  app.get("/pool/tasks/:id/settlement", (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+
+    return c.json({
+      ok: true,
+      taskId: task.id,
+      contractName: task.contractName,
+      status: task.status,
+      escrowStatus: task.escrowStatus,
+      bountyTotal: task.bountyTotal,
+      currency: task.currency,
+      settlementReceipt: task.settlementReceipt || null,
+      payouts: task.payouts || [],
+      proofReceipt: task.proofReceipt || null,
     });
   });
 

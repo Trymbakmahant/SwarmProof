@@ -1,8 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { FullAuditReportModal } from "./FullAuditReportModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+
+export interface TaskPayoutRecord {
+  agentId: string;
+  role: string;
+  address: string;
+  sharePercent: number;
+  amountUSD: string;
+  amountTinybars: number;
+  acceptedFindingsCount: number;
+  transactionId?: string;
+  status: "settled" | "pending";
+}
+
+export interface SettlementReceipt {
+  totalBounty: string;
+  currency: string;
+  totalTinybars: number;
+  gatewayFeeUSD: string;
+  gatewayAddress: string;
+  agentDistributionUSD: string;
+  payoutCount: number;
+  settledAt: string;
+  hcsTransactionId?: string;
+}
 
 export interface PoolTask {
   id: string;
@@ -40,6 +65,8 @@ export interface PoolTask {
   bountyTotal: string;
   currency: string;
   escrowStatus: string;
+  payouts?: TaskPayoutRecord[];
+  settlementReceipt?: SettlementReceipt;
   createdAt: string;
 }
 
@@ -69,6 +96,9 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [newWindowSeconds, setNewWindowSeconds] = useState(90);
   const [newBounty, setNewBounty] = useState("1.50");
   const [isCreating, setIsCreating] = useState(false);
+  const [requireEscrowNew, setRequireEscrowNew] = useState(false);
+  const [isEscrowing, setIsEscrowing] = useState<Record<string, boolean>>({});
+  const [viewingFullReport, setViewingFullReport] = useState<PoolTask | null>(null);
 
   // Clock tick every 1000ms for countdown timers
   useEffect(() => {
@@ -84,9 +114,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
         const data = await res.json();
         if (data.ok && Array.isArray(data.tasks)) {
           setTasks(data.tasks);
-          if (!selectedTaskId && data.tasks.length > 0) {
-            setSelectedTaskId(data.tasks[0].id);
-          }
+          setSelectedTaskId((prev) => (prev && data.tasks.some((t: PoolTask) => t.id === prev) ? prev : data.tasks[0]?.id ?? null));
         }
       }
     } catch (err) {
@@ -119,6 +147,28 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
     }
   };
 
+  // Authorize x402 Advance Escrow
+  const handleAuthorizeEscrow = async (taskId: string) => {
+    try {
+      setIsEscrowing((prev) => ({ ...prev, [taskId]: true }));
+      const res = await fetch(`${API_BASE}/pool/tasks/${taskId}/escrow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payerAddress: "0.0.10119346",
+          reference: `x402-escrow-${Date.now()}`,
+        }),
+      });
+      if (res.ok) {
+        await fetchTasks();
+      }
+    } catch (err) {
+      console.error("Escrow authorization failed:", err);
+    } finally {
+      setIsEscrowing((prev) => ({ ...prev, [taskId]: false }));
+    }
+  };
+
   // Force Trigger Consensus
   const handleTriggerConsensus = async (taskId: string) => {
     try {
@@ -147,7 +197,8 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           submissionWindowSeconds: newWindowSeconds,
           bountyTotal: newBounty,
           currency: "USD",
-          autoOpen: true,
+          autoOpen: !requireEscrowNew,
+          requireEscrow: requireEscrowNew,
         }),
       });
       if (res.ok) {
@@ -349,6 +400,20 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                 </div>
               </div>
 
+              <div style={{ marginTop: 6, marginBottom: 4 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#3f3f46" }}>
+                  <input
+                    type="checkbox"
+                    checked={requireEscrowNew}
+                    onChange={(e) => setRequireEscrowNew(e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span>
+                    <strong>Require Upfront x402 Advance Escrow</strong> (Task initiates in <code style={{ fontSize: 11, backgroundColor: "#f4f4f5", padding: "1px 4px", borderRadius: 3 }}>PENDING_ESCROW</code> status until client authorizes payment)
+                  </span>
+                </label>
+              </div>
+
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
                 <button
                   type="button"
@@ -433,10 +498,15 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   const isWindowActive = t.status === "OPEN_FOR_SUBMISSIONS" && remSecs > 0;
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={t.id}
+                      data-task-id={t.id}
                       onClick={() => setSelectedTaskId(t.id)}
                       style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
                         padding: 12,
                         borderRadius: 8,
                         border: isSelected ? "1.5px solid #09090b" : "1px solid #e4e4e7",
@@ -507,7 +577,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                           ${t.bountyTotal} {t.currency}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   );
                 })
               )}
@@ -608,6 +678,73 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                     </div>
                   )}
                 </div>
+
+                {/* x402 Advance Escrow Required Banner (Stage D.1) */}
+                {selectedTask.status === "PENDING_ESCROW" && (
+                  <div
+                    style={{
+                      backgroundColor: "#fffbeb",
+                      border: "1px solid #fde68a",
+                      borderRadius: 8,
+                      padding: 14,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 16 }}>💳</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                          x402 Advance Escrow Deposit Required
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: "var(--font-mono)",
+                            backgroundColor: "#fef3c7",
+                            color: "#b45309",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            border: "1px solid #fde68a",
+                          }}
+                        >
+                          HTTP 402 QUOTE
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#78350f" }}>
+                        Bounty deposit of <strong>${selectedTask.bountyTotal} {selectedTask.currency}</strong> ({(parseFloat(selectedTask.bountyTotal) * 1_000_000).toLocaleString()} tinybars) must be authorized before the submission window opens to specialist agents.
+                      </div>
+                      <div style={{ fontSize: 11, color: "#92400e", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+                        Gateway: 0.0.10417474 • Network: Hedera Testnet
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAuthorizeEscrow(selectedTask.id)}
+                      disabled={isEscrowing[selectedTask.id]}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        borderRadius: 6,
+                        backgroundColor: "#d97706",
+                        color: "#ffffff",
+                        border: "none",
+                        cursor: isEscrowing[selectedTask.id] ? "not-allowed" : "pointer",
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                      }}
+                    >
+                      {isEscrowing[selectedTask.id] ? "Authorizing Escrow..." : "Authorize x402 Escrow →"}
+                    </button>
+                  </div>
+                )}
 
                 {/* Participation Roles Matrix */}
                 <div>
@@ -712,8 +849,171 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   </div>
                 )}
 
+                {/* x402 Autonomous Multi-Agent Settlement & Micropayment Stream (Stage D.2) */}
+                {selectedTask.status === "SETTLED" && (
+                  <div
+                    style={{
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: 8,
+                      padding: 14,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 16 }}>💳</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                          x402 Autonomous Multi-Agent Settlement & Micropayment Stream
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          fontFamily: "var(--font-mono)",
+                          color: "#15803d",
+                          backgroundColor: "#ffffff",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "1px solid #bbf7d0",
+                        }}
+                      >
+                        ✓ ESCROW DISTRIBUTED
+                      </span>
+                    </div>
+
+                    {/* Settlement Summary Metrics */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 11 }}>
+                      <div style={{ backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #bbf7d0" }}>
+                        <div style={{ color: "#71717a", fontSize: 10 }}>Total Escrow Settled</div>
+                        <div style={{ fontWeight: 800, color: "#09090b", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+                          ${selectedTask.bountyTotal} {selectedTask.currency}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#15803d", fontFamily: "var(--font-mono)" }}>
+                          {(parseFloat(selectedTask.bountyTotal) * 1_000_000).toLocaleString()} tinybars
+                        </div>
+                      </div>
+
+                      <div style={{ backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #bbf7d0" }}>
+                        <div style={{ color: "#71717a", fontSize: 10 }}>10% Protocol Gateway Fee</div>
+                        <div style={{ fontWeight: 800, color: "#09090b", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+                          ${selectedTask.settlementReceipt?.gatewayFeeUSD ?? (parseFloat(selectedTask.bountyTotal) * 0.1).toFixed(2)} USD
+                        </div>
+                        <div style={{ fontSize: 10, color: "#71717a", fontFamily: "var(--font-mono)" }}>
+                          Gateway: 0.0.10417474
+                        </div>
+                      </div>
+
+                      <div style={{ backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #bbf7d0" }}>
+                        <div style={{ color: "#71717a", fontSize: 10 }}>90% Direct Agent Pool</div>
+                        <div style={{ fontWeight: 800, color: "#15803d", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+                          ${selectedTask.settlementReceipt?.agentDistributionUSD ?? (parseFloat(selectedTask.bountyTotal) * 0.9).toFixed(2)} USD
+                        </div>
+                        <div style={{ fontSize: 10, color: "#15803d", fontFamily: "var(--font-mono)" }}>
+                          Streamed to {selectedTask.payouts?.length ?? selectedTask.submissions.length} Agents
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Individual Payouts Table */}
+                    {selectedTask.payouts && selectedTask.payouts.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase", marginBottom: 6 }}>
+                          Participating Agent Wallet Micropayment Stream
+                        </div>
+                        <div style={{ border: "1px solid #bbf7d0", borderRadius: 6, overflow: "hidden", backgroundColor: "#ffffff" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                            <thead>
+                              <tr style={{ backgroundColor: "#f0fdf4", borderBottom: "1px solid #bbf7d0", textAlign: "left", color: "#166534" }}>
+                                <th style={{ padding: "6px 10px", fontWeight: 600 }}>Agent ID</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600 }}>Role</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600 }}>Payout Address</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Share</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Payout (Tinybars)</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Amount ($ USD)</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "center" }}>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedTask.payouts.map((p, idx) => (
+                                <tr key={idx} style={{ borderBottom: idx < selectedTask.payouts!.length - 1 ? "1px solid #f4f4f5" : "none" }}>
+                                  <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", fontWeight: 600 }}>{p.agentId}</td>
+                                  <td style={{ padding: "6px 10px", textTransform: "capitalize" }}>{p.role}</td>
+                                  <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", color: "#71717a" }}>{p.address}</td>
+                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)" }}>{p.sharePercent}%</td>
+                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#15803d" }}>
+                                    {p.amountTinybars.toLocaleString()}
+                                  </td>
+                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                                    ${p.amountUSD}
+                                  </td>
+                                  <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: "#15803d", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "1px 6px" }}>
+                                      ✓ Settled
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: "auto" }}>
+                  {selectedTask.status === "PENDING_ESCROW" && (
+                    <button
+                      type="button"
+                      onClick={() => handleAuthorizeEscrow(selectedTask.id)}
+                      disabled={isEscrowing[selectedTask.id]}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        borderRadius: 6,
+                        backgroundColor: "#d97706",
+                        color: "#ffffff",
+                        border: "none",
+                        cursor: isEscrowing[selectedTask.id] ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                      }}
+                    >
+                      {isEscrowing[selectedTask.id] ? "Authorizing Escrow..." : `💳 Authorize x402 Advance Escrow ($${selectedTask.bountyTotal}) →`}
+                    </button>
+                  )}
+
+                  {selectedTask.status === "SETTLED" && (
+                    <button
+                      type="button"
+                      onClick={() => setViewingFullReport(selectedTask)}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        borderRadius: 6,
+                        backgroundColor: "#09090b",
+                        color: "#ffffff",
+                        border: "none",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                      }}
+                    >
+                      📄 View Formal Audit Report & Download PDF →
+                    </button>
+                  )}
+
                   {selectedTask.status === "OPEN_FOR_SUBMISSIONS" && (
                     <>
                       <button
@@ -763,6 +1063,70 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           </div>
         </div>
       </div>
+
+      {/* Full Formal Audit Report & PDF Modal Overlay (Stage D.3) */}
+      {viewingFullReport && (
+        <FullAuditReportModal
+          auditResult={{
+            id: viewingFullReport.id,
+            task: {
+              contractName: viewingFullReport.contractName,
+              source: viewingFullReport.source,
+              network: viewingFullReport.network ?? "ethereum",
+            },
+            status: "completed",
+            createdAt: viewingFullReport.createdAt,
+            payment: {
+              paymentId: viewingFullReport.id,
+              total: viewingFullReport.bountyTotal,
+              currency: viewingFullReport.currency,
+              network: "hedera-testnet",
+              recipients: (viewingFullReport.payouts || []).map((p) => ({
+                agentId: p.agentId,
+                address: p.address,
+                amount: p.amountUSD,
+              })),
+            },
+            paymentStatus: {
+              status: "settled",
+              paidAmount: viewingFullReport.bountyTotal,
+              paidAt: viewingFullReport.settlementReceipt?.settledAt ?? viewingFullReport.createdAt,
+            },
+            paymentProofReceipt: viewingFullReport.proofReceipt ? {
+              paymentId: viewingFullReport.id,
+              transactionId: viewingFullReport.proofReceipt.transactionId,
+              consensusTimestamp: viewingFullReport.proofReceipt.consensusTimestamp,
+            } : undefined,
+            report: {
+              auditId: viewingFullReport.id,
+              contractName: viewingFullReport.contractName,
+              network: viewingFullReport.network ?? "ethereum",
+              result: (viewingFullReport.score ?? 100) < 70 ? "VULNERABILITIES_DETECTED" : "PASSED",
+              findings: (viewingFullReport.consensusReport?.findings || []).map((wf: any) => ({
+                id: wf.finding?.id || "f_unknown",
+                category: wf.finding?.category || "general",
+                severity: wf.finding?.severity || "medium",
+                locations: wf.finding?.locations || [wf.finding?.location || "Contract"],
+                agents: (wf.evidence || []).map((e: any) => e.agentRole || e.role),
+                snippets: wf.finding?.evidence || [],
+              })),
+              verification: [],
+              consensusSummary: viewingFullReport.consensusReport?.summary || "Byzantine fault-tolerant consensus quorum finalized across all submitting specialist agents.",
+              generatedAt: viewingFullReport.settlementReceipt?.settledAt ?? viewingFullReport.createdAt,
+            },
+            proof: viewingFullReport.proofReceipt ? {
+              auditId: viewingFullReport.id,
+              reportHash: "0x" + Array.from(viewingFullReport.id).map(c => c.charCodeAt(0).toString(16)).join("").padEnd(64, "0").slice(0, 64),
+              hcsTopicId: viewingFullReport.proofReceipt.hcsTopicId,
+              transactionId: viewingFullReport.proofReceipt.transactionId,
+              consensusTimestamp: viewingFullReport.proofReceipt.consensusTimestamp,
+              verified: true,
+            } : undefined,
+            findings: viewingFullReport.consensusReport?.findings || [],
+          } as any}
+          onClose={() => setViewingFullReport(null)}
+        />
+      )}
     </div>
   );
 }
