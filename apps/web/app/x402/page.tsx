@@ -212,118 +212,270 @@ export default function X402Lab() {
     error: "✗",
   } as const;
 
-  const std: React.CSSProperties = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
+  const std: React.CSSProperties = { fontFamily: "var(--font-mono)" };
 
   return (
-    <main style={{ maxWidth: 1080, margin: "0 auto", padding: 32, fontFamily: "system-ui" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>🐝 x402 Payment Lab</h1>
-          <p style={{ margin: "6px 0 0", color: "#8b949e" }}>
-            Pay-per-audit on <b>Hedera</b> · settled through <b>Blocky402</b> — no API key, no subscription.
-          </p>
+    <div style={{ minHeight: "100vh", backgroundColor: "#ffffff", color: "#18181b" }}>
+      {/* ── Minimalist Editorial Header ─────────────────────────── */}
+      <header style={{ position: "sticky", top: 0, zIndex: 50, backgroundColor: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid #e4e4e7" }}>
+        <div style={{ maxWidth: 1024, margin: "0 auto", padding: "14px 24px", display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          {/* Brand & Metadata */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Monochromatic Geometric Brand Mark */}
+              <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: "#09090b", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, letterSpacing: -0.5 }}>
+                SP
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#09090b", letterSpacing: -0.2 }}>SwarmProof</span>
+                  <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: 0.5, padding: "2px 6px", borderRadius: 4, backgroundColor: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" }}>
+                    Payment Lab
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)", letterSpacing: -0.2 }}>
+                  Hedera Agentic Payments / Live Facilitator Settlement
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <a
+              href="/"
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#27272a",
+                backgroundColor: "#f4f4f5",
+                border: "1px solid #e4e4e7",
+                borderRadius: 6,
+                padding: "6px 12px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              Visualizer
+            </a>
+
+            <a
+              href="/feedback"
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#27272a",
+                backgroundColor: "#f4f4f5",
+                border: "1px solid #e4e4e7",
+                borderRadius: 6,
+                padding: "6px 12px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+             Pitch Deck
+            </a>
+
+            <a
+              href="https://hashscan.io/testnet/topic/0.0.10417469"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontSize: 12,
+                fontFamily: "var(--font-mono)",
+                fontWeight: 500,
+                color: "#09090b",
+                backgroundColor: "#ffffff",
+                border: "1px solid #d4d4d8",
+                borderRadius: 6,
+                padding: "6px 12px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#09090b" }} />
+              <span>Topic 0.0.10417469</span>
+              <svg style={{ width: 12, height: 12, color: "#a1a1aa" }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          </div>
         </div>
-        <a href="/" style={{ color: "#58a6ff", fontSize: 13 }}>← dashboard</a>
+
+        {/* Subtle Navigation Underline Bar */}
+        <div style={{ borderTop: "1px solid #e4e4e7", backgroundColor: "rgba(250, 250, 250, 0.6)" }}>
+          <div style={{ maxWidth: 1024, margin: "0 auto", padding: "4px 24px", display: "flex", alignItems: "center", gap: 4, overflowX: "auto" }}>
+            <a
+              href="/"
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 6,
+                color: "#52525b",
+                border: "1px solid transparent",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              3D Swarm Visualizer
+            </a>
+            <span
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                color: "#09090b",
+                backgroundColor: "#ffffff",
+                border: "1px solid #d4d4d8",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Payment Lab (x402)
+            </span>
+            <a
+              href="/feedback"
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 6,
+                color: "#52525b",
+                border: "1px solid transparent",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Executive Pitch
+            </a>
+            <a
+              href="/feedback"
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 6,
+                color: "#52525b",
+                border: "1px solid transparent",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              SDK &amp; MCP Architecture
+            </a>
+          </div>
+        </div>
       </header>
 
-      {/* readiness banner */}
-      {status && (
-        <div style={{ marginTop: 18, padding: 14, borderRadius: 8, border: "1px solid #30363d", background: "#0d1117", fontSize: 13 }}>
-          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 8, background: status.signer.configured ? "#3fb950" : "#d29922", marginRight: 8 }} />
-          {status.signer.configured ? (
-            <>Payer wallet <b style={std}>{status.signer.accountId}</b> · mode <b>{status.signer.mode}</b></>
-          ) : (
-            <>No payer wallet configured — running <b>offline mock</b> (add <code>X402_PAYER_ACCOUNT_ID</code> + <code>X402_PAYER_PRIVATE_KEY</code> to the API&apos;s .env to pay for real)</>
-          )}
-          {status.signer.configured && !status.gateway.valid && (
-            <b style={{ marginLeft: 16, color: "#f85149" }}>⚠ gateway address is a placeholder — set SWARMPROOF_GATEWAY_ADDRESS to a real Hedera account (e.g. your payer account)</b>
-          )}
-          <span style={{ marginLeft: 16 }}>facilitator <b>{status.facilitator.mode}</b> {status.facilitator.baseUrl !== "mock://" && `(${status.facilitator.baseUrl})`}</span>
-          {status.facilitator.feePayer && (
-            <>
-              <span style={{ marginLeft: 16 }}>fee-payer <b>{status.facilitator.feePayer}</b></span>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* config */}
-      <div style={{ marginTop: 18, padding: 14, borderRadius: 8, border: "1px solid #30363d", background: "#0d1117", fontSize: 13 }}>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "end" }}>
-          <label>
-            API base
-            <br />
-            <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} style={{ width: 230, marginTop: 4 }} />
-          </label>
-          <label>
-            Contract sample
-            <br />
-            <select value={sample} onChange={(e) => setSample(e.target.value)} style={{ marginTop: 4 }}>
-              {Object.entries(SAMPLES).map(([k]) => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Audit price (USD)
-            <br />
-            <input value={total} onChange={(e) => setTotal(e.target.value)} style={{ width: 80, marginTop: 4 }} />
-          </label>
-          <button onClick={runAll} disabled={running} style={{ fontSize: 14, fontWeight: 600, padding: "8px 18px", background: "#1f6feb", borderColor: "#1f6feb", color: "#fff" }}>
-            {running ? "Running…" : "▶ Run full x402 payment"}
-          </button>
-          <button onClick={reset} disabled={running} style={{ fontSize: 13 }}>Reset</button>
-          <button onClick={downloadLog} disabled={steps.length === 0} style={{ fontSize: 13 }}>⬇ Log</button>
-        </div>
-        {auditId && (
-          <p style={{ margin: "12px 0 0" }}>
-            Audit <b style={std}>{auditId}</b> ·{" "}
-            <a href={`/audits/${auditId}`} style={{ color: "#58a6ff" }}>view record</a> ·{" "}
-            <a href={`${apiBase}/audits/${auditId}/proof`} style={{ color: "#58a6ff" }}>HCS proof</a>
-          </p>
-        )}
-      </div>
-
-      {/* steps */}
-      <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
-        {steps.map((s) => (
-          <div key={s.id} style={{ borderRadius: 8, border: "1px solid #30363d", background: "#0d1117", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }}>
-              <span style={{ width: 18, color: s.status === "done" ? "#3fb950" : s.status === "error" ? "#f85149" : s.status === "active" ? "#d29922" : "#484f58", fontWeight: 700 }}>
-                {icon[s.status]}
-              </span>
-              <span style={{ fontSize: 13.5, flex: 1 }}>{s.title}</span>
-              {s.detail && <span style={{ fontSize: 11.5, color: "#8b949e", textAlign: "right" }}>{s.detail}</span>}
-            </div>
-            {s.data !== undefined && (
-              <details style={{ borderTop: "1px solid #21262d" }}>
-                <summary style={{ padding: "6px 16px", fontSize: 11.5, color: "#8b949e", cursor: "pointer" }}>payload</summary>
-                <pre style={{ ...std, margin: 0, padding: 12, fontSize: 11.5, maxHeight: 320, overflow: "auto", color: "#7ee787", background: "#0b0e14" }}>
-                  {JSON.stringify(s.data, null, 2)}
-                </pre>
-              </details>
+      {/* ── Main Workspace ────────────────────────────────────────── */}
+      <main style={{ maxWidth: 1024, margin: "0 auto", padding: "32px 24px 64px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* Readiness Banner */}
+        {status && (
+          <div style={{ padding: 14, borderRadius: 8, border: "1px solid #e4e4e7", backgroundColor: "#ffffff", fontSize: 13, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", backgroundColor: status.signer.configured ? "#16a34a" : "#ca8a04", marginRight: 8 }} />
+            {status.signer.configured ? (
+              <>Payer wallet <b style={std}>{status.signer.accountId}</b> · mode <b>{status.signer.mode}</b></>
+            ) : (
+              <>No payer wallet configured — running <b>offline mock</b> (add <code>X402_PAYER_ACCOUNT_ID</code> + <code>X402_PAYER_PRIVATE_KEY</code> to the API&apos;s .env to pay for real)</>
+            )}
+            {status.signer.configured && !status.gateway.valid && (
+              <b style={{ marginLeft: 16, color: "#dc2626" }}>⚠ gateway address is a placeholder — set SWARMPROOF_GATEWAY_ADDRESS to a real Hedera account (e.g. your payer account)</b>
+            )}
+            <span style={{ marginLeft: 16, color: "#52525b" }}>facilitator <b>{status.facilitator.mode}</b> {status.facilitator.baseUrl !== "mock://" && `(${status.facilitator.baseUrl})`}</span>
+            {status.facilitator.feePayer && (
+              <>
+                <span style={{ marginLeft: 16, color: "#52525b" }}>fee-payer <b>{status.facilitator.feePayer}</b></span>
+              </>
             )}
           </div>
-        ))}
-        {steps.length === 0 && (
-          <p style={{ color: "#8b949e", fontSize: 13 }}>Hit &quot;Run full x402 payment&quot; to walk through: HTTP 402 challenge → quote → sign → facilitator verify/settle → X-PAYMENT redeem → swarm audit → HCS proof.</p>
         )}
-      </div>
 
-      {/* settlement tx link */}
-      {steps.some((s) => s.id === "pay" && s.status === "done") && status?.facilitator.mode === "real" && (() => {
-        const pay = stepBody("pay") as { settlement?: { transaction?: string } };
-        const tx = pay?.settlement?.transaction;
-        return tx ? (
-          <p style={{ marginTop: 16, fontSize: 13 }}>
-            📡 On-chain: <a href={hashscan(tx)} target="_blank" rel="noreferrer" style={{ color: "#58a6ff" }}>{tx}</a> on Hedera testnet
-          </p>
-        ) : null;
-      })()}
+        {/* Config Box */}
+        <div style={{ padding: 20, borderRadius: 10, border: "1px solid #e4e4e7", backgroundColor: "#ffffff", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>
+              API base
+              <br />
+              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} style={{ width: 230, marginTop: 4 }} />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>
+              Contract sample
+              <br />
+              <select value={sample} onChange={(e) => setSample(e.target.value)} style={{ marginTop: 4 }}>
+                {Object.entries(SAMPLES).map(([k]) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>
+              Audit price (USD)
+              <br />
+              <input value={total} onChange={(e) => setTotal(e.target.value)} style={{ width: 80, marginTop: 4 }} />
+            </label>
+            <button onClick={runAll} disabled={running} className="btn-swarm-primary" style={{ padding: "8px 18px", fontSize: 13 }}>
+              {running ? "Running…" : "▶ Run full x402 payment"}
+            </button>
+            <button onClick={reset} disabled={running} className="btn-swarm-secondary" style={{ fontSize: 13 }}>Reset</button>
+            <button onClick={downloadLog} disabled={steps.length === 0} className="btn-swarm-secondary" style={{ fontSize: 13 }}>⬇ Log</button>
+          </div>
+          {auditId && (
+            <p style={{ margin: "14px 0 0", fontSize: 13, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+              Audit <b style={std}>{auditId}</b> ·{" "}
+              <a href={`/audits/${auditId}`} style={{ color: "#09090b", textDecoration: "underline" }}>view record</a> ·{" "}
+              <a href={`${apiBase}/audits/${auditId}/proof`} style={{ color: "#09090b", textDecoration: "underline" }}>HCS proof</a>
+            </p>
+          )}
+        </div>
 
-      <footer style={{ marginTop: 40, color: "#484f58", fontSize: 12 }}>
-        SwarmProof · Hedera x402 · fee-payer co-signed by Blocky402 facilitator ({e(status?.facilitator.feePayer)})
-      </footer>
-    </main>
+        {/* Step Logs */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {steps.map((s) => (
+            <div key={s.id} style={{ borderRadius: 8, border: "1px solid #e4e4e7", backgroundColor: "#ffffff", overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }}>
+                <span style={{ width: 18, color: s.status === "done" ? "#16a34a" : s.status === "error" ? "#dc2626" : s.status === "active" ? "#ca8a04" : "#a1a1aa", fontWeight: 700, fontFamily: "var(--font-mono)" }}>
+                  {icon[s.status]}
+                </span>
+                <span style={{ fontSize: 13.5, flex: 1, fontWeight: 500, color: "#09090b" }}>{s.title}</span>
+                {s.detail && <span style={{ fontSize: 11.5, color: "#71717a", fontFamily: "var(--font-mono)", textAlign: "right" }}>{s.detail}</span>}
+              </div>
+              {s.data !== undefined && (
+                <details style={{ borderTop: "1px solid #e4e4e7" }}>
+                  <summary style={{ padding: "6px 16px", fontSize: 11.5, color: "#71717a", cursor: "pointer", backgroundColor: "#fafafa" }}>payload (click to view)</summary>
+                  <pre style={{ ...std, margin: 0, padding: 12, fontSize: 11.5, maxHeight: 320, overflow: "auto", color: "#f4f4f5", backgroundColor: "#09090b" }}>
+                    {JSON.stringify(s.data, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          ))}
+          {steps.length === 0 && (
+            <p style={{ color: "#71717a", fontSize: 13 }}>Hit &quot;Run full x402 payment&quot; to walk through: HTTP 402 challenge → quote → sign → facilitator verify/settle → X-PAYMENT redeem → swarm audit → HCS proof.</p>
+          )}
+        </div>
+
+        {/* settlement tx link */}
+        {steps.some((s) => s.id === "pay" && s.status === "done") && status?.facilitator.mode === "real" && (() => {
+          const pay = stepBody("pay") as { settlement?: { transaction?: string } };
+          const tx = pay?.settlement?.transaction;
+          return tx ? (
+            <p style={{ marginTop: 12, fontSize: 13, color: "#18181b" }}>
+              📡 On-chain: <a href={hashscan(tx)} target="_blank" rel="noreferrer" style={{ color: "#09090b", textDecoration: "underline", fontFamily: "var(--font-mono)" }}>{tx}</a> on Hedera testnet
+            </p>
+          ) : null;
+        })()}
+
+        <footer style={{ marginTop: 24, color: "#71717a", fontSize: 12, borderTop: "1px solid #e4e4e7", paddingTop: 16 }}>
+          SwarmProof · Hedera x402 · fee-payer co-signed by Blocky402 facilitator ({e(status?.facilitator.feePayer)})
+        </footer>
+      </main>
+    </div>
   );
 }
