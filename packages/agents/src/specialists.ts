@@ -422,7 +422,7 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
   "findings": [
     {
       "title": "Short descriptive title",
-      "category": "static-analysis",
+      "category": "reentrancy" | "delegatecall" | "unchecked-call" | "arithmetic" | "static-analysis",
       "severity": "critical" | "high" | "medium" | "low" | "info",
       "location": "line X or functionName()",
       "evidence": ["Exact code snippet or line reference", "Safety hazard or unchecked return value"],
@@ -526,12 +526,11 @@ ${task.network ? `Target Network: ${task.network}` : ""}
 \`\`\`solidity
 ${task.source}
 \`\`\`
-
 Analyze the code carefully and return your findings strictly in the specified JSON format.`;
 
         const response = await provider.complete(systemPrompt, [{ role: "user", content: userPrompt }], {
           temperature: 0.1,
-          maxTokens: 3000,
+          maxTokens: 1000,
         });
 
         const findings = parseLLMFindings(response, agentId);
@@ -569,13 +568,17 @@ Analyze the code carefully and return your findings strictly in the specified JS
   };
 }
 
-/** Run all specialists independently, in parallel. */
+/** Run all specialists independently, in parallel with smooth dispatch. */
 export async function runSpecialists(
   agents: Record<string, SecurityAgent>,
   task: SecurityTask,
 ): Promise<Array<{ agentId: string; findings: Finding[] }>> {
-  const entries = Object.entries(agents).map(([agentId, agent]) =>
-    agent.analyze(task).then((findings) => ({ agentId, findings })),
-  );
+  const entries = Object.entries(agents).map(async ([agentId, agent], index) => {
+    if (index > 0) {
+      await new Promise((resolve) => setTimeout(resolve, index * 80));
+    }
+    const findings = await agent.analyze(task);
+    return { agentId, findings };
+  });
   return Promise.all(entries);
 }

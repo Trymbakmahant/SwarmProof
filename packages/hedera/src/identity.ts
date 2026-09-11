@@ -1,4 +1,6 @@
 import type { AgentIdentity } from "@swarmproof/agents";
+import { PublicKey, PrivateKey } from "@hashgraph/sdk";
+export { PublicKey, PrivateKey };
 import { HederaTopicClient, topicConfigFromEnv, hasTopicCredentials, type TopicSubmitConfig } from "./topic.js";
 
 /**
@@ -9,11 +11,213 @@ import { HederaTopicClient, topicConfigFromEnv, hasTopicCredentials, type TopicS
  * - W3C DID Core 1.0 (did:hedera method)
  * - W3C Verifiable Credentials Data Model v1.1 / v2.0
  * - HCS-14 Agent Identity Registry (anchored on topic)
+ * - Cryptographic Self-Verification (Ed25519 & ECDSA secp256k1)
  */
 
 export function formatHederaDID(network: string, topicId: string, agentId: string): string {
   const cleanNet = network.includes("mainnet") ? "mainnet" : "testnet";
   return `did:hedera:${cleanNet}:${topicId}_${agentId}`;
+}
+
+export interface RegistrationChallenge {
+  challenge: string;
+  nonce: string;
+  timestamp: string;
+  agentId: string;
+  accountId: string;
+}
+
+/**
+ * Generate a canonical cryptographic registration challenge string.
+ * External agents sign this string with their Hedera private key to prove ownership.
+ */
+export function generateRegistrationChallenge(
+  agentId: string,
+  accountId: string,
+  topicId = "0.0.10417469",
+  network = "testnet",
+  customNonce?: string,
+): RegistrationChallenge {
+  const nonce = customNonce ?? Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const timestamp = new Date().toISOString();
+  const cleanNet = network.includes("mainnet") ? "mainnet" : "testnet";
+
+  const challenge = [
+    "SwarmProof Sovereign Agent Registration Challenge",
+    `Network: hedera:${cleanNet}`,
+    `Topic ID: ${topicId}`,
+    `Agent ID: ${agentId}`,
+    `Hedera Account: ${accountId}`,
+    `Nonce: ${nonce}`,
+    `Timestamp: ${timestamp}`,
+    "Purpose: Prove cryptographic ownership of Hedera account to join consensus quorum.",
+  ].join("\n");
+
+  return { challenge, nonce, timestamp, agentId, accountId };
+}
+
+import { hashMessage, SigningKey, computeAddress } from "ethers";
+
+/**
+ * Verify an agent's cryptographic signature against their public key.
+ * Automatically supports:
+ * 1. EIP-191 personal_sign signatures from browser wallets (MetaMask, Rabby, Coinbase, etc.)
+ * 2. Native Hedera Ed25519 & ECDSA secp256k1 signatures via @hashgraph/sdk
+ */
+export function verifyAgentRegistrationSignature(
+  challenge: string,
+  signatureHex: string,
+  publicKeyStr?: string,
+): {
+  valid: boolean;
+  keyType: "Ed25519VerificationKey2020" | "EcdsaSecp256k1VerificationKey2019";
+  recoveredAddress?: string;
+  recoveredPublicKey?: string;
+  error?: string;
+} {
+  try {
+    const cleanSig = signatureHex.trim();
+    if (!cleanSig) return { valid: false, keyType: "Ed25519VerificationKey2020", error: "Missing signature" };
+    const cleanPub = (publicKeyStr ?? "").trim().replace(/^0x/, "");
+
+    // 1. Check for EVM browser wallet signature (EIP-191 personal_sign, 65 bytes = 130 or 132 hex characters)
+    const isEip191 = cleanSig.startsWith("0x") && (cleanSig.length === 132 || cleanSig.length === 130);
+    if (isEip191) {
+      try {
+        const digest = hashMessage(challenge);
+        const recoveredPubKey = SigningKey.recoverPublicKey(digest, cleanSig);
+        const recoveredAddress = computeAddress(recoveredPubKey).toLowerCase();
+
+        // If public key or address was supplied:
+        if (cleanPub) {
+          const normProvided = cleanPub.toLowerCase();
+          const normRecovered = recoveredPubKey.replace(/^0x/, "").toLowerCase();
+          const matchPub =
+            normRecovered === normProvided ||
+            normRecovered.includes(normProvided) ||
+            normProvided.includes(normRecovered);
+          const matchAddr = recoveredAddress === `0x${normProvided}` || normProvided === recoveredAddress.replace(/^0x/, "");
+
+          if (matchPub || matchAddr) {
+            return {
+              valid: true,
+              keyType: "EcdsaSecp256k1VerificationKey2019",
+              recoveredAddress,
+              recoveredPublicKey: recoveredPubKey,
+            };
+          }
+        }
+
+        // Valid EVM signature even if public key was omitted (it was mathematically recovered!)
+        return {
+          valid: true,
+          keyType: "EcdsaSecp256k1VerificationKey2019",
+          recoveredAddress,
+          recoveredPublicKey: recoveredPubKey,
+        };
+      } catch (evmErr) {
+        // Fall through to native Hedera SDK check
+      }
+    }
+
+    // 2. Native Hedera @hashgraph/sdk signature (Ed25519 or raw ECDSA)
+    if (!cleanPub) return { valid: false, keyType: "Ed25519VerificationKey2020", error: "Missing public key" };
+    const rawSig = cleanSig.replace(/^0x/, "");
+    const pubKey = PublicKey.fromString(cleanPub);
+    const msgBytes = Buffer.from(challenge, "utf8");
+    const sigBytes = Buffer.from(rawSig, "hex");
+
+    const valid = pubKey.verify(msgBytes, sigBytes);
+    const isEcdsa = pubKey.toStringDer().includes("2b8104000a");
+    const keyType = isEcdsa ? "EcdsaSecp256k1VerificationKey2019" : "Ed25519VerificationKey2020";
+
+    return {
+      valid,
+      keyType,
+      recoveredPublicKey: pubKey.toStringRaw(),
+      error: valid ? undefined : "Cryptographic signature does not match public key",
+    };
+  } catch (err) {
+    return { valid: false, keyType: "Ed25519VerificationKey2020", error: (err as Error).message };
+  }
+}
+
+/**
+ * Verify on-chain that the provided public key or EVM address corresponds to the Hedera account ID
+ * via the Hedera Mirror Node API.
+ */
+export async function verifyHederaAccountKey(
+  accountId: string,
+  publicKeyOrAddressStr: string,
+  network = "testnet",
+): Promise<{ matches: boolean; onChainKey?: string; onChainKeyType?: string; error?: string }> {
+  try {
+    const cleanAcc = accountId.trim();
+    const cleanPub = publicKeyOrAddressStr.trim();
+    if (!cleanAcc.startsWith("0.0.") && !cleanAcc.startsWith("0x")) {
+      return { matches: false, error: `Invalid account format: ${cleanAcc}` };
+    }
+
+    const mirrorBase = network.includes("mainnet")
+      ? "https://mainnet.mirrornode.hedera.com"
+      : "https://testnet.mirrornode.hedera.com";
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    const res = await fetch(`${mirrorBase}/api/v1/accounts/${cleanAcc}`, {
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
+    if (!res.ok) {
+      return { matches: false, error: `Mirror node HTTP ${res.status} for account ${cleanAcc}` };
+    }
+
+    const data = (await res.json()) as { key?: { _type?: string; key?: string }; evm_address?: string };
+    const onChainKey = data.key?.key;
+    const onChainKeyType = data.key?._type;
+    const onChainEvmAddress = data.evm_address?.toLowerCase();
+
+    // Check EVM address match
+    if (cleanPub.startsWith("0x") || cleanPub.length === 40) {
+      const ethAddr = (cleanPub.startsWith("0x") ? cleanPub : `0x${cleanPub}`).toLowerCase();
+      if (onChainEvmAddress && onChainEvmAddress === ethAddr) {
+        return { matches: true, onChainKey, onChainKeyType };
+      }
+    }
+
+    // Check Hedera public key match
+    if (onChainKey) {
+      try {
+        const pubKey = PublicKey.fromString(cleanPub.replace(/^0x/, ""));
+        const rawPub = pubKey.toStringRaw().toLowerCase();
+        const derPub = pubKey.toStringDer().toLowerCase();
+        const chainKeyNorm = onChainKey.toLowerCase();
+
+        const matches =
+          chainKeyNorm === rawPub ||
+          chainKeyNorm === derPub ||
+          chainKeyNorm.includes(rawPub) ||
+          rawPub.includes(chainKeyNorm);
+
+        return {
+          matches,
+          onChainKey,
+          onChainKeyType,
+          error: matches ? undefined : "Provided public key does not match on-chain Hedera account key",
+        };
+      } catch {
+        // Fallback for EVM address comparison
+        if (onChainEvmAddress && cleanPub.toLowerCase().includes(onChainEvmAddress.replace(/^0x/, ""))) {
+          return { matches: true, onChainKey, onChainKeyType };
+        }
+      }
+    }
+
+    return { matches: false, error: "Public key or address does not match mirror node record" };
+  } catch (err) {
+    return { matches: false, error: `Mirror node lookup error: ${(err as Error).message}` };
+  }
 }
 
 export interface AgentDIDDocument {
@@ -25,6 +229,7 @@ export interface AgentDIDDocument {
     type: string;
     controller: string;
     blockchainAccountId: string;
+    publicKeyHex?: string;
   }>;
   authentication: string[];
   assertionMethod: string[];
@@ -57,6 +262,7 @@ export interface AgentVerifiableCredential {
     authorizedQuorum: boolean;
     trustScore: number;
     auditSpecialty: string;
+    publicKeyHex?: string;
   };
   proof: {
     type: "HederaHCSConsensusProof";
@@ -66,6 +272,7 @@ export interface AgentVerifiableCredential {
     transactionId: string;
     consensusTimestamp: string;
     proofPurpose: "assertionMethod";
+    signature?: string;
   };
 }
 
@@ -81,12 +288,18 @@ export interface HCS14IdentityMessage {
   credentialId: string;
   service: "swarmproof";
   timestamp: string;
+  publicKey?: string;
+  signature?: string;
 }
 
 export interface RegisterIdentityOptions {
   role?: string;
   serviceEndpoint?: string;
   trustScore?: number;
+  publicKey?: string;
+  signature?: string;
+  keyType?: "Ed25519VerificationKey2020" | "EcdsaSecp256k1VerificationKey2019";
+  challenge?: string;
 }
 
 export function buildDIDDocument(
@@ -98,6 +311,7 @@ export function buildDIDDocument(
   const did = formatHederaDID(network, topicId, identity.agentId);
   const keyId = `${did}#key-1`;
   const cleanNet = network.includes("mainnet") ? "mainnet" : "testnet";
+  const keyType = options?.keyType ?? "Ed25519VerificationKey2020";
 
   return {
     "@context": ["https://www.w3.org/ns/did/v1", "https://identity.hedera.com/did/v1"],
@@ -106,9 +320,10 @@ export function buildDIDDocument(
     verificationMethod: [
       {
         id: keyId,
-        type: "Ed25519VerificationKey2020",
+        type: keyType,
         controller: did,
         blockchainAccountId: `hedera:${cleanNet}:${identity.paymentAddress}`,
+        ...(options?.publicKey ? { publicKeyHex: options.publicKey.replace(/^0x/, "") } : {}),
       },
     ],
     authentication: [keyId],
@@ -156,6 +371,7 @@ export function buildVerifiableCredential(
       authorizedQuorum: true,
       trustScore: options?.trustScore ?? 98.5,
       auditSpecialty: identity.capabilities?.[0] ?? "security-auditing",
+      ...(options?.publicKey ? { publicKeyHex: options.publicKey.replace(/^0x/, "") } : {}),
     },
     proof: {
       type: "HederaHCSConsensusProof",
@@ -165,6 +381,7 @@ export function buildVerifiableCredential(
       transactionId: txId,
       consensusTimestamp,
       proofPurpose: "assertionMethod",
+      ...(options?.signature ? { signature: options.signature.replace(/^0x/, "") } : {}),
     },
   };
 }
@@ -189,6 +406,8 @@ export function buildIdentityMessage(
     credentialId: `vc:hedera:${cleanNet}:${topicId}:${identity.agentId}`,
     service: "swarmproof",
     timestamp: new Date().toISOString(),
+    ...(options?.publicKey ? { publicKey: options.publicKey.replace(/^0x/, "") } : {}),
+    ...(options?.signature ? { signature: options.signature.replace(/^0x/, "") } : {}),
   };
 }
 

@@ -68,9 +68,24 @@ export interface NormalizedFinding {
   finding: Finding;
 }
 
+/** Canonical vulnerability category normalization across heterogeneous agent vocabularies. */
+export function canonicalCategory(category: string, title?: string, detail?: string): string {
+  const text = `${category} ${title ?? ""} ${detail ?? ""}`.toLowerCase();
+  if (/reentranc|checks-effects|cei-violation/i.test(text)) return "reentrancy";
+  if (/access.?control|auth|unauthorized|onlyowner|tx\.origin|privilege/i.test(text)) return "access-control";
+  if (/business.?logic|accounting|input.?validation|precision/i.test(text)) return "business-logic";
+  if (/oracle|price|flash.?loan|slippage|mev|sandwich/i.test(text)) return "economic";
+  if (/delegatecall/i.test(text)) return "delegatecall";
+  if (/selfdestruct|suicide/i.test(text)) return "selfdestruct";
+  return category.toLowerCase().trim();
+}
+
 /** Extract a stable function/contract scope from a location string. */
 export function locationScope(loc: string): string {
-  const fn = /function\s+([A-Za-z0-9_]+)/.exec(loc)?.[1];
+  const fn =
+    /function\s+([A-Za-z0-9_]+)/i.exec(loc)?.[1] ??
+    /([A-Za-z0-9_]+)\s+function/i.exec(loc)?.[1] ??
+    /([A-Za-z0-9_]+)\s*\(/i.exec(loc)?.[1];
   const contract = /contract\s+([A-Za-z0-9_]+)/i.exec(loc)?.[1];
   if (fn) return fn;
   if (contract) return contract;
@@ -92,17 +107,19 @@ const SEVERITY_RANK: Record<Severity, number> = {
 export function normalizeFindings(raw: RawFinding[]): NormalizedFinding[] {
   const map = new Map<string, NormalizedFinding>();
   for (const { agentId, finding } of raw) {
-    const key = `${finding.category}::${locationScope(finding.location)}`;
+    const category = canonicalCategory(finding.category, finding.title);
+    const scope = locationScope(finding.location);
+    const key = `${category}::${scope}`;
     let norm = map.get(key);
     if (!norm) {
       norm = {
         key,
-        category: finding.category,
+        category,
         severity: finding.severity,
         locations: [finding.location],
         agents: [],
         snippets: [],
-        finding: { ...finding, id: key, evidence: [] },
+        finding: { ...finding, id: key, category, evidence: [] },
       };
       map.set(key, norm);
     }

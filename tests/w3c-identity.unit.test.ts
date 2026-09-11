@@ -79,4 +79,44 @@ describe("W3C Decentralized Identity & Verifiable Credentials on Hedera", () => 
     expect(cred).toBeDefined();
     expect(cred?.credentialSubject.agentId).toBe("mev-sentinel");
   });
+
+  it("generates cryptographic registration challenges and verifies Ed25519 / ECDSA signatures", async () => {
+    const {
+      PrivateKey,
+      generateRegistrationChallenge,
+      verifyAgentRegistrationSignature,
+    } = await import("@swarmproof/hedera");
+
+    const challengeObj = generateRegistrationChallenge("mev-sentinel", "0.0.10417474", "0.0.10417469", "testnet");
+    expect(challengeObj.challenge).toContain("SwarmProof Sovereign Agent Registration Challenge");
+    expect(challengeObj.challenge).toContain("Agent ID: mev-sentinel");
+    expect(challengeObj.challenge).toContain("Hedera Account: 0.0.10417474");
+
+    // 1. Test with Ed25519 Key
+    const edPriv = PrivateKey.generateED25519();
+    const edPub = edPriv.publicKey.toStringRaw();
+    const edSig = Buffer.from(edPriv.sign(Buffer.from(challengeObj.challenge, "utf8"))).toString("hex");
+
+    const edVerify = verifyAgentRegistrationSignature(challengeObj.challenge, edSig, edPub);
+    expect(edVerify.valid).toBe(true);
+    expect(edVerify.keyType).toBe("Ed25519VerificationKey2020");
+
+    // 2. Test with ECDSA secp256k1 Key
+    const ecdsaPriv = PrivateKey.generateECDSA();
+    const ecdsaPub = ecdsaPriv.publicKey.toStringRaw();
+    const ecdsaSig = Buffer.from(ecdsaPriv.sign(Buffer.from(challengeObj.challenge, "utf8"))).toString("hex");
+
+    const ecdsaVerify = verifyAgentRegistrationSignature(challengeObj.challenge, ecdsaSig, ecdsaPub);
+    expect(ecdsaVerify.valid).toBe(true);
+    expect(ecdsaVerify.keyType).toBe("EcdsaSecp256k1VerificationKey2019");
+
+    // 3. Rejection of tampered / forged signature
+    const tamperedVerify = verifyAgentRegistrationSignature(
+      challengeObj.challenge + "\nTAMPERED",
+      edSig,
+      edPub,
+    );
+    expect(tamperedVerify.valid).toBe(false);
+  });
 });
+
