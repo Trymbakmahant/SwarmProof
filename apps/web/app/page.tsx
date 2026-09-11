@@ -5,6 +5,7 @@ import Link from "next/link";
 import { SwarmSimulation3D } from "./components/SwarmSimulation3D";
 import { AgentInspectorModal } from "./components/AgentInspectorModal";
 import { RegisterAgentModal } from "./components/RegisterAgentModal";
+import { AuditPoolModal } from "./components/AuditPoolModal";
 import { FullAuditReportModal } from "./components/FullAuditReportModal";
 import { SwarmScoreGauge } from "./components/SwarmScoreGauge";
 import { CONTRACT_PRESETS, type ContractPreset } from "./components/presets";
@@ -68,6 +69,7 @@ export default function Home() {
   // Dynamic Agent Registry
   const [allAgents, setAllAgents] = useState<Record<string, SpecialistAgentMeta>>(SPECIALIST_AGENTS);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
   const [is3DFullscreen, setIs3DFullscreen] = useState(false);
   const [isFullReportOpen, setIsFullReportOpen] = useState(false);
 
@@ -218,6 +220,28 @@ export default function Home() {
 
           {/* Quick Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setIsPoolModalOpen(true)}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#09090b",
+                backgroundColor: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: 6,
+                padding: "6px 12px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#16a34a", display: "inline-block" }} />
+              <span>⚡ Live Audit Pool</span>
+            </button>
+
             <Link
               href="/leaderboard"
               style={{
@@ -870,6 +894,11 @@ export default function Home() {
             setSelectedAgentId(newAgent.id);
           }}
         />
+      )}
+
+      {/* ── Live Audit Task Pool Modal ────────────────────────────── */}
+      {isPoolModalOpen && (
+        <AuditPoolModal onClose={() => setIsPoolModalOpen(false)} />
       )}
 
       {/* ── Full Formal Audit Report Modal (with PDF Print) ──────── */}

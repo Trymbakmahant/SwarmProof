@@ -19,6 +19,7 @@ import {
   AuditOrchestrator,
   DEFAULT_SPECIALIST_WEIGHTS,
 } from "@swarmproof/swarm";
+import { AuditTaskPool, type PoolTask } from "./pool.js";
 import { createVerifier } from "@swarmproof/verification";
 import {
   createAuditProofClient,
@@ -122,6 +123,45 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   const gateway = new PaymentGateway(payment, network);
   const paymentProof: PaymentProofClient = opts.paymentProof ?? createPaymentProofClient(env);
   const identity: IdentityRegistrar = opts.identity ?? createIdentityRegistrar(env);
+
+  const taskPool = new AuditTaskPool({
+    defaultWindowSeconds: 60,
+    proofClient: auditProof,
+  });
+
+  // Seed an initial demo audit task in the pool
+  taskPool.createTask({
+    contractName: "EtherVault",
+    source: `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract EtherVault {
+    mapping(address => uint256) public balances;
+    address public owner;
+
+    constructor() { owner = msg.sender; }
+
+    function deposit() external payable {
+        balances[msg.sender] += msg.value;
+    }
+
+    function withdraw() external {
+        uint256 bal = balances[msg.sender];
+        require(bal > 0, "No balance");
+        (bool success, ) = msg.sender.call{value: bal}("");
+        require(success, "Transfer failed");
+        balances[msg.sender] = 0;
+    }
+
+    function emergencyDrain(address to) external {
+        payable(to).transfer(address(this).balance);
+    }
+}`,
+    submissionWindowSeconds: 600,
+    autoOpen: true,
+    bountyTotal: "1.00",
+    currency: "USD",
+  });
 
   // Payment Lab signer — the "consumer agent wallet". Uses dedicated payer
   // creds (X402_PAYER_*), falling back to the HCS operator (HEDERA_*), so a
@@ -1331,7 +1371,258 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
         void runAudit(record);
       }
     }
+    // Also register an open task in task pool for decentralized specialist submissions
+    try {
+      taskPool.createTask({
+        contractName: body.contractName,
+        source: body.source,
+        autoOpen: true,
+        submissionWindowSeconds: 180,
+      });
+    } catch {
+      // ignore
+    }
+
     return c.json({ id: record.id, status: record.status }, 202);
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Stage B: Decentralized Audit Task Pool & Windowed Submissions       */
+  /* ------------------------------------------------------------------ */
+
+  // GET /pool/tasks — List all audit tasks in the pool
+  app.get("/pool/tasks", (c) => {
+    const statusFilter = c.req.query("status") as any;
+    const tasks = taskPool.listTasks(statusFilter ? { status: statusFilter } : undefined);
+    const enriched = tasks.map((t) => ({
+      ...t,
+      remainingSeconds: taskPool.getRemainingSeconds(t),
+      isWindowOpen: taskPool.isWindowOpen(t),
+      canTriggerConsensus: taskPool.canTriggerConsensus(t),
+      claimsCount: t.claims.length,
+      submissionsCount: t.submissions.length,
+      requiredRolesCount: t.requiredRoles.length,
+    }));
+    return c.json({
+      ok: true,
+      tasks: enriched,
+      total: enriched.length,
+      activeWindowCount: enriched.filter((t) => t.status === "OPEN_FOR_SUBMISSIONS").length,
+    });
+  });
+
+  // POST /pool/tasks — Create a new audit task in the pool
+  app.post("/pool/tasks", async (c) => {
+    try {
+      const body = await c.req.json<{
+        contractName: string;
+        source: string;
+        compiler?: string;
+        address?: string;
+        network?: string;
+        submissionWindowSeconds?: number;
+        requiredRoles?: string[];
+        bountyTotal?: string;
+        currency?: string;
+        autoOpen?: boolean;
+      }>();
+      if (!body.contractName || !body.source) {
+        return c.json({ error: "contractName and source are required" }, 400);
+      }
+      const task = taskPool.createTask({
+        contractName: body.contractName,
+        source: body.source,
+        compiler: body.compiler,
+        address: body.address,
+        network: body.network,
+        submissionWindowSeconds: body.submissionWindowSeconds ?? 60,
+        requiredRoles: body.requiredRoles,
+        bountyTotal: body.bountyTotal,
+        currency: body.currency,
+        autoOpen: body.autoOpen !== false,
+      });
+      return c.json({
+        ok: true,
+        task: {
+          ...task,
+          remainingSeconds: taskPool.getRemainingSeconds(task),
+          isWindowOpen: taskPool.isWindowOpen(task),
+        },
+      }, 201);
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /pool/tasks/:id — Get details of a single task
+  app.get("/pool/tasks/:id", (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+    return c.json({
+      ok: true,
+      task: {
+        ...task,
+        remainingSeconds: taskPool.getRemainingSeconds(task),
+        isWindowOpen: taskPool.isWindowOpen(task),
+        canTriggerConsensus: taskPool.canTriggerConsensus(task),
+      },
+    });
+  });
+
+  // POST /pool/tasks/:id/claim — Agent claims a role slot
+  app.post("/pool/tasks/:id/claim", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ agentId: string; role: string; paymentAddress?: string }>();
+    if (!body.agentId || !body.role) {
+      return c.json({ error: "agentId and role are required" }, 400);
+    }
+    const result = taskPool.claimSlot(id, body);
+    if (!result.ok) {
+      return c.json({ ok: false, error: result.message }, 422);
+    }
+    return c.json({
+      ok: true,
+      message: result.message,
+      task: result.task ? {
+        ...result.task,
+        remainingSeconds: taskPool.getRemainingSeconds(result.task),
+        isWindowOpen: taskPool.isWindowOpen(result.task),
+      } : undefined,
+    });
+  });
+
+  // POST /pool/tasks/:id/submit — Submit findings within window
+  app.post("/pool/tasks/:id/submit", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{
+      agentId: string;
+      role: string;
+      findings: any[];
+      signature?: string;
+    }>();
+    if (!body.agentId || !body.role || !Array.isArray(body.findings)) {
+      return c.json({ error: "agentId, role, and findings array are required" }, 400);
+    }
+    const result = taskPool.submitFindings(id, {
+      agentId: body.agentId,
+      role: body.role,
+      findings: body.findings,
+      signature: body.signature,
+    });
+    if (!result.ok) {
+      return c.json({ ok: false, error: result.message }, 422);
+    }
+
+    let settledTask = result.task;
+    if (result.autoConsensusTriggered && result.task) {
+      try {
+        settledTask = await taskPool.triggerConsensus(id);
+      } catch (err) {
+        console.warn(`Auto-consensus error on task ${id}:`, (err as Error).message);
+      }
+    }
+
+    return c.json({
+      ok: true,
+      message: result.message,
+      autoConsensusTriggered: result.autoConsensusTriggered,
+      task: settledTask ? {
+        ...settledTask,
+        remainingSeconds: taskPool.getRemainingSeconds(settledTask),
+        isWindowOpen: taskPool.isWindowOpen(settledTask),
+      } : undefined,
+    });
+  });
+
+  // POST /pool/tasks/:id/trigger-consensus — Force consensus execution
+  app.post("/pool/tasks/:id/trigger-consensus", async (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+    if (task.submissions.length === 0) {
+      return c.json({ error: "Cannot run consensus without any specialist submissions" }, 422);
+    }
+    try {
+      const settled = await taskPool.triggerConsensus(id);
+      return c.json({
+        ok: true,
+        task: settled,
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // POST /pool/tasks/:id/simulate-submissions — Trigger registered swarm specialists to submit
+  app.post("/pool/tasks/:id/simulate-submissions", async (c) => {
+    const id = c.req.param("id");
+    const task = taskPool.getTask(id);
+    if (!task) return c.json({ error: `Task ${id} not found` }, 404);
+    if (!taskPool.isWindowOpen(task)) {
+      return c.json({ error: "Submission window is already closed" }, 422);
+    }
+
+    const submittedRoles = new Set(task.submissions.map((s) => s.role.toLowerCase().trim()));
+    const missingRoles = task.requiredRoles.filter((r) => !submittedRoles.has(r.toLowerCase().trim()));
+
+    const simulatedSubmissions: Array<{ agentId: string; role: string; findingsCount: number }> = [];
+
+    for (const role of missingRoles) {
+      const specialistKey = `${role}-agent`;
+      const agent = specialists[specialistKey] ?? Object.values(specialists).find((a) => a.identity.capabilities.some((cap) => cap.toLowerCase().includes(role)));
+      const agentId = agent ? agent.identity.agentId : `${role}-sentinel`;
+
+      let findings: Finding[] = [];
+      if (agent) {
+        try {
+          findings = await agent.analyze({
+            contractName: task.contractName,
+            source: task.source,
+            network: task.network ?? "ethereum",
+          });
+        } catch {
+          findings = [];
+        }
+      }
+
+      taskPool.claimSlot(task.id, {
+        agentId,
+        role,
+        paymentAddress: agent?.identity.paymentAddress,
+      });
+
+      taskPool.submitFindings(task.id, {
+        agentId,
+        role,
+        findings,
+      });
+
+      simulatedSubmissions.push({
+        agentId,
+        role,
+        findingsCount: findings.length,
+      });
+    }
+
+    let updatedTask = taskPool.getTask(id);
+    if (updatedTask && taskPool.canTriggerConsensus(updatedTask)) {
+      try {
+        updatedTask = await taskPool.triggerConsensus(id);
+      } catch (err) {
+        console.warn(`Consensus trigger error during simulation: ${(err as Error).message}`);
+      }
+    }
+
+    return c.json({
+      ok: true,
+      simulated: simulatedSubmissions,
+      task: updatedTask ? {
+        ...updatedTask,
+        remainingSeconds: taskPool.getRemainingSeconds(updatedTask),
+        isWindowOpen: taskPool.isWindowOpen(updatedTask),
+      } : undefined,
+    });
   });
 
   return app;
