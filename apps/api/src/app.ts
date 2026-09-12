@@ -438,6 +438,26 @@ contract EtherVault {
     }),
   );
 
+  app.get("/", (c) => {
+    return c.json({
+      ok: true,
+      service: "swarmproof-api",
+      version: "0.1.0",
+      paymentMode: payment.mode,
+      hederaMode: auditProof.mode,
+      identityMode: identity.mode,
+      llmMode: llmProvider ? llmProvider.name : "heuristic-fallback",
+      endpoints: {
+        health: "/health",
+        agents: "/agents",
+        leaderboard: "/leaderboard",
+        poolTasks: "/pool/tasks",
+        audit: "/audit",
+      },
+    });
+  });
+  app.get("/api", (c) => c.redirect("/"));
+
   app.get("/health", (c) => {
     const isX402 = payment instanceof X402PaymentProvider;
     return c.json({
