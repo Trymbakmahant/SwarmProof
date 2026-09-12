@@ -7,6 +7,8 @@ coverage/
 .env.local
 .next/
 out/
+.vercel
+.vercel-temp
 .cache/
 *.tsbuildinfo
 
@@ -14,3 +16,6 @@ out/
 hedera-integration.md
 stage3.md
 LOCK_IN_ROADMAP.md
+PROJECT_AUDIT_REPORT.md
+THE_GRAPH_INTEGRATION.md
+packages/mcp/README.md

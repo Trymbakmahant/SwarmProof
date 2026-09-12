@@ -1,0 +1,37 @@
+services:
+  # SwarmProof API Gateway
+  - type: web
+    name: swarmproof-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @swarmproof/api build
+    startCommand: node apps/api/dist/index.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HEDERA_NETWORK
+        value: testnet
+      - key: HEDERA_ACCOUNT_ID
+        sync: false
+      - key: HEDERA_PRIVATE_KEY
+        sync: false
+      - key: HEDERA_TOPIC_ID
+        value: 0.0.10417469
+      - key: FIREWORKS_API_KEY
+        sync: false
+
+  # SwarmProof Next.js Web Frontend
+  - type: web
+    name: swarmproof-web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @swarmproof/web build
+    startCommand: node apps/web/node_modules/next/dist/bin/next start apps/web
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE
+        fromService:
+          type: web
+          name: swarmproof-api
+          property: host

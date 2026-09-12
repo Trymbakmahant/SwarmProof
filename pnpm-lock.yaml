@@ -180,7 +180,11 @@ importers:
         specifier: ^22.0.0
         version: 22.20.1
 
-  packages/verification: {}
+  packages/verification:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
 
   packages/x402:
     dependencies:
@@ -212,9 +216,6 @@ importers:
       '@swarmproof/hedera':
         specifier: workspace:*
         version: link:../packages/hedera
-      '@swarmproof/mcp':
-        specifier: workspace:*
-        version: link:../packages/mcp
       '@swarmproof/payments':
         specifier: workspace:*
         version: link:../packages/payments
@@ -233,6 +234,9 @@ importers:
       '@swarmproof/x402':
         specifier: workspace:*
         version: link:../packages/x402
+      swarmproof-mcp:
+        specifier: workspace:*
+        version: link:../packages/mcp
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -2701,7 +2705,7 @@ snapshots:
   '@grpc/proto-loader@0.7.15':
     dependencies:
       lodash.camelcase: 4.3.0
-      long: 5.3.1
+      long: 5.3.2
       protobufjs: 7.6.6
       yargs: 17.7.3
 

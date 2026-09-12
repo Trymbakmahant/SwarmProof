@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api-runner
+    container_name: swarmproof-api
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - HEDERA_NETWORK=testnet
+      - HEDERA_ACCOUNT_ID=${HEDERA_ACCOUNT_ID:-0.0.10119346}
+      - HEDERA_PRIVATE_KEY=${HEDERA_PRIVATE_KEY}
+      - HEDERA_TOPIC_ID=${HEDERA_TOPIC_ID:-0.0.10417469}
+      - X402_PAYER_ACCOUNT_ID=${X402_PAYER_ACCOUNT_ID:-0.0.10119346}
+      - X402_PAYER_PRIVATE_KEY=${X402_PAYER_PRIVATE_KEY}
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r => process.exit(r.ok ? 0 : 1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web-runner
+    container_name: swarmproof-web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://api:3001}
+    depends_on:
+      api:
+        condition: service_healthy
