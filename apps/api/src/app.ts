@@ -1746,7 +1746,7 @@ contract EtherVault {
       // ignore
     }
 
-    return c.json({ id: record.id, status: record.status }, 202);
+    return c.json(record, 201);
   });
 
   /* ------------------------------------------------------------------ */

@@ -7,13 +7,13 @@ import { calculateContractSwarmScore } from "./swarmScore";
 export interface FullAuditReportModalProps {
   auditResult: {
     id: string;
-    task: {
+    task?: {
       contractName: string;
-      source: string;
+      source?: string;
       network?: string;
     };
     status: string;
-    createdAt: string;
+    createdAt?: string;
     payment?: {
       paymentId: string;
       total: string;
@@ -33,56 +33,36 @@ export interface FullAuditReportModalProps {
       consensusTimestamp: string;
     };
     report?: {
-      auditId: string;
-      contractName: string;
-      network: string;
-      result: string;
-      findings: Array<{
+      auditId?: string;
+      contractName?: string;
+      network?: string;
+      result?: string;
+      consensusSummary?: string;
+      findings?: Array<{
         id: string;
-        category: string;
-        severity: string;
-        locations: string[];
-        agents: string[];
-        snippets: string[];
+        category?: string;
+        severity?: string;
+        locations?: string[];
+        agents?: string[];
+        snippets?: string[];
       }>;
-      verification: Array<{
+      verification?: Array<{
         findingId: string;
         tool: string;
         reproduced: boolean;
         command: string;
         outputExcerpt: string;
       }>;
-      consensusSummary: string;
-      generatedAt: string;
     };
     proof?: {
-      auditId: string;
-      reportHash: string;
-      hcsTopicId: string;
-      transactionId: string;
-      consensusTimestamp: string;
-      verified: boolean;
+      hcsTopicId?: string;
+      transactionId?: string;
+      consensusTimestamp?: string;
+      reportHash?: string;
+      verified?: boolean;
     };
-    findings?: Array<{
-      finding: {
-        id: string;
-        title: string;
-        category: string;
-        severity: string;
-        location: string;
-        evidence: string[];
-      };
-      evidence: Array<{ agentRole: string; agentId?: string; confidence: number }>;
-      score: number;
-      verdict: string;
-    }>;
-    verification?: Array<{
-      findingId: string;
-      tool: string;
-      reproduced: boolean;
-      command: string;
-      outputExcerpt: string;
-    }>;
+    findings?: any[];
+    [key: string]: any;
   };
   onClose: () => void;
 }
@@ -101,24 +81,30 @@ export function FullAuditReportModal({ auditResult, onClose }: FullAuditReportMo
   const [activeTab, setActiveTab] = useState<"overview" | "findings" | "consensus" | "hedera" | "x402">("overview");
   const [copied, setCopied] = useState(false);
 
+  const contractName =
+    auditResult?.task?.contractName ||
+    auditResult?.report?.contractName ||
+    (auditResult as any)?.contractName ||
+    "Smart Contract";
+
   const displayFindings: NormalizedReportFinding[] = (auditResult.report?.findings && auditResult.report.findings.length > 0)
     ? auditResult.report.findings.map((f) => ({
         id: f.id,
         title: f.id,
-        category: f.category,
-        severity: f.severity,
+        category: f.category || "security",
+        severity: f.severity || "medium",
         locations: f.locations || ["contract"],
         agents: f.agents || [],
         snippets: f.snippets || [],
       }))
-    : (auditResult.findings || []).map((f) => ({
-        id: f.finding.id,
-        title: f.finding.title,
-        category: f.finding.category,
-        severity: f.finding.severity,
-        locations: [f.finding.location || "contract"],
-        agents: f.evidence.map((e) => e.agentId || e.agentRole),
-        snippets: f.finding.evidence || [],
+    : (auditResult.findings || []).map((f: any) => ({
+        id: f.finding?.id || f.id || "f_detected",
+        title: f.finding?.title || f.finding?.id || f.title || "Vulnerability Finding",
+        category: f.finding?.category || f.category || "security",
+        severity: f.finding?.severity || f.severity || "medium",
+        locations: f.finding?.locations || [f.finding?.location || f.location || "contract"],
+        agents: (f.evidence || []).map((e: any) => e.agentId || e.agentRole || e.role) || f.agents || [],
+        snippets: f.finding?.evidence || f.snippets || (f.finding?.description ? [f.finding.description] : []),
       }));
 
   // Flattened for SwarmScore
@@ -238,7 +224,7 @@ export function FullAuditReportModal({ auditResult, onClose }: FullAuditReportMo
                 </span>
               </div>
               <div style={{ fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)", marginTop: 2 }}>
-                Audit ID: {auditResult.id} • Contract: {auditResult.task.contractName}
+                Audit ID: {auditResult.id} • Contract: {contractName}
               </div>
             </div>
           </div>
@@ -357,7 +343,7 @@ export function FullAuditReportModal({ auditResult, onClose }: FullAuditReportMo
               {/* SwarmProof Trust & Security Rating Gauge */}
               <div style={{ marginBottom: 24 }}>
                 <SwarmScoreGauge
-                  contractName={auditResult.task.contractName}
+                  contractName={contractName}
                   findings={swarmScoreInput}
                   verified={auditResult.report?.result === "verified"}
                   showFactors={true}
@@ -370,7 +356,7 @@ export function FullAuditReportModal({ auditResult, onClose }: FullAuditReportMo
                   Executive Security Assessment
                 </h3>
                 <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#3f3f46", lineHeight: 1.6 }}>
-                  Contract <strong>{auditResult.task.contractName}</strong> was audited by the SwarmProof multi-agent cybersecurity network. 5 specialist agents executed parallel semantic analysis cross-examining control flow, state mutations, and access modifiers.
+                  Contract <strong>{contractName}</strong> was audited by the SwarmProof multi-agent cybersecurity network. 5 specialist agents executed parallel semantic analysis cross-examining control flow, state mutations, and access modifiers.
                 </p>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>

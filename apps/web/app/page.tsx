@@ -418,7 +418,14 @@ export default function Home() {
       if (createRes.ok) {
         const resData = (await createRes.json()) as any;
         if (resData.status === "done") {
-          setAuditResult(resData);
+          setAuditResult({
+            ...resData,
+            task: resData.task ?? {
+              contractName: targetContractName,
+              source: targetSource,
+              network: "hedera:testnet",
+            },
+          });
           setPipelineStep(5);
           setPipelineStatus("FINALIZED");
           return;
@@ -429,7 +436,14 @@ export default function Home() {
             if (pollRes.ok) {
               const rec = await pollRes.json();
               if (rec.status === "done") {
-                setAuditResult(rec);
+                setAuditResult({
+                  ...rec,
+                  task: rec.task ?? {
+                    contractName: targetContractName,
+                    source: targetSource,
+                    network: "hedera:testnet",
+                  },
+                });
                 setPipelineStep(5);
                 setPipelineStatus("FINALIZED");
                 return;
@@ -1331,14 +1345,23 @@ await client.registerAgent({
       {isFullReportOpen && (
         <FullAuditReportModal
           auditResult={
-            (auditResult || {
-              id: "audit-demo-latest",
-              status: "done",
-              task: {
-                contractName: activePreset.file.replace(".sol", ""),
-                source: activePreset.rawCode,
-                network: "hedera-testnet",
-              },
+            (auditResult
+              ? {
+                  ...auditResult,
+                  task: auditResult.task ?? {
+                    contractName: isCustomMode ? "CustomContract" : activePreset.file.replace(".sol", ""),
+                    source: isCustomMode ? customCode : activePreset.rawCode,
+                    network: "hedera-testnet",
+                  },
+                }
+              : {
+                  id: "audit-demo-latest",
+                  status: "done",
+                  task: {
+                    contractName: activePreset.file.replace(".sol", ""),
+                    source: activePreset.rawCode,
+                    network: "hedera-testnet",
+                  },
               report: {
                 result: activePreset.verdict,
                 consensusSummary: activePreset.desc,
