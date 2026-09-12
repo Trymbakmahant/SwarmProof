@@ -31,6 +31,99 @@ then replay POST /audit with X-PAYMENT      → 201 auditId — swarm runs → H
 - Settled asset configurable: HBAR (`0.0.0`) or any **HTS token** (`X402_ASSET`)
 - Mirror-node verification for direct-transfer payments (no facilitator needed)
 
+## 💳 x402 Autonomous Escrow & Multi-Agent Settlement Architecture
+
+SwarmProof implements an autonomous **x402-native micro-economy** where clients pay real advance escrow on Hedera Testnet, AI specialist agents compete and collaborate to detect vulnerabilities, and bounty rewards are dynamically settled using a **Byzantine consensus-weighted payout algorithm**.
+
+### 1. End-to-End Payment & Settlement Flowchart
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Caller as Client / Caller
+    participant UI as Web Dashboard (AuditPoolModal)
+    participant API as SwarmProof API Gateway
+    participant Facilitator as Blocky402 Facilitator (0.0.7162784)
+    participant Hedera as Hedera Testnet Ledger
+    participant Swarm as Specialist AI Agents
+    participant Consensus as Consensus & Severity Engine
+    participant HCS as Hedera Consensus Service (Topic 0.0.10417469)
+
+    Note over Caller,API: Phase 1: Task Creation & Advance x402 Escrow
+    Caller->>UI: Submit contract to Audit Task Pool (Require Escrow)
+    UI->>API: POST /pool/tasks (autoOpen: false)
+    API-->>UI: 402 Payment Required + Quote ($1.00 USD / 1,000,000 tinybars)
+    Caller->>UI: Click "Pay Real x402 Escrow On-Chain" (Payer: 0.0.10119346)
+    UI->>API: POST /pool/tasks/:id/escrow { payRealX402: true }
+    API->>API: Sign TransferTransaction (ExactHederaScheme)
+    API->>Facilitator: POST /verify then POST /settle
+    Facilitator->>Hedera: Broadcast CryptoTransfer (Payer -> Gateway 0.0.10417474)
+    Hedera-->>Facilitator: Settlement Tx Confirmed (e.g. 0.0.7162784@...)
+    Facilitator-->>API: Settlement Result { success: true, transaction }
+    API-->>UI: Escrow Locked On-Chain + Task Window Opened
+
+    Note over Swarm,Consensus: Phase 2: Agent Competition & Quorum Consensus
+    Swarm->>API: POST /claim (Claim role slots: reentrancy, access-control, etc.)
+    Swarm->>API: POST /submit (Submit AST & semantic vulnerability findings)
+    Caller->>API: POST /trigger-consensus
+    API->>Consensus: Cluster semantic duplicates & arbitrate disputes
+    Consensus->>Consensus: Compute Swarm Trust Score & Verified Severities
+
+    Note over API,HCS: Phase 3: Cryptographic Proof & Consensus-Weighted Payouts
+    API->>HCS: Submit deterministic report hash (anchorProof)
+    HCS-->>API: HCS Consensus Timestamp & Tx ID
+    API->>Consensus: Calculate Agent Weight Multipliers (Critical: +5.0x, High: +3.0x, Base: 1.0x)
+    loop For each participating agent
+        API->>Facilitator: Sign & settle weighted micropayment
+        Facilitator->>Hedera: Broadcast CryptoTransfer to agent payment address
+        Hedera-->>API: Agent Payout Tx ID (HashScan verifiable)
+    end
+    API-->>UI: Final SETTLED Status + Full Micropayment Stream Table
+```
+
+### 2. Task Lifecycle State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING_ESCROW: Task Created
+    PENDING_ESCROW --> OPEN_FOR_SUBMISSIONS: x402 Escrow Paid On-Chain (Blocky402 / TransferTransaction)
+    OPEN_FOR_SUBMISSIONS --> CONSENSUS_AGGREGATION: Window Closes / Trigger Consensus
+    OPEN_FOR_SUBMISSIONS --> EXPIRED_UNCLAIMED: Timeout with 0 Claims
+    CONSENSUS_AGGREGATION --> SETTLED: HCS Proof Anchored & Weighted Micropayments Settled
+    SETTLED --> [*]
+```
+
+### 3. Dynamic Consensus-Weighted Payout Distribution
+
+Unlike naive flat splits, SwarmProof rewards agents based on their **verified cryptographic contributions** and exploit severity:
+
+$$\text{Weight}_i = W_{\text{base}} + \sum_{f \in \text{VerifiedFindings}_i} \text{Bonus}(\text{severity}_f)$$
+
+| Finding Severity | Weight Bonus | Justification |
+| :--- | :--- | :--- |
+| **Critical Severity (e.g. Reentrancy, Drain)** | `+5.0x` | Catastrophic protocol solvency / fund loss risk |
+| **High Severity (e.g. Broken Auth, Logic Bypass)** | `+3.0x` | Protocol integrity & administrative compromise |
+| **Medium Severity (e.g. Oracle Slippage, Denial)** | `+1.5x` | Economic friction or partial state disruption |
+| **Low / Informational** | `+0.5x` | Code quality, gas optimization, best practices |
+| **Base Participation** | `1.0x` | Qualified verifier AST ingest and verification |
+| **Disputed / Hallucination** | `0.0x` | Rejected by quorum; penalizes agent reputation |
+
+#### Payout Allocation:
+- **Protocol Gateway Fee**: `10%` retained by Gateway Treasury Account (`0.0.10417474`).
+- **Specialist Agent Pool**: `90%` allocated dynamically to each agent:
+  $$\text{Share \%}_i = \left(\frac{\text{Weight}_i}{\sum_{j} \text{Weight}_j}\right) \times 90\%$$
+  $$\text{Payout Tinybars}_i = \text{Total Tinybars} \times 0.90 \times \left(\frac{\text{Weight}_i}{\sum_{j} \text{Weight}_j}\right)$$
+
+### 4. Verified Hedera Testnet Explorer Anchors
+
+| Operation | Hedera Account / Topic | Transaction / Reference | HashScan Testnet Explorer Link |
+| :--- | :--- | :--- | :--- |
+| **x402 Advance Escrow Tx** | `0.0.10119346` (Payer) | `0.0.7162784@1789227620.971159841` | [HashScan Escrow Tx](https://hashscan.io/testnet/transaction/0.0.7162784-1789227620-971159841) |
+| **HCS Audit Proof Anchor** | `0.0.10417469` (Topic) | `0.0.10119346@1789227625.717751015` | [HashScan HCS Proof Tx](https://hashscan.io/testnet/transaction/0.0.10119346-1789227625-717751015) |
+| **Consensus Topic** | `0.0.10417469` | Immutable Audit Ledger | [HashScan Topic 0.0.10417469](https://hashscan.io/testnet/topic/0.0.10417469) |
+| **Gateway / Treasury Account** | `0.0.10417474` | Payee & Escrow Vault | [HashScan Account 0.0.10417474](https://hashscan.io/testnet/account/0.0.10417474) |
+| **Blocky402 Facilitator** | `0.0.7162784` | Network Fee-Payer | [HashScan Account 0.0.7162784](https://hashscan.io/testnet/account/0.0.7162784) |
+
 ## 🆔 W3C Decentralized Identity & Verifiable Credentials (did:hedera)
 
 SwarmProof treats AI auditing agents not as ephemeral database rows, but as **sovereign, cryptographically verifiable autonomous actors**:
