@@ -48,12 +48,10 @@ const HEDERA_TESTNET_PARAMS = {
 };
 
 const DEFAULT_STATE: WalletState = {
-  isConnected: true,
-  type: "treasury",
-  accountId: "0.0.10119346",
-  address: "0x6666666666666666666666666666666666666666",
+  isConnected: false,
+  accountId: "",
   network: "testnet",
-  balanceHbar: "979.4",
+  balanceHbar: "0.0",
 };
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -107,7 +105,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const saved = localStorage.getItem("swarmproof_wallet");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.accountId) {
+        if (parsed && parsed.isConnected && parsed.accountId) {
           setWallet(parsed);
         }
       }

@@ -345,6 +345,7 @@ export default function Page() {
   const activePreset: PresetItem = PRESETS[selectedPresetKey] ?? PRESETS.reentrancy!;
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customCode, setCustomCode] = useState(activePreset.rawCode);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isCustomMode) {
@@ -412,7 +413,9 @@ export default function Page() {
       setPipelineStep((prev) => (prev < 4 ? prev + 1 : prev));
     }, 450);
 
-    const targetContractName = isCustomMode ? "CustomContract" : activePreset.file.replace(".sol", "");
+    const targetContractName = isCustomMode
+      ? (uploadedFileName ? uploadedFileName.replace(/\.sol$/, "") : "CustomContract")
+      : activePreset.file.replace(".sol", "");
     const targetSource = isCustomMode ? customCode : activePreset.rawCode;
     const activeApi = getApiBase();
 
@@ -1158,11 +1161,11 @@ export default function Page() {
                         <span className="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
                         <span className="w-3 h-3 rounded-full bg-[#27c93f]"></span>
                         <span className="ml-2 font-label-md text-label-md font-semibold text-on-surface">
-                          {isCustomMode ? "CustomContract.sol" : activePreset.file}
+                          {isCustomMode ? (uploadedFileName || "CustomContract.sol") : activePreset.file}
                         </span>
                         <span className="text-outline-variant font-label-sm">•</span>
                         <span className="font-label-sm text-label-sm text-tertiary">
-                          {isCustomMode ? "User Code" : activePreset.category}
+                          {isCustomMode ? (uploadedFileName ? "Uploaded File" : "User Code") : activePreset.category}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -1170,6 +1173,7 @@ export default function Page() {
                           type="button"
                           onClick={() => {
                             setIsCustomMode(false);
+                            setUploadedFileName(null);
                             setAuditResult(null);
                           }}
                           className={`px-3 py-1 rounded-full text-label-sm font-semibold transition-all ${
@@ -1187,13 +1191,39 @@ export default function Page() {
                             setAuditResult(null);
                           }}
                           className={`px-3 py-1 rounded-full text-label-sm font-semibold transition-all ${
-                            isCustomMode
+                            isCustomMode && !uploadedFileName
                               ? "bg-primary text-on-primary shadow-xs"
                               : "text-on-surface-variant hover:text-on-surface"
                           }`}
                         >
                           ✏️ Edit Custom Code
                         </button>
+                        <label className="cursor-pointer px-3 py-1 rounded-full text-label-sm font-semibold transition-all bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[15px]">upload_file</span>
+                          <span>Upload .sol</span>
+                          <input
+                            type="file"
+                            accept=".sol,.txt"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  const text = event.target?.result as string;
+                                  if (text) {
+                                    setCustomCode(text);
+                                    setIsCustomMode(true);
+                                    setUploadedFileName(file.name);
+                                    setAuditResult(null);
+                                    setPipelineStatus("READY");
+                                  }
+                                };
+                                reader.readAsText(file);
+                              }
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
 
