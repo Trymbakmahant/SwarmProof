@@ -511,3 +511,47 @@ button:active {
     page-break-inside: auto;
   }
 }
+
+/* Responsive Audit Task Pool Modal Styles */
+.audit-pool-window {
+  width: 95vw !important;
+  max-width: 1200px !important;
+  max-height: 92vh !important;
+}
+
+.audit-pool-grid {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 860px) {
+  .audit-pool-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.audit-pool-table-scroll {
+  width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-pool-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.audit-pool-table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.audit-pool-table-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+.audit-pool-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

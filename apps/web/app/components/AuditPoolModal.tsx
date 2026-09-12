@@ -323,15 +323,13 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   return (
     <div className="swarm-modal-backdrop" onClick={onClose}>
       <div
-        className="swarm-modal-window"
+        className="swarm-modal-window audit-pool-window"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: 960,
-          maxHeight: "92vh",
-          overflowY: "auto",
           boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
           border: "1px solid #e4e4e7",
           backgroundColor: "#ffffff",
+          overflowY: "auto",
         }}
       >
         {/* Modal Header */}
@@ -694,7 +692,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           </div>
 
           {/* Task Grid / Master-Detail Layout */}
-          <div style={{ display: "grid", gridTemplateColumns: "310px 1fr", gap: 16 }}>
+          <div className="audit-pool-grid">
             {/* Task List Column */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "60vh", overflowY: "auto" }}>
               {loading && tasks.length === 0 ? (
@@ -802,6 +800,8 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
             {selectedTask ? (
               <div
                 style={{
+                  minWidth: 0,
+                  overflowX: "hidden",
                   border: "1px solid #e4e4e7",
                   borderRadius: 8,
                   backgroundColor: "#ffffff",
@@ -1357,17 +1357,30 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
 
                     {/* Individual Payouts Table */}
                     {selectedTask.payouts && selectedTask.payouts.length > 0 && (
-                      <div style={{ marginTop: 4 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
-                            Participating Agent Wallet Micropayment Stream
+                      <div style={{ marginTop: 4, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                              Participating Agent Wallet Micropayment Stream
+                            </div>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: "#0284c7", backgroundColor: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: 4, padding: "1px 6px" }}>
+                              ↔ Scroll to view On-Chain Tx
+                            </span>
                           </div>
                           <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#71717a" }}>
                             Hedera Testnet Settlement (x402 Micro-transactions)
                           </div>
                         </div>
-                        <div style={{ border: "1px solid #bbf7d0", borderRadius: 6, overflow: "hidden", backgroundColor: "#ffffff" }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                        <div
+                          className="audit-pool-table-scroll"
+                          style={{
+                            border: "1px solid #bbf7d0",
+                            borderRadius: 6,
+                            backgroundColor: "#ffffff",
+                            boxShadow: "inset 0 1px 2px rgba(0, 0, 0, 0.03)",
+                          }}
+                        >
+                          <table style={{ width: "100%", minWidth: 860, borderCollapse: "collapse", fontSize: 11, whiteSpace: "nowrap" }}>
                             <thead>
                               <tr style={{ backgroundColor: "#f0fdf4", borderBottom: "1px solid #bbf7d0", textAlign: "left", color: "#166534" }}>
                                 <th style={{ padding: "6px 10px", fontWeight: 600 }}>Agent ID</th>
