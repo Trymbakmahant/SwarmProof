@@ -14,6 +14,8 @@ export interface TaskPayoutRecord {
   amountUSD: string;
   amountTinybars: number;
   acceptedFindingsCount: number;
+  weightScore?: number;
+  weightBonusReason?: string;
   transactionId?: string;
   status: "settled" | "pending";
 }
@@ -1103,11 +1105,103 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                       </div>
                     </div>
 
+                    {/* On-Chain Hedera Verification & Consensus-Weighted Policy Banner */}
+                    <div
+                      style={{
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 6,
+                        padding: "10px 14px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <span style={{ fontWeight: 800, color: "#166534" }}>⚖️ Dynamic Consensus-Weighted Payout</span>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              fontFamily: "var(--font-mono)",
+                              color: "#15803d",
+                              backgroundColor: "#f0fdf4",
+                              padding: "1px 6px",
+                              borderRadius: 4,
+                              border: "1px solid #86efac",
+                            }}
+                          >
+                            WEIGHTED BY SEVERITY
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#52525b" }}>
+                          Agents receive bounty proportional to verified vulnerability severity (Critical: +5.0x, High: +3.0x, Medium: +1.5x, Base Participation: 1.0x).
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {selectedTask.settlementReceipt?.hcsTransactionId || selectedTask.proofReceipt?.transactionId ? (
+                          <a
+                            href={`https://hashscan.io/testnet/transaction/${selectedTask.settlementReceipt?.hcsTransactionId || selectedTask.proofReceipt?.transactionId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              fontSize: 11,
+                              fontFamily: "var(--font-mono)",
+                              fontWeight: 700,
+                              color: "#0284c7",
+                              backgroundColor: "#f0f9ff",
+                              border: "1px solid #bae6fd",
+                              borderRadius: 6,
+                              padding: "6px 12px",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>⛓️ View Settlement On-Chain (HashScan)</span>
+                            <span>↗</span>
+                          </a>
+                        ) : (
+                          <a
+                            href="https://hashscan.io/testnet/topic/0.0.10417469"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              fontSize: 11,
+                              fontFamily: "var(--font-mono)",
+                              fontWeight: 700,
+                              color: "#15803d",
+                              backgroundColor: "#f0fdf4",
+                              border: "1px solid #86efac",
+                              borderRadius: 6,
+                              padding: "6px 12px",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>Topic 0.0.10417469 on HashScan ↗</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Individual Payouts Table */}
                     {selectedTask.payouts && selectedTask.payouts.length > 0 && (
                       <div style={{ marginTop: 4 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase", marginBottom: 6 }}>
-                          Participating Agent Wallet Micropayment Stream
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                            Participating Agent Wallet Micropayment Stream
+                          </div>
+                          <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#71717a" }}>
+                            Hedera Testnet Settlement (x402 Micro-transactions)
+                          </div>
                         </div>
                         <div style={{ border: "1px solid #bbf7d0", borderRadius: 6, overflow: "hidden", backgroundColor: "#ffffff" }}>
                           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
@@ -1115,33 +1209,93 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                               <tr style={{ backgroundColor: "#f0fdf4", borderBottom: "1px solid #bbf7d0", textAlign: "left", color: "#166534" }}>
                                 <th style={{ padding: "6px 10px", fontWeight: 600 }}>Agent ID</th>
                                 <th style={{ padding: "6px 10px", fontWeight: 600 }}>Role</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "center" }}>Consensus Weight</th>
                                 <th style={{ padding: "6px 10px", fontWeight: 600 }}>Payout Address</th>
-                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Share</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Share %</th>
                                 <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Payout (Tinybars)</th>
                                 <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "right" }}>Amount ($ USD)</th>
+                                <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "center" }}>On-Chain Tx (Hedera)</th>
                                 <th style={{ padding: "6px 10px", fontWeight: 600, textAlign: "center" }}>Status</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {selectedTask.payouts.map((p, idx) => (
-                                <tr key={idx} style={{ borderBottom: idx < selectedTask.payouts!.length - 1 ? "1px solid #f4f4f5" : "none" }}>
-                                  <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", fontWeight: 600 }}>{p.agentId}</td>
-                                  <td style={{ padding: "6px 10px", textTransform: "capitalize" }}>{p.role}</td>
-                                  <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", color: "#71717a" }}>{p.address}</td>
-                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)" }}>{p.sharePercent}%</td>
-                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#15803d" }}>
-                                    {p.amountTinybars.toLocaleString()}
-                                  </td>
-                                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                                    ${p.amountUSD}
-                                  </td>
-                                  <td style={{ padding: "6px 10px", textAlign: "center" }}>
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: "#15803d", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "1px 6px" }}>
-                                      ✓ Settled
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
+                              {selectedTask.payouts.map((p, idx) => {
+                                const weightVal = p.weightScore ?? (p.acceptedFindingsCount > 0 ? p.acceptedFindingsCount * 3 + 1 : 1);
+                                return (
+                                  <tr key={idx} style={{ borderBottom: idx < selectedTask.payouts!.length - 1 ? "1px solid #f4f4f5" : "none" }}>
+                                    <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", fontWeight: 600 }}>{p.agentId}</td>
+                                    <td style={{ padding: "6px 10px", textTransform: "capitalize" }}>{p.role}</td>
+                                    <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                                      <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
+                                        <span
+                                          style={{
+                                            fontFamily: "var(--font-mono)",
+                                            fontWeight: 800,
+                                            fontSize: 10,
+                                            color: weightVal > 1 ? "#15803d" : "#52525b",
+                                            backgroundColor: weightVal > 1 ? "#f0fdf4" : "#f4f4f5",
+                                            border: `1px solid ${weightVal > 1 ? "#86efac" : "#e4e4e7"}`,
+                                            borderRadius: 4,
+                                            padding: "1px 6px",
+                                          }}
+                                          title={p.weightBonusReason || (p.acceptedFindingsCount > 0 ? `${p.acceptedFindingsCount} Accepted Finding(s)` : "Base Verifier Participation")}
+                                        >
+                                          {p.weightScore ? `${p.weightScore}x` : `${weightVal.toFixed(1)}x`}
+                                        </span>
+                                        {p.acceptedFindingsCount > 0 && (
+                                          <span style={{ fontSize: 9, color: "#166534", marginTop: 2 }}>
+                                            {p.acceptedFindingsCount} verified
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: "6px 10px", fontFamily: "var(--font-mono)", color: "#71717a" }}>{p.address}</td>
+                                    <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                                      {p.sharePercent}%
+                                    </td>
+                                    <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#15803d" }}>
+                                      {p.amountTinybars.toLocaleString()}
+                                    </td>
+                                    <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                                      ${p.amountUSD}
+                                    </td>
+                                    <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                                      {p.transactionId ? (
+                                        <a
+                                          href={`https://hashscan.io/testnet/transaction/${p.transactionId}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{
+                                            fontSize: 10,
+                                            fontFamily: "var(--font-mono)",
+                                            color: "#0284c7",
+                                            backgroundColor: "#f0f9ff",
+                                            border: "1px solid #bae6fd",
+                                            borderRadius: 4,
+                                            padding: "2px 6px",
+                                            textDecoration: "none",
+                                            fontWeight: 600,
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 3,
+                                          }}
+                                          title={`View Hedera transaction ${p.transactionId} on HashScan`}
+                                        >
+                                          <span>Tx {p.transactionId.slice(0, 14)}...</span>
+                                          <span>↗</span>
+                                        </a>
+                                      ) : (
+                                        <span style={{ fontSize: 10, color: "#a1a1aa", fontFamily: "var(--font-mono)" }}>—</span>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: "#15803d", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "1px 6px" }}>
+                                        ✓ Settled
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
