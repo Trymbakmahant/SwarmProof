@@ -15,6 +15,7 @@
     "dev:api": "pnpm --filter @swarmproof/api dev",
     "dev:web": "pnpm --filter @swarmproof/web dev",
     "deploy:web": "pnpm --filter @swarmproof/web build && mkdir -p .vercel-temp && npx vercel deploy apps/web/out --temporary --yes -Q .vercel-temp",
+    "agent:node": "tsx scripts/agent-node.ts",
     "clean": "pnpm -r exec rm -rf dist node_modules"
   },
   "devDependencies": {
