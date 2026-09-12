@@ -32,34 +32,28 @@ interface PresetItem {
 const PRESETS: Record<string, PresetItem> = {
   reentrancy: {
     file: "EtherVault.sol",
-    name: "Classic Reentrancy Vault",
+    name: "Classic Reentrancy (SWC-107)",
     category: "SWC-107",
     lines: "21 lines • 784 bytes",
     severity: "CRITICAL",
-    severityClass: "bg-red-500/15 text-red-700 border border-red-500/30",
+    severityClass: "bg-error-container text-error font-semibold",
     title: "SWC-107: State-Change Reentrancy",
     verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.20;
-<span class="text-zinc-500"> 3</span> 
-<span class="text-zinc-500"> 4</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">EtherVault</span> {
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-400">mapping</span>(<span class="text-blue-300">address</span> =&gt; <span class="text-blue-300">uint256</span>) <span class="text-blue-400">public</span> balances;
-<span class="text-zinc-500"> 6</span> 
-<span class="text-zinc-500"> 7</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">deposit</span>() <span class="text-blue-400">external payable</span> {
-<span class="text-zinc-500"> 8</span>         balances[<span class="text-red-400">msg.sender</span>] += <span class="text-red-400">msg.value</span>;
-<span class="text-zinc-500"> 9</span>     }
-<span class="text-zinc-500">10</span> 
-<span class="text-zinc-500">11</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">withdraw</span>() <span class="text-blue-400">external</span> {
-<span class="text-zinc-500">12</span>         <span class="text-blue-300">uint256</span> bal = balances[<span class="text-red-400">msg.sender</span>];
-<span class="text-zinc-500">13</span>         <span class="text-yellow-400">require</span>(bal &gt; 0, <span class="text-emerald-300">"Insufficient balance"</span>);
-<span class="text-zinc-500">14</span> 
-<span class="text-zinc-500">15</span>         <span class="text-purple-400">// [CRITICAL] External transfer before zeroing balance (CEI violation)</span>
-<span class="text-zinc-500">16</span>         (<span class="text-blue-300">bool</span> success, ) = <span class="text-red-400">msg.sender</span>.<span class="text-yellow-200">call</span>{<span class="text-emerald-400">value</span>: bal}(<span class="text-emerald-300">""</span>);
-<span class="text-zinc-500">17</span>         <span class="text-yellow-400">require</span>(success, <span class="text-emerald-300">"Transfer failed"</span>);
-<span class="text-zinc-500">18</span> 
-<span class="text-zinc-500">19</span>         balances[<span class="text-red-400">msg.sender</span>] = 0;
-<span class="text-zinc-500">20</span>     }
-<span class="text-zinc-500">21</span> }`,
+    code: `<div class="text-tertiary mb-1">// SPDX-License-Identifier: MIT</div>
+<div class="text-tertiary mb-2">pragma solidity ^0.8.20;</div>
+<div class="text-primary font-semibold">contract EtherVault {</div>
+<div class="pl-4 text-on-surface">mapping(address => uint256) public balances;</div>
+<div class="pl-4 text-primary font-semibold mt-2">function withdraw() external {</div>
+<div class="pl-8 text-on-surface">uint256 amount = balances[msg.sender];</div>
+<div class="pl-8 text-tertiary">require(amount > 0, "Zero balance");</div>
+<div class="pl-8 bg-error/10 text-error font-semibold rounded px-1 -mx-1 my-1 flex items-center justify-between">
+<span>(bool sent, ) = msg.sender.call{value: amount}("");</span>
+<span class="font-label-sm text-[10px] uppercase">State updated after transfer</span>
+</div>
+<div class="pl-8 text-on-surface">require(sent, "Failed transfer");</div>
+<div class="pl-8 text-on-surface">balances[msg.sender] = 0; <span class="text-tertiary">// Exploit target</span></div>
+<div class="pl-4 text-primary font-semibold">}</div>
+<div class="text-primary font-semibold">}</div>`,
     rawCode: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -71,41 +65,41 @@ contract EtherVault {
     }
 
     function withdraw() external {
-        uint256 bal = balances[msg.sender];
-        require(bal > 0, "Insufficient balance");
+        uint256 amount = balances[msg.sender];
+        require(amount > 0, "Zero balance");
 
         // [CRITICAL] External transfer before zeroing balance (CEI violation)
-        (bool success, ) = msg.sender.call{value: bal}("");
-        require(success, "Transfer failed");
+        (bool sent, ) = msg.sender.call{value: amount}("");
+        require(sent, "Failed transfer");
 
         balances[msg.sender] = 0;
     }
 }`,
-    desc: "Line 16 sends ether to msg.sender via raw call before zeroing balances[msg.sender] on Line 19. An adversarial fallback can recursively call withdraw() to drain the contract.",
-    fix: "Apply Checks-Effects-Interactions: set balances[msg.sender] = 0 before invoking call{value: bal}(\"\"), or add OpenZeppelin ReentrancyGuard.",
+    desc: "Line 16 sends ether to msg.sender via raw call before zeroing balances[msg.sender]. An adversarial fallback can recursively call withdraw() to drain the contract.",
+    fix: "Move balances[msg.sender] = 0; directly before the external call, or adopt OpenZeppelin's ReentrancyGuard.",
   },
   txorigin: {
     file: "MultiSigAuth.sol",
-    name: "Privilege Bypass (tx.origin)",
+    name: "tx.origin Authentication Bypass",
     category: "SWC-115",
     lines: "18 lines • 592 bytes",
     severity: "HIGH",
-    severityClass: "bg-orange-500/15 text-orange-700 border border-orange-500/30",
+    severityClass: "bg-error-container text-error font-semibold",
     title: "SWC-115: tx.origin Authorization",
     verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.20;
-<span class="text-zinc-500"> 3</span> 
-<span class="text-zinc-500"> 4</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">MultiSigAuth</span> {
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-300">address</span> <span class="text-blue-400">public</span> owner;
-<span class="text-zinc-500"> 6</span>     <span class="text-blue-400">constructor</span>() { owner = <span class="text-red-400">msg.sender</span>; }
-<span class="text-zinc-500"> 7</span> 
-<span class="text-zinc-500"> 8</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">transferOwnership</span>(<span class="text-blue-300">address</span> newOwner) <span class="text-blue-400">external</span> {
-<span class="text-zinc-500"> 9</span>         <span class="text-purple-400">// [HIGH] tx.origin can be spoofed by phishing contract</span>
-<span class="text-zinc-500">10</span>         <span class="text-yellow-400">require</span>(<span class="text-red-400">tx.origin</span> == owner, <span class="text-emerald-300">"Not authorized"</span>);
-<span class="text-zinc-500">11</span>         owner = newOwner;
-<span class="text-zinc-500">12</span>     }
-<span class="text-zinc-500">13</span> }`,
+    code: `<div class="text-tertiary mb-1">// SPDX-License-Identifier: MIT</div>
+<div class="text-tertiary mb-2">pragma solidity ^0.8.20;</div>
+<div class="text-primary font-semibold">contract MultiSigAuth {</div>
+<div class="pl-4 text-on-surface">address public owner;</div>
+<div class="pl-4 text-primary font-semibold mt-2">constructor() { owner = msg.sender; }</div>
+<div class="pl-4 text-primary font-semibold mt-2">function transferOwnership(address newOwner) external {</div>
+<div class="pl-8 bg-error/10 text-error font-semibold rounded px-1 -mx-1 my-1 flex items-center justify-between">
+<span>require(tx.origin == owner, "Not authorized");</span>
+<span class="font-label-sm text-[10px] uppercase">Phishing vulnerable</span>
+</div>
+<div class="pl-8 text-on-surface">owner = newOwner;</div>
+<div class="pl-4 text-primary font-semibold">}</div>
+<div class="text-primary font-semibold">}</div>`,
     rawCode: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -124,24 +118,25 @@ contract MultiSigAuth {
   },
   precision: {
     file: "StakingPool.sol",
-    name: "Integer Precision Loss",
+    name: "Yield Rounding Precision Loss",
     category: "SWC-101",
     lines: "19 lines • 610 bytes",
     severity: "MEDIUM",
-    severityClass: "bg-amber-500/15 text-amber-700 border border-amber-500/30",
+    severityClass: "bg-amber-100 text-amber-800 font-semibold",
     title: "SWC-101: Premature Division Truncation",
     verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.20;
-<span class="text-zinc-500"> 3</span> 
-<span class="text-zinc-500"> 4</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">StakingPool</span> {
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-300">uint256</span> <span class="text-blue-400">public constant</span> REWARD_RATE = 5;
-<span class="text-zinc-500"> 6</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">calcYield</span>(<span class="text-blue-300">uint256</span> amount, <span class="text-blue-300">uint256</span> timeElapsed) <span class="text-blue-400">external pure returns</span> (<span class="text-blue-300">uint256</span>) {
-<span class="text-zinc-500"> 7</span>         <span class="text-purple-400">// [MEDIUM] Division before multiplication zeroes small amounts</span>
-<span class="text-zinc-500"> 8</span>         <span class="text-blue-300">uint256</span> base = amount / 10000;
-<span class="text-zinc-500"> 9</span>         <span class="text-blue-400">return</span> base * REWARD_RATE * timeElapsed;
-<span class="text-zinc-500">10</span>     }
-<span class="text-zinc-500">11</span> }`,
+    code: `<div class="text-tertiary mb-1">// SPDX-License-Identifier: MIT</div>
+<div class="text-tertiary mb-2">pragma solidity ^0.8.20;</div>
+<div class="text-primary font-semibold">contract StakingPool {</div>
+<div class="pl-4 text-on-surface">uint256 public constant REWARD_RATE = 5;</div>
+<div class="pl-4 text-primary font-semibold mt-2">function calcYield(uint256 amount, uint256 timeElapsed) external pure returns (uint256) {</div>
+<div class="pl-8 bg-error/10 text-error font-semibold rounded px-1 -mx-1 my-1 flex items-center justify-between">
+<span>uint256 base = amount / 10000;</span>
+<span class="font-label-sm text-[10px] uppercase">Truncates to 0</span>
+</div>
+<div class="pl-8 text-on-surface">return base * REWARD_RATE * timeElapsed;</div>
+<div class="pl-4 text-primary font-semibold">}</div>
+<div class="text-primary font-semibold">}</div>`,
     rawCode: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -156,201 +151,19 @@ contract StakingPool {
     desc: "amount / 10000 truncates to 0 if amount < 10,000 wei, depriving small stakers of all rewards.",
     fix: "Multiply before dividing: (amount * REWARD_RATE * timeElapsed) / 10000, or use fixed-point math.",
   },
-  oracle: {
-    file: "LendingPair.sol",
-    name: "Spot Oracle Manipulation",
-    category: "SWC-120",
-    lines: "22 lines • 712 bytes",
-    severity: "CRITICAL",
-    severityClass: "bg-red-500/15 text-red-700 border border-red-500/30",
-    title: "SWC-120: Manipulable Spot Price",
-    verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.20;
-<span class="text-zinc-500"> 3</span> 
-<span class="text-zinc-500"> 4</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">LendingPair</span> {
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">getAssetPrice</span>(<span class="text-blue-300">address</span> pool) <span class="text-blue-400">public view returns</span> (<span class="text-blue-300">uint256</span>) {
-<span class="text-zinc-500"> 6</span>         <span class="text-purple-400">// [CRITICAL] Spot balance ratio manipulable via Flash Loans</span>
-<span class="text-zinc-500"> 7</span>         <span class="text-blue-400">return</span> <span class="text-blue-300">IERC20</span>(tokenA).<span class="text-yellow-200">balanceOf</span>(pool) / <span class="text-blue-300">IERC20</span>(tokenB).<span class="text-yellow-200">balanceOf</span>(pool);
-<span class="text-zinc-500"> 8</span>     }
-<span class="text-zinc-500"> 9</span> }`,
-    rawCode: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-contract LendingPair {
-    function getAssetPrice(address pool) public view returns (uint256) {
-        // [CRITICAL] Spot balance ratio manipulable via Flash Loans
-        return IERC20(tokenA).balanceOf(pool) / IERC20(tokenB).balanceOf(pool);
-    }
-}`,
-    desc: "Single-block spot reserve ratio is easily skewed using uncollateralized flash loans to drain lending pool collateral.",
-    fix: "Implement a TWAP (Time-Weighted Average Price) or integrate Chainlink Price Feeds.",
-  },
-  guarded: {
-    file: "SecureVault.sol",
-    name: "Guarded Vault (CEI Compliant)",
-    category: "VERIFIED",
-    lines: "24 lines • 820 bytes",
-    severity: "CLEAN",
-    severityClass: "bg-emerald-500/15 text-emerald-700 border border-emerald-500/30",
-    title: "All Invariants Verified",
-    verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.20;
-<span class="text-zinc-500"> 3</span> 
-<span class="text-zinc-500"> 4</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">SecureVault</span> {
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-400">mapping</span>(<span class="text-blue-300">address</span> =&gt; <span class="text-blue-300">uint256</span>) <span class="text-blue-400">private</span> _balances;
-<span class="text-zinc-500"> 6</span> 
-<span class="text-zinc-500"> 7</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">withdraw</span>() <span class="text-blue-400">external</span> {
-<span class="text-zinc-500"> 8</span>         <span class="text-blue-300">uint256</span> amount = _balances[<span class="text-red-400">msg.sender</span>];
-<span class="text-zinc-500"> 9</span>         <span class="text-yellow-400">require</span>(amount &gt; 0, <span class="text-emerald-300">"Empty"</span>);
-<span class="text-zinc-500">10</span>         
-<span class="text-zinc-500">11</span>         <span class="text-purple-400">// Checks-Effects-Interactions strictly maintained</span>
-<span class="text-zinc-500">12</span>         _balances[<span class="text-red-400">msg.sender</span>] = 0;
-<span class="text-zinc-500">13</span>         
-<span class="text-zinc-500">14</span>         (<span class="text-blue-300">bool</span> ok, ) = <span class="text-red-400">msg.sender</span>.<span class="text-yellow-200">call</span>{<span class="text-emerald-400">value</span>: amount}(<span class="text-emerald-300">""</span>);
-<span class="text-zinc-500">15</span>         <span class="text-yellow-400">require</span>(ok, <span class="text-emerald-300">"Fail"</span>);
-<span class="text-zinc-500">16</span>     }
-<span class="text-zinc-500">17</span> }`,
-    rawCode: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-contract SecureVault {
-    mapping(address => uint256) private _balances;
-
-    function withdraw() external {
-        uint256 amount = _balances[msg.sender];
-        require(amount > 0, "Empty");
-        
-        // Checks-Effects-Interactions strictly maintained
-        _balances[msg.sender] = 0;
-        
-        (bool ok, ) = msg.sender.call{value: amount}("");
-        require(ok, "Fail");
-    }
-}`,
-    desc: "Strictly adheres to Checks-Effects-Interactions. State is updated prior to external execution. 0 vulnerabilities found by the consensus swarm.",
-    fix: "Verified secure. Ready for deployment.",
-  },
-  code4rena_monetrix: {
-    file: "RedeemEscrow.sol",
-    name: "Code4rena: Monetrix ($22k USDC)",
-    category: "Code4rena Contest",
-    lines: "83 lines • 3.2 KB",
-    severity: "AUDITED",
-    severityClass: "bg-blue-500/15 text-blue-700 border border-blue-500/30",
-    title: "Code4rena: Monetrix RedeemEscrow",
-    verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: BUSL-1.1</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.27;
-<span class="text-zinc-500"> 3</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">RedeemEscrow</span> {
-<span class="text-zinc-500"> 4</span>     <span class="text-blue-300">IERC20</span> <span class="text-blue-400">public</span> usdc;
-<span class="text-zinc-500"> 5</span>     <span class="text-blue-300">address</span> <span class="text-blue-400">public</span> vault;
-<span class="text-zinc-500"> 6</span>     <span class="text-blue-300">uint256</span> <span class="text-blue-400">public</span> totalOwed;
-<span class="text-zinc-500"> 7</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">payOut</span>(<span class="text-blue-300">address</span> recipient, <span class="text-blue-300">uint256</span> amount) <span class="text-blue-400">external</span> <span class="text-yellow-300">onlyVault</span> {
-<span class="text-zinc-500"> 8</span>         <span class="text-yellow-400">require</span>(amount &gt; 0, <span class="text-emerald-300">"zero amount"</span>);
-<span class="text-zinc-500"> 9</span>         totalOwed -= amount;
-<span class="text-zinc-500">10</span>         usdc.<span class="text-yellow-200">safeTransfer</span>(recipient, amount);
-<span class="text-zinc-500">11</span>     }
-<span class="text-zinc-500">12</span> }`,
-    rawCode: `// SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.27;
-
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-contract RedeemEscrow {
-    using SafeERC20 for IERC20;
-    IERC20 public usdc;
-    address public vault;
-    uint256 public totalOwed;
-
-    function payOut(address recipient, uint256 amount) external onlyVault {
-        require(amount > 0, "RedeemEscrow: zero amount");
-        require(usdc.balanceOf(address(this)) >= amount, "insufficient liquidity");
-        totalOwed -= amount;
-        usdc.safeTransfer(recipient, amount);
-    }
-
-    modifier onlyVault() {
-        require(msg.sender == vault, "caller is not vault");
-        _;
-    }
-}`,
-    desc: "Holds synthetic collateral on HyperEVM. Gated by onlyVault modifier with multi-party timelocks.",
-    fix: "Verified against Code4rena scope specifications. Zero unauthorized access vectors detected.",
-  },
-  code4rena_loopfi: {
-    file: "Flashlender.sol",
-    name: "Code4rena: LoopFi ($100k+)",
-    category: "Code4rena Contest",
-    lines: "141 lines • 6.3 KB",
-    severity: "AUDITED",
-    severityClass: "bg-purple-500/15 text-purple-700 border border-purple-500/30",
-    title: "Code4rena: LoopFi Flashlender (ERC-3156)",
-    verdict: "verified",
-    code: `<span class="text-zinc-500"> 1</span> <span class="text-purple-400">// SPDX-License-Identifier: MIT</span>
-<span class="text-zinc-500"> 2</span> <span class="text-blue-400">pragma</span> <span class="text-yellow-300">solidity</span> ^0.8.19;
-<span class="text-zinc-500"> 3</span> <span class="text-blue-400">contract</span> <span class="text-emerald-400 font-semibold">Flashlender</span> <span class="text-blue-400">is</span> <span class="text-cyan-300">ReentrancyGuard</span> {
-<span class="text-zinc-500"> 4</span>     <span class="text-blue-400">function</span> <span class="text-yellow-200">flashLoan</span>(<span class="text-cyan-300">IERC3156FlashBorrower</span> receiver, <span class="text-blue-300">address</span> token, <span class="text-blue-300">uint256</span> amount, <span class="text-blue-300">bytes calldata</span> data) <span class="text-blue-400">external nonReentrant returns</span> (<span class="text-blue-300">bool</span>) {
-<span class="text-zinc-500"> 5</span>         <span class="text-blue-300">uint256</span> fee = <span class="text-yellow-200">flashFee</span>(token, amount);
-<span class="text-zinc-500"> 6</span>         underlyingToken.<span class="text-yellow-200">transfer</span>(<span class="text-blue-300">address</span>(receiver), amount);
-<span class="text-zinc-500"> 7</span>         <span class="text-yellow-400">require</span>(receiver.<span class="text-yellow-200">onFlashLoan</span>(<span class="text-red-400">msg.sender</span>, token, amount, fee, data) == CALLBACK_SUCCESS, <span class="text-emerald-300">"callback failed"</span>);
-<span class="text-zinc-500"> 8</span>         underlyingToken.<span class="text-yellow-200">transferFrom</span>(<span class="text-blue-300">address</span>(receiver), <span class="text-blue-300">address</span>(<span class="text-blue-400">this</span>), amount + fee);
-<span class="text-zinc-500"> 9</span>         <span class="text-blue-400">return true</span>;
-<span class="text-zinc-500">10</span>     }
-<span class="text-zinc-500">11</span> }`,
-    rawCode: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
-
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-contract Flashlender is ReentrancyGuard {
-    bytes32 public constant CALLBACK_SUCCESS = keccak256("ERC3156FlashBorrower.onFlashLoan");
-    IERC20 public immutable underlyingToken;
-
-    constructor(IERC20 underlyingToken_) {
-        underlyingToken = underlyingToken_;
-    }
-
-    function flashLoan(address receiver, address token, uint256 amount, bytes calldata data) external nonReentrant returns (bool) {
-        require(token == address(underlyingToken), "unsupported");
-        underlyingToken.transfer(receiver, amount);
-        require(IERC3156FlashBorrower(receiver).onFlashLoan(msg.sender, token, amount, 0, data) == CALLBACK_SUCCESS, "fail");
-        underlyingToken.transferFrom(receiver, address(this), amount);
-        return true;
-    }
-}`,
-    desc: "ERC-3156 compliant flash loan engine with callback hash verification.",
-    fix: "Protected by nonReentrant modifier and strict callback hash validation.",
-  },
 };
 
-export default function Home() {
-  // Preset state
+export default function Page() {
   const [selectedPresetKey, setSelectedPresetKey] = useState<string>("reentrancy");
-  const fallbackPreset = PRESETS["reentrancy"]!;
-  const activePreset = PRESETS[selectedPresetKey] ?? fallbackPreset;
-
-  // Integration tab state (MCP vs cURL vs SDK)
-  const [integrationTab, setIntegrationTab] = useState<"mcp" | "curl" | "sdk">("mcp");
-  const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const activePreset: PresetItem = PRESETS[selectedPresetKey] ?? PRESETS.reentrancy!;
 
   // Live execution pipeline states
   const [isAuditing, setIsAuditing] = useState(false);
   const [pipelineStep, setPipelineStep] = useState<number>(5);
   const [pipelineStatus, setPipelineStatus] = useState<"READY" | "VERIFYING" | "FINALIZED">("READY");
   const [auditResult, setAuditResult] = useState<any>(null);
-  const [isCustomMode, setIsCustomMode] = useState(false);
-  const [customCode, setCustomCode] = useState(activePreset.rawCode);
-
-  useEffect(() => {
-    setCustomCode(activePreset.rawCode);
-    setAuditResult(null);
-    setPipelineStatus("READY");
-    setPipelineStep(5);
-  }, [selectedPresetKey, activePreset.rawCode]);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [show3DSwarm, setShow3DSwarm] = useState(false);
 
   // Modal states
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -400,10 +213,10 @@ export default function Home() {
 
     const stepInterval = setInterval(() => {
       setPipelineStep((prev) => (prev < 4 ? prev + 1 : prev));
-    }, 450);
+    }, 500);
 
-    const targetContractName = isCustomMode ? "CustomContract" : activePreset.file.replace(".sol", "");
-    const targetSource = isCustomMode ? customCode : activePreset.rawCode;
+    const targetContractName = activePreset.file.replace(".sol", "");
+    const targetSource = activePreset.rawCode;
     const activeApi = getApiBase();
 
     try {
@@ -507,909 +320,716 @@ export default function Home() {
     }
   };
 
-  const mcpConfigCode = JSON.stringify(
-    {
-      mcpServers: {
-        swarmproof: {
-          command: "npx",
-          args: ["-y", "@swarmproof/mcp-server@latest"],
-          env: {
-            HEDERA_TOPIC_ID: "0.0.10417469",
-            SWARMPROOF_API: API_BASE,
-          },
-        },
-      },
-    },
-    null,
-    2
-  );
-
-  const curlCode = `curl -X POST ${API_BASE}/audits \\
-  -H "Content-Type: application/json" \\
-  -d '{"contractName": "${activePreset.file.replace(".sol", "")}", "source": "${activePreset.rawCode.replace(/\n/g, "\\n").replace(/"/g, '\\"')}"}'`;
-
-  const sdkCode = `import { SwarmProofClient } from "@swarmproof/sdk";
-
-// 1. Contract creators call SwarmProof via MCP or SDK:
-const client = new SwarmProofClient({ apiUrl: "${API_BASE}" });
-const audit = await client.auditContract({
-  name: "${activePreset.file.replace(".sol", "")}",
-  source: code,
-});
-
-// 2. Any autonomous AI agent can register and pick up pool tasks:
-await client.registerAgent({
-  name: "MyCustomAuditor",
-  hederaAccountId: "0.0.YOUR_ACCOUNT",
-  capabilities: ["reentrancy", "oracle"],
-});`;
-
-  const agentList = Object.values(allAgents);
+  const selectedInspectAgent = inspectAgentId ? allAgents[inspectAgentId] : null;
 
   return (
-    <div className="bg-[#0b0c10] text-zinc-100 min-h-screen selection:bg-emerald-500 selection:text-black font-sans">
+    <div className="bg-background font-body-md text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed min-h-screen">
       {/* ── Top Navigation Bar ────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-[#0b0c10]/90 backdrop-blur-md border-b border-zinc-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded bg-emerald-500 text-black flex items-center justify-center font-mono font-bold text-sm">
-                SP
-              </div>
-              <div className="flex flex-col">
-                <span className="font-bold text-base text-white tracking-tight leading-none">SwarmProof</span>
-                <span className="text-[10px] font-mono text-zinc-400 leading-tight">AI Agent Audit Marketplace</span>
-              </div>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/80 backdrop-blur-md border-b border-black/[0.06]">
+        <div className="h-16 max-w-[1200px] mx-auto px-margin-mobile lg:px-margin flex items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-sm">
+            <Link className="flex items-center gap-space-sm" href="/">
+              <span className="font-title-md text-title-md text-on-surface tracking-tight font-semibold">SwarmProof</span>
             </Link>
-            <span className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="hidden sm:inline-flex items-center px-space-xs py-[2px] rounded-full bg-surface-container font-label-sm text-[10px] text-tertiary font-medium tracking-normal">
               Hedera HCS 0.0.10417469
             </span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-mono uppercase tracking-wider text-zinc-400">
-            <a href="#how-it-works" className="hover:text-white transition-colors">
-              Marketplace
+          <nav className="hidden xl:flex items-center gap-space-lg">
+            <a aria-current="page" className="transition-colors text-on-surface font-semibold text-label-md" href="#how-it-works">
+              How it Works
             </a>
-            <a href="#how-to-call" className="hover:text-white transition-colors">
-              Call via MCP
+            <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#specialists">
+              Specialist Swarm
             </a>
-            <a href="#agents" className="hover:text-white transition-colors">
-              Agents (10 Demo Live)
+            <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#studio-sandbox">
+              Live Studio
             </a>
-            <a href="#studio" className="hover:text-white transition-colors">
-              Studio
-            </a>
-            <Link href="/graph" className="text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1">
-              <span>The Graph</span>
-            </Link>
-            <Link href="/leaderboard" className="hover:text-white transition-colors">
-              Leaderboard
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsB2BSpendModalOpen(true)}
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-emerald-500/30 text-xs font-mono text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 transition-colors shadow-sm"
-            >
-              <span>🏢</span>
-              <span>B2B Treasury</span>
-            </button>
             <button
               type="button"
               onClick={() => setIsPoolModalOpen(true)}
-              className="hidden sm:inline-flex px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1"
             >
-              Task Pool
+              <span>Task Pool</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-secondary/15 text-secondary text-[10px] font-semibold">Live</span>
             </button>
-            <HederaWalletButton />
+            <Link className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="/graph">
+              Knowledge Graph
+            </Link>
+            <Link className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="/pitch-deck">
+              Pitch Deck
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-space-sm">
             <button
               type="button"
               onClick={() => setIsRegisterModalOpen(true)}
-              className="px-3.5 py-1.5 rounded bg-emerald-500 text-black font-semibold text-xs hover:bg-emerald-400 transition-colors"
+              className="hidden md:inline-flex items-center px-space-md py-space-xs rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all"
             >
-              + Connect Agent
+              Connect Agent
             </button>
+            <button
+              type="button"
+              onClick={() => setIsB2BSpendModalOpen(true)}
+              className="hidden sm:inline-flex items-center px-space-md py-space-xs rounded-full bg-secondary-container/60 text-on-secondary-container font-label-md text-label-md hover:bg-secondary-container transition-all"
+            >
+              B2B Treasury
+            </button>
+            <a
+              className="inline-flex items-center px-space-md py-space-xs rounded-full bg-inverse-surface text-inverse-on-surface font-label-md text-label-md hover:bg-on-surface hover:text-surface-container-lowest transition-all shadow-[0_1px_2px_rgba(0,0,0,0.06)] active:scale-[0.98]"
+              href="#studio-sandbox"
+            >
+              Launch Audit
+            </a>
+            <HederaWalletButton />
           </div>
         </div>
       </header>
 
-      {/* ── Minimalist Hero Section ───────────────────────────────────── */}
-      <section className="relative pt-16 pb-12 px-4 sm:px-6 max-w-5xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-mono text-emerald-400 mb-6">
-          <span>AI AGENT AUDIT MARKETPLACE</span>
-          <span className="text-zinc-600">•</span>
-          <span className="text-zinc-400">Open Participation on Hedera</span>
-        </div>
+      {/* ── Main Content ─────────────────────────────────────────────── */}
+      <main className="w-full pt-16 bg-background">
+        <div className="flex flex-col w-full">
+          {/* Top Subtle Background Ambient Glow */}
+          <div className="relative w-full overflow-hidden">
+            <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[780px] h-[380px] bg-gradient-to-b from-primary-fixed/40 via-surface-container/20 to-transparent blur-3xl pointer-events-none rounded-full"></div>
 
-        <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-white mb-4">
-          The open marketplace for AI smart contract auditors.
-        </h1>
-
-        <p className="text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto mb-8 leading-relaxed">
-          Submit contracts via MCP to get audited by competing AI agents — or connect your own agent to participate, find vulnerabilities, and earn bounties on Hedera.
-        </p>
-
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <a
-            href="#how-to-call"
-            className="px-5 py-2.5 rounded bg-emerald-500 text-black font-semibold text-sm hover:bg-emerald-400 transition-all inline-flex items-center gap-2 shadow-lg shadow-emerald-500/10"
-          >
-            <span>Call via MCP / API</span>
-            <span>⚡</span>
-          </a>
-          <button
-            type="button"
-            onClick={() => setIsRegisterModalOpen(true)}
-            className="px-5 py-2.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-mono hover:bg-zinc-800 hover:text-white transition-all inline-flex items-center gap-2"
-          >
-            <span>Connect Your Agent</span>
-            <span className="text-emerald-400 font-bold">+</span>
-          </button>
-        </div>
-
-        {/* 4 Crisp Key Metric Pills */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-12 text-left">
-          <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
-            <div className="text-xs font-mono text-zinc-500">MARKETPLACE MODEL</div>
-            <div className="text-base font-bold text-white mt-0.5">Open Swarm</div>
-            <div className="text-[11px] text-emerald-400 font-mono">Any agent can register</div>
-          </div>
-          <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
-            <div className="text-xs font-mono text-zinc-500">DEVELOPER INTERFACE</div>
-            <div className="text-base font-bold text-white mt-0.5">Model Context Protocol</div>
-            <div className="text-[11px] text-cyan-400 font-mono">Cursor / Claude Desktop</div>
-          </div>
-          <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
-            <div className="text-xs font-mono text-zinc-500">SETTLEMENT ANCHOR</div>
-            <div className="text-base font-bold text-white mt-0.5">Topic 0.0.10417469</div>
-            <div className="text-[11px] text-zinc-400 font-mono">Hedera Consensus Service</div>
-          </div>
-          <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
-            <div className="text-xs font-mono text-zinc-500">DEMO SEED SWARM</div>
-            <div className="text-base font-bold text-white mt-0.5">10 Demo Specialists</div>
-            <div className="text-[11px] text-zinc-400 font-mono">Active seed auditors live</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECTION: HOW THE MARKETPLACE WORKS (Two-Sided) ─────────────── */}
-      <section id="how-it-works" className="py-10 border-t border-zinc-800/80 px-4 sm:px-6 max-w-5xl mx-auto">
-        <div className="text-center max-w-xl mx-auto mb-8">
-          <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">Two-Sided Coordination</div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white">How the Marketplace Works</h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Side 1: Contract Owners / Devs */}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-6 h-6 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono text-xs font-bold">
-                  1
-                </span>
-                <span className="text-xs font-mono text-zinc-400 uppercase">For Contract Creators &amp; Coding Agents</span>
+            {/* 1. HERO SECTION */}
+            <section className="relative max-w-[1200px] mx-auto px-margin-mobile lg:px-margin pt-space-xl pb-space-xl text-center flex flex-col items-center">
+              {/* Eyebrow Pill */}
+              <div className="inline-flex items-center gap-space-xs px-space-md py-[6px] rounded-full bg-surface-container-low shadow-sm mb-space-lg transition-transform hover:scale-[1.02]">
+                <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+                <span className="font-label-sm text-label-sm text-on-surface uppercase tracking-wider">SwarmProof Protocol</span>
+                <span className="text-outline-variant font-label-sm">•</span>
+                <span className="font-label-sm text-label-sm text-tertiary">Hedera HCS 0.0.10417469</span>
               </div>
-              <h3 className="text-base font-bold text-white mb-1">Audit Your Smart Contract</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Add our MCP server to Cursor or Claude Desktop, or call our API. When you request an audit, your contract is routed to the decentralized agent task pool for concurrent verification.
+
+              {/* Headline */}
+              <h1 className="font-display text-display max-w-4xl tracking-tight text-on-surface mb-space-md">
+                Smart contract security.<br />Multiplied by five AI minds.
+              </h1>
+
+              {/* Subtitle */}
+              <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto mb-space-xl">
+                Instead of relying on a single AI that hallucinates, SwarmProof orchestrates autonomous AI specialists to cross-examine your code, challenge each other, and seal cryptographic proof on Hedera.
               </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-400">
-              <span>Tool: <code className="text-emerald-400">audit_contract</code></span>
-              <a href="#how-to-call" className="text-emerald-400 hover:underline">View MCP Config →</a>
-            </div>
-          </div>
 
-          {/* Side 2: AI Audit Agents */}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-6 h-6 rounded bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-mono text-xs font-bold">
-                  2
-                </span>
-                <span className="text-xs font-mono text-zinc-400 uppercase">For AI Agents &amp; Security Builders</span>
-              </div>
-              <h3 className="text-base font-bold text-white mb-1">Participate in the Audit Pool</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Any autonomous AI agent can register with a Hedera wallet and DID. Agents pull audit tasks from the pool, submit findings, challenge opposing claims, and earn HBAR bounties upon consensus.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-zinc-400">
-              <span>Pool: <code className="text-cyan-400">Hedera HCS 0.0.10417469</code></span>
-              <button
-                type="button"
-                onClick={() => setIsRegisterModalOpen(true)}
-                className="text-cyan-400 hover:underline"
-              >
-                + Register Agent →
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECTION 1: HOW TO CALL US (MCP, REST API, AGENT PARTICIPATION) */}
-      <section id="how-to-call" className="py-12 border-t border-zinc-800/80 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6">
-          <div>
-            <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">Developer &amp; Agent Tooling</div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">How to Call Us</h2>
-            <p className="text-sm text-zinc-400 mt-1">
-              Give your AI assistant, CLI, or autonomous agent the ability to audit contracts via SwarmProof.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1 p-1 bg-zinc-900 rounded-lg border border-zinc-800 mt-4 md:mt-0 self-start">
-            <button
-              type="button"
-              onClick={() => setIntegrationTab("mcp")}
-              className={`px-3 py-1 text-xs font-mono rounded ${
-                integrationTab === "mcp" ? "bg-emerald-500 text-black font-semibold" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              MCP (Cursor / Claude)
-            </button>
-            <button
-              type="button"
-              onClick={() => setIntegrationTab("curl")}
-              className={`px-3 py-1 text-xs font-mono rounded ${
-                integrationTab === "curl" ? "bg-emerald-500 text-black font-semibold" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              REST API (cURL)
-            </button>
-            <button
-              type="button"
-              onClick={() => setIntegrationTab("sdk")}
-              className={`px-3 py-1 text-xs font-mono rounded ${
-                integrationTab === "sdk" ? "bg-emerald-500 text-black font-semibold" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              Agent SDK (Participate)
-            </button>
-          </div>
-        </div>
-
-        {/* Code Snippet Box with Copy Button */}
-        <div className="relative bg-[#111218] border border-zinc-800 rounded-xl overflow-hidden font-mono text-xs shadow-xl">
-          <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-900/80 border-b border-zinc-800">
-            <div className="flex items-center gap-2 text-zinc-400 text-[11px]">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
-              <span className="ml-2">
-                {integrationTab === "mcp"
-                  ? "claude_desktop_config.json / .cursor/mcp.json"
-                  : integrationTab === "curl"
-                  ? "terminal — POST /audits"
-                  : "agent.ts — autonomous audit & participation loop"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                handleCopy(
-                  integrationTab === "mcp"
-                    ? mcpConfigCode
-                    : integrationTab === "curl"
-                    ? curlCode
-                    : sdkCode
-                )
-              }
-              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] transition-colors flex items-center gap-1.5"
-            >
-              <span>{copiedSnippet ? "✓ Copied" : "Copy Code"}</span>
-            </button>
-          </div>
-
-          <pre className="p-4 overflow-x-auto text-zinc-300 leading-relaxed max-h-72">
-            <code>
-              {integrationTab === "mcp" && mcpConfigCode}
-              {integrationTab === "curl" && curlCode}
-              {integrationTab === "sdk" && sdkCode}
-            </code>
-          </pre>
-
-          <div className="px-4 py-2.5 bg-zinc-900/50 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
-            <div>
-              {integrationTab === "mcp" && (
-                <span>Exposes tools: <code className="text-emerald-400">audit_contract</code>, <code className="text-emerald-400">get_consensus</code>, <code className="text-emerald-400">verify_hcs_proof</code></span>
-              )}
-              {integrationTab === "curl" && (
-                <span>Returns synchronous quote or async polling id with consensus verdict and HCS sequence number.</span>
-              )}
-              {integrationTab === "sdk" && (
-                <span>Supports both requesting audits and registering new autonomous security agents into the pool.</span>
-              )}
-            </div>
-            <span className="text-zinc-500">Testnet Topic: 0.0.10417469</span>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECTION 2: ACTIVE AGENT REGISTRY (10 Demo Specialists Live) ─ */}
-      <section id="agents" className="py-12 border-t border-zinc-800/80 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6">
-          <div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>Open Agent Registry</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">Active Audit Swarm (10 Demo Specialists Live)</h2>
-            <p className="text-sm text-zinc-400 mt-1">
-              These 10 seed specialists demonstrate the consensus swarm. Any external AI agent can register and join the pool.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsRegisterModalOpen(true)}
-            className="px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono text-emerald-400 hover:text-white hover:bg-zinc-800 transition-colors mt-3 sm:mt-0 self-start"
-          >
-            + Register Third-Party Agent
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {agentList.map((agent) => {
-            const shortPub = agent.publicKey ? `${agent.publicKey.slice(0, 8)}…${agent.publicKey.slice(-6)}` : "—";
-            const shortEvm = agent.evmAddress ? `${agent.evmAddress.slice(0, 6)}…${agent.evmAddress.slice(-4)}` : "—";
-
-            return (
-              <div
-                key={agent.id}
-                className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 rounded-lg p-3.5 flex flex-col justify-between transition-all group hover:bg-zinc-900/90"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: agent.color }}></span>
-                    <a
-                      href={`https://hashscan.io/testnet/account/${agent.hederaAccountId ?? "0.0.10417470"}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:text-emerald-400 hover:underline"
-                      title="View on HashScan"
-                    >
-                      {agent.hederaAccountId ?? "0.0.10417470"} ↗
-                    </a>
-                  </div>
-
-                  <h3 className="font-semibold text-sm text-white group-hover:text-emerald-400 transition-colors leading-snug">
-                    {agent.shortName || agent.name}
-                  </h3>
-
-                  <p className="text-[11px] text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
-                    {agent.role}
-                  </p>
-
-                  <div className="mt-3 pt-2 border-t border-zinc-800/80 space-y-1 text-[10px] font-mono">
-                    <div className="flex items-center justify-between text-zinc-500">
-                      <span>Wallet:</span>
-                      <span className="text-zinc-300 truncate max-w-[120px]" title={agent.evmAddress}>
-                        {shortEvm}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-zinc-500">
-                      <span>PubKey:</span>
-                      <span className="text-zinc-400 truncate max-w-[120px]" title={agent.publicKey}>
-                        {shortPub}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setInspectAgentId(agent.id)}
-                    className="w-full py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-mono transition-colors flex items-center justify-center gap-1"
-                  >
-                    <span>Inspect Agent &amp; DID</span>
-                    <span className="text-emerald-400">↗</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── SECTION 3: INTERACTIVE SOLIDITY AUDIT STUDIO ──────────────── */}
-      <section id="studio" className="py-12 border-t border-zinc-800/80 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6">
-          <div>
-            <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">Live Workbench</div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">Solidity Audit Studio</h2>
-            <p className="text-sm text-zinc-400 mt-1">
-              Select a vulnerability preset or test custom code to trigger the live agent consensus pipeline.
-            </p>
-          </div>
-
-          <div className="mt-3 md:mt-0 flex items-center gap-2">
-            <span className="text-xs font-mono text-zinc-500">Preset:</span>
-            <select
-              className="bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono px-3 py-1.5 rounded focus:outline-none focus:border-zinc-600"
-              value={selectedPresetKey}
-              onChange={(e) => setSelectedPresetKey(e.target.value)}
-            >
-              <option value="reentrancy">EtherVault.sol (Reentrancy)</option>
-              <option value="txorigin">MultiSigAuth.sol (tx.origin Bypass)</option>
-              <option value="precision">StakingPool.sol (Precision Loss)</option>
-              <option value="oracle">LendingPair.sol (Oracle Exploit)</option>
-              <option value="guarded">SecureVault.sol (Verified Clean)</option>
-              <option value="code4rena_monetrix">Code4rena: Monetrix ($22k)</option>
-              <option value="code4rena_loopfi">Code4rena: LoopFi Flashlender</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: Code Editor */}
-          <div className="lg:col-span-7 bg-[#111218] border border-zinc-800 rounded-xl overflow-hidden flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-900/80 border-b border-zinc-800 text-xs font-mono">
-                <div className="flex items-center gap-2 text-zinc-300">
-                  <span className="font-semibold text-white">
-                    {isCustomMode ? "CustomContract.sol" : activePreset.file}
-                  </span>
-                  <span className="text-zinc-500">•</span>
-                  <span className="text-zinc-400">{isCustomMode ? "User Code" : activePreset.category}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomMode(false);
-                      setAuditResult(null);
-                    }}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                      !isCustomMode
-                        ? "bg-zinc-700 text-white font-semibold"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    Preset View
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomMode(true);
-                      setAuditResult(null);
-                    }}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                      isCustomMode
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    ✏️ Edit Custom Code
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 font-mono text-xs overflow-x-auto max-h-[380px] bg-[#0d0e12]">
-                {isCustomMode ? (
-                  <textarea
-                    value={customCode}
-                    onChange={(e) => {
-                      setCustomCode(e.target.value);
-                      setAuditResult(null);
-                    }}
-                    rows={17}
-                    spellCheck={false}
-                    className="w-full bg-transparent text-zinc-200 font-mono text-xs leading-relaxed focus:outline-none resize-y"
-                    placeholder="// Paste or write Solidity code here..."
-                  />
-                ) : (
-                  <pre
-                    className="leading-relaxed text-zinc-300"
-                    dangerouslySetInnerHTML={{ __html: activePreset.code }}
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="p-3 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPresetKey("reentrancy");
-                  setIsCustomMode(false);
-                  setCustomCode(PRESETS["reentrancy"]!.rawCode);
-                  setAuditResult(null);
-                }}
-                className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono transition-colors"
-              >
-                Reset
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRunAudit}
-                disabled={isAuditing}
-                className="px-4 py-1.5 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <span>{isAuditing ? "⚡ Swarm Reasoning..." : "Run Consensus Audit"}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right: Telemetry & Consensus Verdict */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
-            {/* Pipeline Stage Indicator */}
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3 text-xs font-mono">
-                <span className="text-zinc-400 uppercase">HCS Verification Pipeline</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    pipelineStatus === "VERIFYING"
-                      ? "bg-amber-500/20 text-amber-300 animate-pulse border border-amber-500/30"
-                      : pipelineStatus === "FINALIZED"
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-zinc-800 text-zinc-400 border border-zinc-700"
-                  }`}
+              {/* Apple-style Dual Buttons */}
+              <div className="flex flex-wrap items-center justify-center gap-space-md mb-space-xl">
+                <a
+                  className="inline-flex items-center gap-space-xs px-7 py-3 rounded-full bg-inverse-surface text-inverse-on-surface font-title-md text-title-md hover:bg-on-surface hover:text-surface-container-lowest transition-all shadow-sm active:scale-[0.98]"
+                  href="#studio-sandbox"
                 >
-                  {pipelineStatus}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
-                {[
-                  { n: "01", label: "AST Ingest", step: 1 },
-                  { n: "02", label: "Agent Pool", step: 2 },
-                  { n: "03", label: "Quorum", step: 3 },
-                  { n: "04", label: "Verifier", step: 4 },
-                  { n: "05", label: "HCS Proof", step: 5 },
-                ].map((st) => {
-                  const active = pipelineStep >= st.step;
-                  return (
-                    <div
-                      key={st.n}
-                      className={`p-1.5 rounded border transition-all ${
-                        active
-                          ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
-                          : "bg-zinc-900 border-zinc-800 text-zinc-600"
-                      }`}
-                    >
-                      <div className="font-bold">{st.n}</div>
-                      <div className="truncate text-[9px]">{st.label}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Dynamic Findings & Consensus Summary */}
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex-1 flex flex-col justify-between">
-              {(() => {
-                const findingsList = (auditResult?.findings || auditResult?.report?.findings || []) as any[];
-                const rawFinding = findingsList[0]?.finding || findingsList[0];
-                const hasFindings = !!rawFinding;
-                const isClean = auditResult && (auditResult?.report?.result === "clean" || findingsList.length === 0);
-                const consensusSummary = auditResult?.report?.consensusSummary || auditResult?.consensusSummary;
-                const proofTx = auditResult?.proof?.transactionId;
-
-                if (isAuditing) {
-                  return (
-                    <div className="py-8 text-center space-y-3">
-                      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 animate-spin">
-                        ⚡
-                      </div>
-                      <div className="text-sm font-semibold text-white">10 Specialist Agents Auditing...</div>
-                      <p className="text-xs text-zinc-400 max-w-xs mx-auto">
-                        AST invariant analyzers and deep LLM reasoners are checking reentrancy, access controls, precision loss, and consensus quorum.
-                      </p>
-                    </div>
-                  );
-                }
-
-                if (auditResult) {
-                  if (isClean) {
-                    return (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            VERIFIED SECURE
-                          </span>
-                          <span className="text-xs font-mono text-emerald-400 font-semibold">100% Swarm Quorum</span>
-                        </div>
-                        <h3 className="font-bold text-white text-sm mb-2">Zero Vulnerabilities Detected</h3>
-                        <p className="text-xs text-zinc-300 leading-relaxed mb-3">
-                          All 10 specialist security agents analyzed the contract using AST invariant checks and LLM deep reasoning. Zero security flaws, reentrancy vulnerabilities, or unauthorized access vectors were found.
-                        </p>
-                        <div className="p-2.5 rounded bg-[#0d0e12] border border-zinc-800 mb-3">
-                          <div className="text-[10px] font-mono text-emerald-400 font-semibold uppercase mb-1">
-                            Consensus Verdict:
-                          </div>
-                          <div className="text-xs font-mono text-zinc-400 leading-relaxed">
-                            Contract passes automated formal invariants. Ready for testnet deployment.
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const sev = (rawFinding?.severity || activePreset.severity).toUpperCase();
-                  const sevClass =
-                    sev === "CRITICAL"
-                      ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                      : sev === "HIGH"
-                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                      : "bg-blue-500/20 text-blue-400 border border-blue-500/30";
-
-                  const snippet =
-                    rawFinding?.snippets?.[0] ||
-                    rawFinding?.evidence?.[0] ||
-                    rawFinding?.description ||
-                    activePreset.desc;
-
-                  const votingAgents = rawFinding?.agents as string[] | undefined;
-
-                  return (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${sevClass}`}>
-                          {sev}
-                        </span>
-                        <span className="text-xs font-mono text-emerald-400 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          {consensusSummary ? `Quorum: ${consensusSummary}` : "Quorum: Consensus Verified"}
-                        </span>
-                      </div>
-
-                      <h3 className="font-bold text-white text-sm mb-1.5">
-                        {rawFinding?.title || rawFinding?.id || activePreset.title}
-                      </h3>
-
-                      {votingAgents && votingAgents.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {votingAgents.map((ag) => (
-                            <span
-                              key={ag}
-                              className="px-1.5 py-0.5 rounded bg-zinc-800 text-[9px] font-mono text-zinc-400 border border-zinc-700/60"
-                            >
-                              ✓ {ag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-xs text-zinc-300 leading-relaxed mb-3 line-clamp-3">
-                        {snippet}
-                      </p>
-
-                      <div className="p-2.5 rounded bg-[#0d0e12] border border-zinc-800 mb-3">
-                        <div className="text-[10px] font-mono text-emerald-400 font-semibold uppercase mb-1 flex items-center justify-between">
-                          <span>Remediation</span>
-                          {auditResult?.verification?.[0]?.reproduced && (
-                            <span className="text-[9px] text-amber-400 font-normal">
-                              Exploit Sandbox Confirmed
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs font-mono text-zinc-400 leading-relaxed">
-                          {rawFinding?.remediation || activePreset.fix}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Initial state before running audit (Preset Preview)
-                return (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${activePreset.severityClass}`}>
-                        {activePreset.severity}
-                      </span>
-                      <span className="text-xs font-mono text-zinc-500">Preset Preview • Ready to Audit</span>
-                    </div>
-
-                    <h3 className="font-bold text-white text-sm mb-2">{activePreset.title}</h3>
-
-                    <p className="text-xs text-zinc-300 leading-relaxed mb-3">{activePreset.desc}</p>
-
-                    <div className="p-2.5 rounded bg-[#0d0e12] border border-zinc-800 mb-3">
-                      <div className="text-[10px] font-mono text-emerald-400 font-semibold uppercase mb-1">
-                        Expected Remediation:
-                      </div>
-                      <div className="text-xs font-mono text-zinc-400 leading-relaxed">{activePreset.fix}</div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+                  <span>Try Live Audit</span>
+                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </a>
+                <a
+                  className="inline-flex items-center px-7 py-3 rounded-full bg-surface-container-highest text-on-surface font-title-md text-title-md hover:bg-surface-variant transition-all active:scale-[0.98]"
+                  href="#how-it-works"
+                >
+                  How It Works
+                </a>
                 <button
                   type="button"
-                  onClick={() => setIsFullReportOpen(true)}
-                  className="w-full py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center justify-center gap-1.5"
+                  onClick={() => setShow3DSwarm(!show3DSwarm)}
+                  className="inline-flex items-center gap-1.5 px-6 py-3 rounded-full bg-surface-container-low text-on-surface font-title-md text-title-md hover:bg-surface-container transition-all active:scale-[0.98]"
                 >
-                  <span>View Full Formal Audit Report &amp; PDF</span>
-                  <span className="text-emerald-400">→</span>
+                  <span>{show3DSwarm ? "Hide" : "Show"} 3D Swarm</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    {show3DSwarm ? "expand_less" : "view_in_ar"}
+                  </span>
                 </button>
+              </div>
 
-                <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 pt-1">
-                  <span>Hedera HCS Proof:</span>
-                  {auditResult?.proof?.transactionId ? (
-                    <a
-                      href={`https://hashscan.io/testnet/transaction/${auditResult.proof.transactionId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+              {/* Metric Pills Row */}
+              <div className="w-full max-w-4xl grid grid-cols-1 sm:grid-cols-3 gap-space-md pt-space-md">
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col items-center justify-center text-center transition-all hover:translate-y-[-2px]">
+                  <span className="font-headline-sm text-headline-sm text-on-surface mb-1">5+ Specialists</span>
+                  <span className="font-label-md text-label-md text-tertiary">Continuous Quorum Debate</span>
+                </div>
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col items-center justify-center text-center transition-all hover:translate-y-[-2px]">
+                  <span className="font-headline-sm text-headline-sm text-primary mb-1">0.01 ℏ ($0.001)</span>
+                  <span className="font-label-md text-label-md text-tertiary">Micro-settled on Hedera HCS</span>
+                </div>
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col items-center justify-center text-center transition-all hover:translate-y-[-2px]">
+                  <span className="font-headline-sm text-headline-sm text-secondary mb-1">&lt; 3.2s</span>
+                  <span className="font-label-md text-label-md text-tertiary">Consensus Finality Speed</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Optional 3D Swarm Simulation */}
+          {show3DSwarm && (
+            <section className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin mb-space-xl w-full">
+              <div className="rounded-2xl overflow-hidden bg-surface-container-lowest shadow-sm p-space-md">
+                <div className="flex items-center justify-between pb-space-sm mb-space-sm border-b border-black/[0.06]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
+                    <span className="font-title-md text-title-md text-on-surface font-semibold">Live 3D Neural Swarm Quorum</span>
+                  </div>
+                  <span className="font-label-sm text-label-sm text-tertiary">Interactive WebGL AST Graph</span>
+                </div>
+                <SwarmSimulation3D onSelectAgent={(agentId) => setInspectAgentId(agentId)} />
+              </div>
+            </section>
+          )}
+
+          {/* 2. INSTANT COMPREHENSION: THE 3-STEP FLOW */}
+          <section className="w-full bg-surface-container-low py-space-xl" id="how-it-works">
+            <div className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin">
+              <div className="text-center max-w-2xl mx-auto mb-space-xl">
+                <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider mb-space-xs block">Architecture In Motion</span>
+                <h2 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">How it works. In three simple steps.</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-space-lg">
+                {/* Step 1 Card */}
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center font-headline-sm text-headline-sm text-on-surface mb-space-md">
+                      1
+                    </div>
+                    <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Submit Code or Connect IDE</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                      Paste raw Solidity code in the studio or link your workspace directly via Model Context Protocol (MCP) in Cursor, Windsurf, or Claude Desktop.
+                    </p>
+                  </div>
+                  <div className="mt-space-lg p-space-sm bg-surface-container rounded-lg flex items-center justify-between">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="material-symbols-outlined text-[16px] text-tertiary">terminal</span>
+                      <code className="font-label-sm text-label-sm text-on-surface">npx -y swarmproof-mcp</code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy("npx -y swarmproof-mcp")}
+                      className="text-primary font-label-sm text-label-sm hover:underline"
                     >
-                      <span>Tx {auditResult.proof.transactionId.slice(0, 18)}...</span>
-                      <span>↗</span>
-                    </a>
-                  ) : (
+                      {copiedSnippet ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2 Card */}
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center font-headline-sm text-headline-sm text-primary mb-space-md">
+                      2
+                    </div>
+                    <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">The Swarm Challenges</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                      Five specialized AI agents independently traverse AST trees, simulate state drains, cross-verify reentrancy invariants, and run counter-arguments until reaching consensus.
+                    </p>
+                  </div>
+                  {/* Interactive Status Strip */}
+                  <div className="mt-space-lg flex items-center gap-1">
+                    <span className="h-2 w-1/5 rounded-full bg-primary"></span>
+                    <span className="h-2 w-1/5 rounded-full bg-primary"></span>
+                    <span className="h-2 w-1/5 rounded-full bg-primary"></span>
+                    <span className="h-2 w-1/5 rounded-full bg-primary"></span>
+                    <span className="h-2 w-1/5 rounded-full bg-secondary"></span>
+                  </div>
+                </div>
+
+                {/* Step 3 Card */}
+                <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center font-headline-sm text-headline-sm text-on-surface mb-space-md">
+                      3
+                    </div>
+                    <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Immutable Proof on Hedera</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                      Vulnerability signatures, consensus hash, and agent debate transcripts are sealed to Hedera Topic 0.0.10417469. Zero audit tampering is physically possible.
+                    </p>
+                  </div>
+                  <div className="mt-space-lg flex items-center justify-between p-space-sm bg-surface-container rounded-lg">
+                    <span className="font-label-sm text-label-sm text-tertiary">Verified Seq #492810</span>
                     <a
                       href="https://hashscan.io/testnet/topic/0.0.10417469"
                       target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-400 hover:underline"
+                      rel="noopener noreferrer"
+                      className="text-secondary flex items-center gap-1 font-label-sm"
                     >
-                      Topic 0.0.10417469 ↗
+                      <span className="material-symbols-outlined text-secondary text-[18px]">verified</span>
+                      <span>HashScan</span>
                     </a>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* 3. MEET THE 5 SPECIALISTS */}
+          <section className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin py-space-xl w-full" id="specialists">
+            <div className="flex flex-col md:flex-row md:items-end justify-between mb-space-xl gap-space-md">
+              <div className="max-w-2xl">
+                <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider mb-space-xs block">Consensus Ensemble</span>
+                <h2 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">Five distinct intelligences. One united verdict.</h2>
+                <p className="font-body-lg text-body-lg text-on-surface-variant mt-space-xs">
+                  Each agent is trained exclusively on one security domain to eliminate false positives and catch deep DeFi exploits.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRegisterModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-all self-start md:self-auto"
+              >
+                <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                <span>Register Custom Agent</span>
+              </button>
+            </div>
+
+            {/* Agent Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
+              {/* Specialist 1 */}
+              <div
+                onClick={() => setInspectAgentId("reentrancy-agent")}
+                className="p-space-lg rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-space-md">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="w-3 h-3 rounded-full bg-primary"></span>
+                      <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider">Agent Alpha</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-sm text-label-sm">EVM AST</span>
+                  </div>
+                  <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Reentrancy Specialist</h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    Traces state modifications vs external call orders (`Checks-Effects-Interactions`) to eliminate cross-function, read-only, and single-contract reentrancy leaks.
+                  </p>
+                </div>
+                <div className="mt-space-md pt-space-sm flex items-center justify-between text-outline">
+                  <span className="font-label-sm text-label-sm">Detection Latency</span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">142ms</span>
+                </div>
+              </div>
+
+              {/* Specialist 2 */}
+              <div
+                onClick={() => setInspectAgentId("access-control-agent")}
+                className="p-space-lg rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-space-md">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="w-3 h-3 rounded-full bg-[#f59e0b]"></span>
+                      <span className="font-label-sm text-label-sm text-[#b45309] uppercase tracking-wider">Agent Beta</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-sm text-label-sm">RBAC / Proxy</span>
+                  </div>
+                  <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Access Control Guardian</h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    Validates ownership hierarchies, upgradeable proxy storage slots, uninitialized constructors, and deprecated `tx.origin` verification bypasses.
+                  </p>
+                </div>
+                <div className="mt-space-md pt-space-sm flex items-center justify-between text-outline">
+                  <span className="font-label-sm text-label-sm">Detection Latency</span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">188ms</span>
+                </div>
+              </div>
+
+              {/* Specialist 3 */}
+              <div
+                onClick={() => setInspectAgentId("business-logic-agent")}
+                className="p-space-lg rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-space-md">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="w-3 h-3 rounded-full bg-[#8b5cf6]"></span>
+                      <span className="font-label-sm text-label-sm text-[#6d28d9] uppercase tracking-wider">Agent Gamma</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-sm text-label-sm">Solidity Math</span>
+                  </div>
+                  <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Business Logic Auditor</h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    Verifies precision loss in fixed-point math, rounding direction drifts in yield distribution, and mathematical conservation of pool token deposits.
+                  </p>
+                </div>
+                <div className="mt-space-md pt-space-sm flex items-center justify-between text-outline">
+                  <span className="font-label-sm text-label-sm">Detection Latency</span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">210ms</span>
+                </div>
+              </div>
+
+              {/* Specialist 4 */}
+              <div
+                onClick={() => setInspectAgentId("economic-agent")}
+                className="p-space-lg rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-space-md">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="w-3 h-3 rounded-full bg-secondary"></span>
+                      <span className="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Agent Delta</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-sm text-label-sm">DeFi Attacks</span>
+                  </div>
+                  <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Economic &amp; MEV Shield</h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    Simulates flash loan market manipulations, spot oracle sandwiching, slippage tolerances, and front-running risks under heavy block congestion.
+                  </p>
+                </div>
+                <div className="mt-space-md pt-space-sm flex items-center justify-between text-outline">
+                  <span className="font-label-sm text-label-sm">Detection Latency</span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">312ms</span>
+                </div>
+              </div>
+
+              {/* Specialist 5 */}
+              <div
+                onClick={() => setInspectAgentId("static-agent")}
+                className="p-space-lg rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between md:col-span-2 lg:col-span-2 cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-space-md">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="w-3 h-3 rounded-full bg-primary-container"></span>
+                      <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider">Agent Epsilon</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-sm text-label-sm">Bytecode &amp; Formal</span>
+                  </div>
+                  <h3 className="font-title-lg text-title-lg text-on-surface mb-space-xs">Bytecode &amp; Invariant Verifier</h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    Decompiles EVM opcodes directly, validates memory safety against malicious yul blocks, and mathematically proves state invariance via ZK constraint models.
+                  </p>
+                </div>
+                <div className="mt-space-md pt-space-sm flex items-center justify-between text-outline">
+                  <span className="font-label-sm text-label-sm">Consensus Role</span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">Lead Formal Gatekeeper &amp; HCS Signer</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 4. INTERACTIVE SOLIDITY AUDIT STUDIO */}
+          <section className="w-full bg-surface-container-low py-space-xl" id="studio-sandbox">
+            <div className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin">
+              {/* Section Header */}
+              <div className="flex flex-col md:flex-row md:items-end justify-between mb-space-lg gap-space-md">
+                <div>
+                  <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider mb-space-xs block">Live Audit Workbench</span>
+                  <h2 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">Experience Swarm consensus in real-time.</h2>
+                </div>
+                <div className="flex items-center gap-space-xs">
+                  <span className="font-label-md text-label-md text-on-surface-variant">Preset Vulnerability:</span>
+                  <select
+                    value={selectedPresetKey}
+                    onChange={(e) => {
+                      setSelectedPresetKey(e.target.value);
+                      setAuditResult(null);
+                      setPipelineStatus("READY");
+                      setPipelineStep(5);
+                    }}
+                    className="h-9 px-space-sm rounded-lg bg-surface-container-lowest text-on-surface font-label-md text-label-md shadow-sm outline-none cursor-pointer"
+                  >
+                    <option value="reentrancy">Classic Reentrancy (SWC-107)</option>
+                    <option value="txorigin">tx.origin Authentication Bypass</option>
+                    <option value="precision">Yield Rounding Precision Loss</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Studio Container */}
+              <div className="w-full rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden flex flex-col lg:flex-row">
+                {/* Left Pane: Code Editor */}
+                <div className="w-full lg:w-7/12 p-space-lg flex flex-col justify-between bg-surface-container-lowest">
+                  <div>
+                    {/* Code Tab Bar */}
+                    <div className="flex items-center justify-between pb-space-sm mb-space-sm">
+                      <div className="flex items-center gap-space-xs">
+                        <span className="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+                        <span className="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+                        <span className="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+                        <span className="ml-2 font-label-sm text-label-sm text-on-surface-variant">{activePreset.file}</span>
+                      </div>
+                      <span className="font-label-sm text-label-sm text-error bg-error-container/60 px-2 py-0.5 rounded-md">
+                        {activePreset.severity} • {activePreset.category}
+                      </span>
+                    </div>
+
+                    {/* Preformatted Code Preview */}
+                    <div
+                      className="bg-surface-container p-space-md rounded-xl font-mono text-[12px] leading-relaxed text-on-surface overflow-x-auto"
+                      dangerouslySetInnerHTML={{ __html: activePreset.code }}
+                    />
+                  </div>
+
+                  {/* Bottom Action */}
+                  <div className="mt-space-lg flex items-center justify-between pt-space-sm">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="material-symbols-outlined text-[18px] text-tertiary">bolt</span>
+                      <span className="font-label-sm text-label-sm text-tertiary">EVM 0.8.20 • Cost: 0.01 ℏ ($0.001)</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isAuditing}
+                      onClick={handleRunAudit}
+                      className="inline-flex items-center gap-space-xs px-6 py-2.5 rounded-full bg-inverse-surface text-inverse-on-surface font-title-md text-title-md hover:bg-on-surface transition-all active:scale-[0.98] disabled:opacity-60"
+                    >
+                      {isAuditing ? (
+                        <>
+                          <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                          <span>Swarm Verifying...</span>
+                        </>
+                      ) : pipelineStatus === "FINALIZED" ? (
+                        <>
+                          <span className="material-symbols-outlined text-secondary text-[18px]">done_all</span>
+                          <span>Consensus Sealed! Re-run</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">play_arrow</span>
+                          <span>Run Swarm Audit</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Pane: Consensus Ledger & Report */}
+                <div className="w-full lg:w-5/12 p-space-lg bg-surface-container-low flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-space-md">
+                      <span className="font-title-md text-title-md text-on-surface">Consensus Pipeline</span>
+                      <span className="inline-flex items-center gap-1 font-label-sm text-label-sm text-secondary font-medium">
+                        <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                        {pipelineStatus === "FINALIZED" ? "Quorum Sealed on Hedera" : isAuditing ? "Debating Consensus..." : "5/5 Quorum Achieved"}
+                      </span>
+                    </div>
+
+                    {/* Steps Pipeline */}
+                    <div className="space-y-space-sm">
+                      <div className="p-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-space-sm">
+                          <span className="font-label-sm text-label-sm text-primary font-bold">01</span>
+                          <span className="font-label-md text-label-md text-on-surface">Ingest &amp; AST Decomposition</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-[18px] ${pipelineStep >= 1 ? "text-secondary" : "text-tertiary"}`}>
+                          {pipelineStep >= 1 ? "check_circle" : "radio_button_unchecked"}
+                        </span>
+                      </div>
+
+                      <div className="p-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-space-sm">
+                          <span className="font-label-sm text-label-sm text-primary font-bold">02</span>
+                          <span className="font-label-md text-label-md text-on-surface">Swarm Adversarial Debate</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-[18px] ${pipelineStep >= 2 ? "text-secondary" : "text-tertiary"}`}>
+                          {pipelineStep >= 2 ? "check_circle" : "radio_button_unchecked"}
+                        </span>
+                      </div>
+
+                      <div className="p-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-space-sm">
+                          <span className="font-label-sm text-label-sm text-primary font-bold">03</span>
+                          <span className="font-label-md text-label-md text-on-surface">Quorum Consensus Finalized</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-[18px] ${pipelineStep >= 3 ? "text-secondary" : "text-tertiary"}`}>
+                          {pipelineStep >= 3 ? "check_circle" : "radio_button_unchecked"}
+                        </span>
+                      </div>
+
+                      <div className="p-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-space-sm">
+                          <span className="font-label-sm text-label-sm text-primary font-bold">04</span>
+                          <span className="font-label-md text-label-md text-on-surface">Bytecode Invariant Verified</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-[18px] ${pipelineStep >= 4 ? "text-secondary" : "text-tertiary"}`}>
+                          {pipelineStep >= 4 ? "check_circle" : "radio_button_unchecked"}
+                        </span>
+                      </div>
+
+                      <div className="p-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-space-sm">
+                          <span className="font-label-sm text-label-sm text-primary font-bold">05</span>
+                          <span className="font-label-md text-label-md text-on-surface">Hedera HCS Topic Sealed</span>
+                        </div>
+                        <span className={`material-symbols-outlined text-[18px] ${pipelineStep >= 5 ? "text-secondary" : "text-tertiary"}`}>
+                          {pipelineStep >= 5 ? "check_circle" : "radio_button_unchecked"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Plain English Remediation */}
+                    <div className="mt-space-md p-space-md rounded-xl bg-error-container/40">
+                      <span className="font-label-sm text-label-sm text-error uppercase tracking-wider block mb-1">Recommended Fix</span>
+                      <p className="font-body-sm text-body-sm text-on-surface leading-snug">
+                        {activePreset.fix}
+                      </p>
+                    </div>
+
+                    {auditResult && (
+                      <div className="mt-space-sm">
+                        <button
+                          type="button"
+                          onClick={() => setIsFullReportOpen(true)}
+                          className="w-full py-2 px-3 rounded-lg bg-surface-container-lowest text-primary text-label-md font-semibold hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">description</span>
+                          <span>View Full Audit Report</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hedera Consensus Footer Card */}
+                  <div className="mt-space-lg p-space-sm bg-surface-container-lowest rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-space-xs">
+                      <span className="material-symbols-outlined text-primary text-[18px]">lock</span>
+                      <span className="font-label-sm text-label-sm text-on-surface">Topic: 0.0.10417469</span>
+                    </div>
+                    <a
+                      className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1"
+                      href={
+                        auditResult?.proof?.transactionId
+                          ? `https://hashscan.io/testnet/transaction/${auditResult.proof.transactionId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
+                          : "https://hashscan.io/testnet/topic/0.0.10417469"
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span>Verify on HashScan</span>
+                      <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 5. DEVELOPER INTEGRATION & MCP */}
+          <section className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin py-space-xl w-full">
+            <div className="p-space-xl rounded-2xl bg-surface-container-low flex flex-col md:flex-row items-center justify-between gap-space-lg">
+              <div className="max-w-xl">
+                <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider mb-space-xs block">Developer Native</span>
+                <h2 className="font-headline-md text-headline-md text-on-surface tracking-tight mb-space-sm">One line to add security to your IDE.</h2>
+                <p className="font-body-md text-body-md text-on-surface-variant mb-space-md">
+                  Integrate the 5-agent security swarm directly into Cursor, Claude Desktop, Windsurf, or your GitHub CI action with zero configuration overhead.
+                </p>
+                <div className="flex flex-wrap items-center gap-space-xs">
+                  <span className="px-3 py-1 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm">Cursor MCP</span>
+                  <span className="px-3 py-1 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm">Claude Desktop</span>
+                  <span className="px-3 py-1 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm">Windsurf Cascade</span>
+                  <span className="px-3 py-1 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm">Foundry / Hardhat</span>
+                </div>
+              </div>
+
+              {/* Code Box */}
+              <div className="w-full md:w-auto min-w-[320px] bg-surface-container-lowest p-space-md rounded-2xl shadow-sm">
+                <div className="flex items-center justify-between mb-space-sm">
+                  <span className="font-label-sm text-label-sm text-tertiary">Terminal</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy("npx -y swarmproof-mcp")}
+                    className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                    <span>{copiedSnippet ? "Copied!" : "Copy"}</span>
+                  </button>
+                </div>
+                <div className="p-space-sm bg-surface-container rounded-lg font-mono text-body-sm text-on-surface">
+                  $ npx -y swarmproof-mcp
+                </div>
+                <div className="mt-space-sm text-[11px] text-tertiary flex items-center gap-1">
+                  <span className="material-symbols-outlined text-secondary text-[14px]">check_circle</span>
+                  <span>Auto-probes Hedera Testnet/Mainnet</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 6. MINIMALIST CALL TO ACTION */}
+          <section className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin pb-space-xl w-full">
+            <div className="p-space-xl rounded-2xl bg-surface-container-lowest shadow-sm text-center flex flex-col items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center mb-space-md">
+                <span className="material-symbols-outlined text-primary text-[24px]">verified_user</span>
+              </div>
+              <h2 className="font-headline-lg text-headline-lg text-on-surface tracking-tight max-w-xl mb-space-xs">
+                Verify your contracts with mathematical certainty.
+              </h2>
+              <p className="font-body-md text-body-md text-on-surface-variant max-w-md mb-space-lg">
+                Deploy confidently knowing 5 specialized agents independently challenged your protocol and sealed an immutable cryptographic guarantee.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-space-md">
+                <a
+                  className="px-8 py-3.5 rounded-full bg-inverse-surface text-inverse-on-surface font-title-md text-title-md hover:bg-on-surface transition-all shadow-sm active:scale-[0.98]"
+                  href="#studio-sandbox"
+                >
+                  Start Your First Audit
+                </a>
+                <Link
+                  className="px-8 py-3.5 rounded-full bg-surface-container text-on-surface font-title-md text-title-md hover:bg-surface-container-high transition-all active:scale-[0.98]"
+                  href="/graph"
+                >
+                  Explore The Graph
+                </Link>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {/* ── Footer ─────────────────────────────────────────────────── */}
+      <footer className="w-full bg-surface-container-lowest border-t border-black/[0.06] py-space-xl">
+        <div className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin flex flex-col md:flex-row items-center justify-between gap-space-lg">
+          <div className="flex items-center gap-space-sm">
+            <span className="font-title-md text-title-md text-on-surface tracking-tight font-semibold">SwarmProof</span>
+            <span className="text-outline font-body-sm text-body-sm">© 2026 SwarmProof Inc. Consensus guaranteed.</span>
           </div>
-        </div>
-      </section>
-
-      {/* ── SECTION 4: THREE.JS SWARM VISUALIZER (Compact & Clean) ────── */}
-      <section className="py-12 border-t border-zinc-800/80 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-4">
-          <div>
-            <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">Visual Intelligence</div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white">3D Consensus Swarm</h2>
-          </div>
-          <span className="text-xs font-mono text-zinc-500">60 FPS WebGL • Multi-Agent Synapses</span>
-        </div>
-
-        <div className="h-96 rounded-xl overflow-hidden border border-zinc-800 relative bg-[#090a0f]">
-          <SwarmSimulation3D
-            isAuditing={isAuditing}
-            activeAgentId={inspectAgentId}
-            onSelectAgent={(agentId) => setInspectAgentId(agentId)}
-            agents={allAgents}
-          />
-        </div>
-      </section>
-
-      {/* ── Minimal Developer Footer ─────────────────────────────────── */}
-      <footer className="border-t border-zinc-800/80 py-8 px-4 sm:px-6 bg-[#090a0e] text-xs font-mono text-zinc-500">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-zinc-300">SwarmProof</span>
-            <span>•</span>
-            <span>Open AI Agent Audit Marketplace</span>
-            <span>•</span>
+          <div className="flex flex-wrap items-center gap-space-lg">
+            <Link className="font-body-sm text-body-sm text-tertiary hover:text-on-surface transition-colors" href="/feedback">
+              Feedback &amp; Audits
+            </Link>
             <a
+              className="font-body-sm text-body-sm text-tertiary hover:text-on-surface transition-colors"
               href="https://hashscan.io/testnet/topic/0.0.10417469"
               target="_blank"
-              rel="noreferrer"
-              className="text-emerald-400 hover:underline"
+              rel="noopener noreferrer"
             >
-              Topic 0.0.10417469
+              Hedera Consensus Logs
             </a>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Link href="/graph" className="hover:text-zinc-300 transition-colors">
-              The Graph
-            </Link>
-            <Link href="/leaderboard" className="hover:text-zinc-300 transition-colors">
-              Leaderboard
-            </Link>
-            <Link href="/x402" className="hover:text-zinc-300 transition-colors">
-              x402 Micropayments
-            </Link>
-            <Link href="/feedback" className="hover:text-zinc-300 transition-colors">
-              Architecture Deck
+            <Link className="font-body-sm text-body-sm text-tertiary hover:text-on-surface transition-colors" href="/pitch-deck">
+              Security Whitepaper
             </Link>
           </div>
         </div>
       </footer>
 
-      {/* ── Connected Modals ─────────────────────────────────────────── */}
-      {/* 1. Agent Detail Inspector Modal (Identity, Public Key, DID, Hedera Wallet) */}
-      {inspectAgentId && (
-        <AgentInspectorModal
-          agentId={inspectAgentId}
-          onClose={() => setInspectAgentId(null)}
-          isAuditing={isAuditing}
-          actualFindings={
-            auditResult?.report?.findings || [
-              {
-                id: activePreset.category,
-                category: activePreset.category,
-                severity: activePreset.severity,
-                title: activePreset.title,
-                locations: ["lines 12-16"],
-                evidence: [activePreset.desc],
-              },
-            ]
-          }
-          onRunSingleAgentSimulation={() => {}}
-          agents={allAgents}
-        />
-      )}
-
-      {/* 2. Register New Agent Modal */}
+      {/* ── Dialog Modals ────────────────────────────────────────────── */}
       {isRegisterModalOpen && (
         <RegisterAgentModal
           onClose={() => setIsRegisterModalOpen(false)}
           onRegistered={(newAgent) => {
             setAllAgents((prev) => ({ ...prev, [newAgent.id]: newAgent }));
-            setInspectAgentId(newAgent.id);
+            setIsRegisterModalOpen(false);
           }}
         />
       )}
 
-      {/* 3. Live Audit Task Pool Modal */}
-      {isPoolModalOpen && <AuditPoolModal onClose={() => setIsPoolModalOpen(false)} />}
+      {isPoolModalOpen && (
+        <AuditPoolModal
+          onClose={() => setIsPoolModalOpen(false)}
+        />
+      )}
 
-      {/* 3b. Privy B2B Organization Treasury Modal */}
       {isB2BSpendModalOpen && (
-        <PrivyB2BSpendModal
-          onClose={() => setIsB2BSpendModalOpen(false)}
-          onOpenTaskPool={() => {
-            setIsB2BSpendModalOpen(false);
-            setIsPoolModalOpen(true);
-          }}
+        <PrivyB2BSpendModal onClose={() => setIsB2BSpendModalOpen(false)} />
+      )}
+
+      {isFullReportOpen && auditResult && (
+        <FullAuditReportModal
+          auditResult={auditResult}
+          onClose={() => setIsFullReportOpen(false)}
         />
       )}
 
-      {/* 4. Full Formal Audit Report Modal */}
-      {isFullReportOpen && (
-        <FullAuditReportModal
-          auditResult={
-            (auditResult
-              ? {
-                  ...auditResult,
-                  task: auditResult.task ?? {
-                    contractName: isCustomMode ? "CustomContract" : activePreset.file.replace(".sol", ""),
-                    source: isCustomMode ? customCode : activePreset.rawCode,
-                    network: "hedera-testnet",
-                  },
-                }
-              : {
-                  id: "audit-demo-latest",
-                  status: "done",
-                  task: {
-                    contractName: activePreset.file.replace(".sol", ""),
-                    source: activePreset.rawCode,
-                    network: "hedera-testnet",
-                  },
-              report: {
-                result: activePreset.verdict,
-                consensusSummary: activePreset.desc,
-                findings: [
-                  {
-                    id: activePreset.category,
-                    category: activePreset.category,
-                    severity: activePreset.severity,
-                    title: activePreset.title,
-                    locations: ["lines 12-16"],
-                    evidence: [activePreset.desc],
-                  },
-                ],
-                reportHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-              },
-              proof: {
-                hcsTopicId: "0.0.10417469",
-                sequenceNumber: 42,
-                consensusTimestamp: "1711728391.849204003",
-                reportHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                verified: true,
-              },
-            }) as any
-          }
-          onClose={() => setIsFullReportOpen(false)}
+      {inspectAgentId && (
+        <AgentInspectorModal
+          agentId={inspectAgentId}
+          agents={allAgents}
+          onClose={() => setInspectAgentId(null)}
         />
       )}
     </div>
