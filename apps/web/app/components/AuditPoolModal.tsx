@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { FullAuditReportModal } from "./FullAuditReportModal";
+import { PrivyB2BSpendModal } from "./PrivyB2BSpendModal";
+import { useWallet } from "../context/WalletContext";
 import { getApiBase } from "../lib/api";
 
 const API_BASE = getApiBase();
@@ -101,6 +103,7 @@ const toHashScanUrl = (txId?: string) => {
 };
 
 export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
+  const { wallet } = useWallet();
   const [tasks, setTasks] = useState<PoolTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "OPEN" | "SETTLED">("ALL");
@@ -108,6 +111,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [isSimulating, setIsSimulating] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(Date.now());
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showB2BSpendModal, setShowB2BSpendModal] = useState(false);
 
   // New task form state
   const [newContractName, setNewContractName] = useState("FlashLoanVault");
@@ -116,7 +120,13 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [requireEscrowNew, setRequireEscrowNew] = useState(false);
   const [isEscrowing, setIsEscrowing] = useState<Record<string, boolean>>({});
-  const [payerAccountInput, setPayerAccountInput] = useState("0.0.10119346");
+  const [payerAccountInput, setPayerAccountInput] = useState(wallet.accountId || "0.0.10119346");
+
+  useEffect(() => {
+    if (wallet.accountId) {
+      setPayerAccountInput(wallet.accountId);
+    }
+  }, [wallet.accountId]);
   const [escrowSuccessMsg, setEscrowSuccessMsg] = useState<{ [taskId: string]: { txId: string; url: string } }>({});
   const [viewingFullReport, setViewingFullReport] = useState<PoolTask | null>(null);
 
@@ -389,6 +399,27 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
+              onClick={() => setShowB2BSpendModal(true)}
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                backgroundColor: "#ecfdf5",
+                color: "#059669",
+                border: "1px solid #a7f3d0",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>🏢</span>
+              <span>B2B Treasury</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleLoadCode4renaContests}
               style={{
                 padding: "6px 12px",
@@ -440,6 +471,50 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
 
         {/* Modal Body */}
         <div style={{ padding: 22 }}>
+          {/* Privy B2B Organization Treasury Status Banner */}
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              backgroundColor: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              marginBottom: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: 12,
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span>🏢</span>
+              <span style={{ fontWeight: 600, color: "#166534" }}>
+                Privy B2B Organization Treasury:
+              </span>
+              <span style={{ color: "#15803d" }}>
+                {wallet.type === "privy"
+                  ? `Connected as ${wallet.privyEmail || wallet.privyGoogle || "Corporate Entity"} (${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)}) • Escrow & Multi-Agent Payroll Active`
+                  : "Self-custodial B2B spend management & automated multi-agent security payroll active"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowB2BSpendModal(true)}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#059669",
+                backgroundColor: "#ffffff",
+                border: "1px solid #a7f3d0",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: "pointer",
+              }}
+            >
+              Manage Treasury & Quorum ↗
+            </button>
+          </div>
+
           {/* Code4rena Contest Puller Drawer */}
           {showCode4renaDrawer && (
             <div
@@ -1678,6 +1753,11 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           } as any}
           onClose={() => setViewingFullReport(null)}
         />
+      )}
+
+      {/* Privy B2B Organization Treasury Dashboard Modal */}
+      {showB2BSpendModal && (
+        <PrivyB2BSpendModal onClose={() => setShowB2BSpendModal(false)} />
       )}
     </div>
   );

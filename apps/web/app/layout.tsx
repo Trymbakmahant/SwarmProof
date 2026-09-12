@@ -7,6 +7,9 @@ export const metadata: Metadata = {
     "Decentralized smart-contract auditing powered by a sovereign AI agent swarm, mathematically validated through concurrent AST graph reasoning and immutably anchored on Hedera Consensus Service.",
 };
 
+import { PrivyClientProvider } from "./providers/PrivyClientProvider";
+import { WalletProvider } from "./context/WalletContext";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -30,7 +33,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="bg-surface text-on-surface selection:bg-secondary-container selection:text-on-secondary-container">
-        {children}
+        <PrivyClientProvider>
+          <WalletProvider>
+            {children}
+          </WalletProvider>
+        </PrivyClientProvider>
       </body>
     </html>
   );

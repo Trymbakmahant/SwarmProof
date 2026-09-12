@@ -7,7 +7,9 @@ import { RegisterAgentModal } from "./components/RegisterAgentModal";
 import { AuditPoolModal } from "./components/AuditPoolModal";
 import { FullAuditReportModal } from "./components/FullAuditReportModal";
 import { SwarmSimulation3D } from "./components/SwarmSimulation3D";
-import { SPECIALIST_AGENTS, createAgentMetaFromBackend, type SpecialistAgentMeta } from "./components/agentData";
+import { HederaWalletButton } from "./components/HederaWalletButton";
+import { PrivyB2BSpendModal } from "./components/PrivyB2BSpendModal";
+import { type SpecialistAgentMeta, SPECIALIST_AGENTS, createAgentMetaFromBackend } from "./components/agentData";
 import { getApiBase } from "./lib/api";
 
 const API_BASE = getApiBase();
@@ -353,6 +355,7 @@ export default function Home() {
   // Modal states
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
+  const [isB2BSpendModalOpen, setIsB2BSpendModalOpen] = useState(false);
   const [isFullReportOpen, setIsFullReportOpen] = useState(false);
   const [inspectAgentId, setInspectAgentId] = useState<string | null>(null);
 
@@ -585,7 +588,15 @@ await client.registerAgent({
             </Link>
           </nav>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsB2BSpendModalOpen(true)}
+              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-emerald-500/30 text-xs font-mono text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 transition-colors shadow-sm"
+            >
+              <span>🏢</span>
+              <span>B2B Treasury</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsPoolModalOpen(true)}
@@ -593,6 +604,7 @@ await client.registerAgent({
             >
               Task Pool
             </button>
+            <HederaWalletButton />
             <button
               type="button"
               onClick={() => setIsRegisterModalOpen(true)}
@@ -1340,6 +1352,17 @@ await client.registerAgent({
 
       {/* 3. Live Audit Task Pool Modal */}
       {isPoolModalOpen && <AuditPoolModal onClose={() => setIsPoolModalOpen(false)} />}
+
+      {/* 3b. Privy B2B Organization Treasury Modal */}
+      {isB2BSpendModalOpen && (
+        <PrivyB2BSpendModal
+          onClose={() => setIsB2BSpendModalOpen(false)}
+          onOpenTaskPool={() => {
+            setIsB2BSpendModalOpen(false);
+            setIsPoolModalOpen(true);
+          }}
+        />
+      )}
 
       {/* 4. Full Formal Audit Report Modal */}
       {isFullReportOpen && (
