@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
+import { handle } from "@hono/node-server/vercel";
 import { createApp } from "./app.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -11,10 +12,12 @@ dotenv.config(); // fallback to current dir if any
 const env = process.env;
 const app = createApp({ env });
 
-// Only bind a port when run directly (`node dist/index.js` / `tsx src/index.ts`);
-// importing the package (tests, tools) must not start a server.
+export { app, createApp };
+export default handle(app);
+
+// Only bind a port when run directly as a standalone Node server (not on Vercel)
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) {
+if (isMain && !process.env.VERCEL) {
   const port = Number(env.PORT ?? 3001);
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`@swarmproof/api listening on http://localhost:${info.port}`);
@@ -24,6 +27,4 @@ if (isMain) {
     console.log(`  AI LLM provider  : ${env.FIREWORKS_API_KEY ? "Fireworks AI (" + (env.FIREWORKS_MODEL ?? "accounts/fireworks/models/deepseek-v4p1-flash") + ")" : env.ANTHROPIC_API_KEY ? "Anthropic Claude (" + (env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet") + ")" : env.OPENAI_API_KEY ? "OpenAI (" + (env.OPENAI_MODEL ?? "gpt-4o-mini") + (env.OPENAI_BASE_URL ? ` @ ${env.OPENAI_BASE_URL}` : "") + ")" : env.OLLAMA_BASE_URL ? "Local Ollama (" + (env.OLLAMA_MODEL ?? "deepseek-coder-v2") + ")" : "heuristic AST detector"}`);
     console.log(`  try: curl -i -X POST http://localhost:${info.port}/audit -H 'content-type: application/json' -d '{"contractName":"V","source":"contract V {}"}'`);
   });
-} else {
-  console.log("@swarmproof/api: imported as a library — not starting the HTTP server.");
 }
