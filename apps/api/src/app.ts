@@ -20,6 +20,7 @@ import {
   DEFAULT_SPECIALIST_WEIGHTS,
 } from "@swarmproof/swarm";
 import { AuditTaskPool, type PoolTask } from "./pool.js";
+import { dbSaveAgent, dbLoadAllAgents } from "./supabase.js";
 import { ReputationEngine, type AgentReputationRecord } from "./reputation.js";
 import { createVerifier } from "@swarmproof/verification";
 import { graphClient } from "./graphClient.js";
@@ -391,6 +392,70 @@ contract EtherVault {
     qualificationTimestamp?: string;
   }
   const customAgentMeta = new Map<string, CustomAgentMeta>();
+
+  // Hydrate custom registered agents from Supabase database into memory
+  void (async () => {
+    try {
+      const savedAgents = await dbLoadAllAgents();
+      if (savedAgents.length > 0) {
+        for (const sa of savedAgents) {
+          if (!specialists[sa.agentId]) {
+            const agentIdentity = {
+              agentId: sa.agentId,
+              name: sa.name,
+              capabilities: sa.capabilities,
+              paymentAddress: sa.paymentAddress,
+              version: "1.0.0",
+            };
+
+            const customPrompt = sa.systemPrompt ||
+              `You are the ${sa.name} Specialist Agent in SwarmProof.\nYour domain is: ${sa.role}.\n` +
+              `Audit the Solidity contract and return ONLY valid JSON:\n{\n  "findings": [\n    {\n      "title": "...",\n      "category": "${sa.agentId.replace("-agent", "")}",\n      "severity": "critical"|"high"|"medium"|"low",\n      "location": "...",\n      "evidence": ["..."],\n      "reasoning": "..."\n    }\n  ]\n}`;
+
+            const dynamicAgent: SecurityAgent = {
+              identity: agentIdentity,
+              analyze: async (task) => {
+                if (!llmProvider) return [];
+                try {
+                  const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${sa.agentId}):\n\nContract Name: ${task.contractName}\n\`\`\`solidity\n${task.source}\n\`\`\``;
+                  const res = await llmProvider.complete(customPrompt, [{ role: "user", content: userPrompt }], {
+                    temperature: 0.1,
+                    maxTokens: 3000,
+                  });
+                  return parseLLMFindings(res, sa.agentId as any);
+                } catch {
+                  return [];
+                }
+              },
+            };
+
+            specialists[sa.agentId] = dynamicAgent;
+            customAgentMeta.set(sa.agentId, {
+              role: sa.role,
+              shape: sa.shape as any,
+              color: sa.color,
+              systemPrompt: customPrompt,
+              model: sa.model || (llmProvider ? llmProvider.name : "heuristic"),
+            });
+
+            reputationEngine.registerAgent({
+              agentId: sa.agentId,
+              name: sa.name,
+              role: sa.role,
+              benchmarkScore: sa.benchmarkScore || 85,
+              did: sa.did,
+              shape: sa.shape,
+              color: sa.color,
+              specialty: sa.capabilities.join(", "),
+            });
+          }
+        }
+        console.log(`[Supabase] Loaded ${savedAgents.length} persistent registered agent(s) into memory.`);
+      }
+    } catch (err) {
+      console.warn(`[Supabase] Failed to load saved agents: ${(err as Error).message}`);
+    }
+  })();
 
   function agentDirectory() {
     return Object.entries(specialists).map(([id, a]) => {
@@ -1118,6 +1183,34 @@ contract EtherVault {
         color: body.color,
         specialty: capabilities.join(", "),
       });
+
+      // Persist agent in Supabase
+      try {
+        await dbSaveAgent({
+          agentId: cleanId,
+          name: body.name,
+          role: body.role || "smart-contract-auditor",
+          capabilities,
+          paymentAddress: payoutAddress,
+          publicKey: effectivePublicKey || body.publicKey,
+          did: registration.did,
+          hcsTopicId: registration.hcsTopicId,
+          transactionId: registration.transactionId,
+          consensusTimestamp: registration.consensusTimestamp,
+          benchmarkScore: 85,
+          isVerified: Boolean(body.signature),
+          shape: body.shape || "octahedron",
+          color: body.color || "#00f5ff",
+          systemPrompt: customPrompt,
+          model: body.model || (llmProvider ? llmProvider.name : "heuristic"),
+          reputationScore: 85.0,
+          totalPayoutsTinybars: 0,
+          auditsCompleted: 0,
+        });
+        console.log(`   💾 Agent "${cleanId}" persisted in Supabase database.`);
+      } catch (dbErr) {
+        console.warn(`   ⚠️ Supabase save notice for agent "${cleanId}": ${(dbErr as Error).message}`);
+      }
 
       return c.json(
         {

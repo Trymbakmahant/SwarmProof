@@ -248,3 +248,125 @@ export async function dbLoadAllTasks(): Promise<PoolTask[]> {
     return [];
   }
 }
+
+export interface RegisteredAgentRecord {
+  agentId: string;
+  name: string;
+  role: string;
+  capabilities: string[];
+  paymentAddress: string;
+  publicKey?: string;
+  did: string;
+  hcsTopicId: string;
+  transactionId: string;
+  consensusTimestamp: string;
+  benchmarkScore?: number;
+  isVerified?: boolean;
+  shape?: string;
+  color?: string;
+  systemPrompt?: string;
+  model?: string;
+  reputationScore?: number;
+  totalPayoutsTinybars?: number;
+  auditsCompleted?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Persist or update a registered agent in Supabase
+ */
+export async function dbSaveAgent(agent: RegisteredAgentRecord): Promise<boolean> {
+  const sb = getSupabaseClient();
+  if (!sb) return false;
+
+  try {
+    const { error } = await sb.from("registered_agents").upsert(
+      {
+        agent_id: agent.agentId,
+        name: agent.name,
+        role: agent.role,
+        capabilities: agent.capabilities,
+        payment_address: agent.paymentAddress,
+        public_key: agent.publicKey,
+        did: agent.did,
+        hcs_topic_id: agent.hcsTopicId,
+        transaction_id: agent.transactionId,
+        consensus_timestamp: agent.consensusTimestamp,
+        benchmark_score: agent.benchmarkScore ?? 85,
+        is_verified: agent.isVerified ?? true,
+        shape: agent.shape ?? "octahedron",
+        color: agent.color ?? "#00f5ff",
+        system_prompt: agent.systemPrompt,
+        model: agent.model,
+        reputation_score: agent.reputationScore ?? 85.0,
+        total_payouts_tinybars: agent.totalPayoutsTinybars ?? 0,
+        audits_completed: agent.auditsCompleted ?? 0,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "agent_id" }
+    );
+
+    if (error) {
+      console.warn(`[Supabase] Failed to upsert agent ${agent.agentId}:`, error.message);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.warn(`[Supabase] dbSaveAgent exception for ${agent.agentId}:`, (err as Error).message);
+    return false;
+  }
+}
+
+/**
+ * Load all registered agents from Supabase
+ */
+export async function dbLoadAllAgents(): Promise<RegisteredAgentRecord[]> {
+  const sb = getSupabaseClient();
+  if (!sb) return [];
+
+  try {
+    const { data, error } = await sb
+      .from("registered_agents")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      if (!error.message.includes("does not exist") && !error.message.includes("schema cache")) {
+        console.warn(`[Supabase] Failed to load registered agents:`, error.message);
+      }
+      return [];
+    }
+
+    if (!Array.isArray(data)) return [];
+
+    return data.map((r: any) => ({
+      agentId: r.agent_id,
+      name: r.name,
+      role: r.role,
+      capabilities: r.capabilities || [],
+      paymentAddress: r.payment_address,
+      publicKey: r.public_key,
+      did: r.did,
+      hcsTopicId: r.hcs_topic_id,
+      transactionId: r.transaction_id,
+      consensusTimestamp: r.consensus_timestamp,
+      benchmarkScore: r.benchmark_score,
+      isVerified: r.is_verified,
+      shape: r.shape,
+      color: r.color,
+      systemPrompt: r.system_prompt,
+      model: r.model,
+      reputationScore: r.reputation_score ? parseFloat(r.reputation_score) : 85.0,
+      totalPayoutsTinybars: Number(r.total_payouts_tinybars || 0),
+      auditsCompleted: Number(r.audits_completed || 0),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  } catch (err) {
+    console.warn(`[Supabase] dbLoadAllAgents exception:`, (err as Error).message);
+    return [];
+  }
+}
+

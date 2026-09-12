@@ -99,3 +99,35 @@ CREATE POLICY "Allow service role write pool_tasks" ON public.pool_tasks FOR ALL
 CREATE POLICY "Allow service role write task_claims" ON public.task_claims FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role write task_submissions" ON public.task_submissions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role write agent_payouts" ON public.agent_payouts FOR ALL USING (true) WITH CHECK (true);
+
+-- 5. Registered Agents Table (W3C DID & Hedera Decentralized Identity)
+CREATE TABLE IF NOT EXISTS public.registered_agents (
+    agent_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    capabilities JSONB DEFAULT '[]'::jsonb,
+    payment_address TEXT NOT NULL,
+    public_key TEXT,
+    did TEXT NOT NULL,
+    hcs_topic_id TEXT NOT NULL,
+    transaction_id TEXT NOT NULL,
+    consensus_timestamp TIMESTAMPTZ NOT NULL,
+    benchmark_score INTEGER DEFAULT 85,
+    is_verified BOOLEAN DEFAULT true,
+    shape TEXT DEFAULT 'octahedron',
+    color TEXT DEFAULT '#00f5ff',
+    system_prompt TEXT,
+    model TEXT,
+    reputation_score NUMERIC DEFAULT 85.00,
+    total_payouts_tinybars BIGINT DEFAULT 0,
+    audits_completed INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_registered_agents_did ON public.registered_agents(did);
+CREATE INDEX IF NOT EXISTS idx_registered_agents_role ON public.registered_agents(role);
+ALTER TABLE public.registered_agents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read registered_agents" ON public.registered_agents FOR SELECT USING (true);
+CREATE POLICY "Allow service role write registered_agents" ON public.registered_agents FOR ALL USING (true) WITH CHECK (true);
+
