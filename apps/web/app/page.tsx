@@ -366,6 +366,8 @@ export default function Page() {
   const [isB2BSpendModalOpen, setIsB2BSpendModalOpen] = useState(false);
   const [isFullReportOpen, setIsFullReportOpen] = useState(false);
   const [inspectAgentId, setInspectAgentId] = useState<string | null>(null);
+  const [isNavMoreOpen, setIsNavMoreOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Dynamic Agent Registry
   const [allAgents, setAllAgents] = useState<Record<string, SpecialistAgentMeta>>(SPECIALIST_AGENTS);
@@ -528,67 +530,215 @@ export default function Page() {
   return (
     <div className="bg-background font-body-md text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed min-h-screen">
       {/* ── Top Navigation Bar ────────────────────────────────────────── */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/80 backdrop-blur-md border-b border-black/[0.06]">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/90 backdrop-blur-md border-b border-black/[0.06]">
         <div className="h-16 max-w-[1200px] mx-auto px-margin-mobile lg:px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-sm">
-            <Link className="flex items-center gap-space-sm" href="/">
-              <span className="font-title-md text-title-md text-on-surface tracking-tight font-semibold">SwarmProof</span>
-            </Link>
-            <span className="hidden sm:inline-flex items-center px-space-xs py-[2px] rounded-full bg-surface-container font-label-sm text-[10px] text-tertiary font-medium tracking-normal">
-              Hedera HCS 0.0.10417469
+          {/* Brand Logo */}
+          <Link className="flex items-center gap-2.5 group" href="/">
+            <div className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+              <span className="material-symbols-outlined text-[19px]">shield</span>
+            </div>
+            <span className="font-title-md text-title-md text-on-surface tracking-tight font-bold">
+              SwarmProof
             </span>
-          </div>
+          </Link>
 
-          <nav className="hidden xl:flex items-center gap-space-lg">
-            <a aria-current="page" className="transition-colors text-on-surface font-semibold text-label-md" href="#how-it-works">
+          {/* Desktop Navigation Links (Clean, Uncluttered, Perfectly Spaced) */}
+          <nav className="hidden lg:flex items-center gap-7">
+            <a
+              href="#how-it-works"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
+            >
               How it Works
             </a>
-            <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#specialists">
+            <a
+              href="#specialists"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
+            >
               Join &amp; Earn
-            </a>
-            <a className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#studio-sandbox">
-              Live Studio
             </a>
             <button
               type="button"
               onClick={() => setIsPoolModalOpen(true)}
-              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
             >
-              <span>Task Pool</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-secondary/15 text-secondary text-[10px] font-semibold">Live Bounties</span>
+              Task Pool
             </button>
-            <Link className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="/graph">
-              Knowledge Graph
+            <a
+              href="#studio-sandbox"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
+            >
+              Audit Studio
+            </a>
+            <Link
+              href="/graph"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
+            >
+              Graph
             </Link>
-            <Link className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="/pitch-deck">
-              Pitch Deck
-            </Link>
+
+            {/* Subtle More Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsNavMoreOpen(!isNavMoreOpen)}
+                className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-0.5"
+              >
+                <span>More</span>
+                <span className={`material-symbols-outlined text-[16px] transition-transform ${isNavMoreOpen ? "rotate-180" : ""}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {isNavMoreOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsNavMoreOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-56 bg-surface-container-lowest border border-black/[0.08] rounded-xl shadow-xl p-2 z-50 animate-in fade-in slide-in-from-top-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsB2BSpendModalOpen(true);
+                        setIsNavMoreOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-body-sm font-label-md text-on-surface hover:bg-surface-container transition-colors flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-secondary text-[18px]">account_balance</span>
+                      <span>B2B Treasury Modal</span>
+                    </button>
+                    <Link
+                      href="/pitch-deck"
+                      onClick={() => setIsNavMoreOpen(false)}
+                      className="w-full text-left px-3 py-2 rounded-lg text-body-sm font-label-md text-on-surface hover:bg-surface-container transition-colors flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-primary text-[18px]">slideshow</span>
+                      <span>Security Whitepaper</span>
+                    </Link>
+                    <Link
+                      href="/leaderboard"
+                      onClick={() => setIsNavMoreOpen(false)}
+                      className="w-full text-left px-3 py-2 rounded-lg text-body-sm font-label-md text-on-surface hover:bg-surface-container transition-colors flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-[#f59e0b] text-[18px]">leaderboard</span>
+                      <span>Auditor Leaderboard</span>
+                    </Link>
+                    <a
+                      href="https://hashscan.io/testnet/topic/0.0.10417469"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setIsNavMoreOpen(false)}
+                      className="w-full text-left px-3 py-2 rounded-lg text-body-sm font-label-md text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">verified</span>
+                        <span>Hedera Logs</span>
+                      </div>
+                      <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
           </nav>
 
-          <div className="flex items-center gap-space-sm">
+          {/* Right Action Area: 1 Clean Primary CTA + Wallet Button */}
+          <div className="flex items-center gap-space-xs sm:gap-space-sm">
             <button
               type="button"
               onClick={() => setIsRegisterModalOpen(true)}
-              className="hidden md:inline-flex items-center px-space-md py-space-xs rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest hover:text-on-surface transition-all"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-white font-label-md text-label-md hover:bg-primary/90 transition-all shadow-sm active:scale-[0.98]"
             >
-              Register Agent (Earn)
+              <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+              <span className="hidden sm:inline">Register Agent</span>
+              <span className="sm:hidden">Register</span>
             </button>
+
+            <HederaWalletButton />
+
+            {/* Mobile Hamburger Toggle */}
             <button
               type="button"
-              onClick={() => setIsB2BSpendModalOpen(true)}
-              className="hidden sm:inline-flex items-center px-space-md py-space-xs rounded-full bg-secondary-container/60 text-on-secondary-container font-label-md text-label-md hover:bg-secondary-container transition-all"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+              aria-label="Toggle Navigation Menu"
             >
-              B2B Treasury
+              <span className="material-symbols-outlined text-[24px]">
+                {isMobileMenuOpen ? "close" : "menu"}
+              </span>
             </button>
-            <a
-              className="inline-flex items-center px-space-md py-space-xs rounded-full bg-inverse-surface text-inverse-on-surface font-label-md text-label-md hover:bg-on-surface hover:text-surface-container-lowest transition-all shadow-[0_1px_2px_rgba(0,0,0,0.06)] active:scale-[0.98]"
-              href="#studio-sandbox"
-            >
-              Launch Audit
-            </a>
-            <HederaWalletButton />
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden bg-surface-container-lowest border-b border-black/[0.08] px-margin-mobile py-4 space-y-2 shadow-lg animate-in fade-in slide-in-from-top-2">
+            <a
+              href="#how-it-works"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px] text-tertiary">alt_route</span>
+              <span>How it Works</span>
+            </a>
+            <a
+              href="#specialists"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px] text-primary">groups</span>
+              <span>Join &amp; Earn</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setIsPoolModalOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-[20px] text-secondary">payments</span>
+                <span>Task Pool</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-secondary-container/70 text-on-secondary-container text-[11px] font-semibold">
+                Live Bounties
+              </span>
+            </button>
+            <a
+              href="#studio-sandbox"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px] text-tertiary">code</span>
+              <span>Audit Studio</span>
+            </a>
+            <Link
+              href="/graph"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px] text-tertiary">hub</span>
+              <span>Knowledge Graph</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setIsB2BSpendModalOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors text-left"
+            >
+              <span className="material-symbols-outlined text-[20px] text-secondary">account_balance</span>
+              <span>B2B Treasury</span>
+            </button>
+            <Link
+              href="/pitch-deck"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px] text-tertiary">slideshow</span>
+              <span>Pitch Deck &amp; Whitepaper</span>
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* ── Main Content ─────────────────────────────────────────────── */}
