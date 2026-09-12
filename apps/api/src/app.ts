@@ -1718,31 +1718,21 @@ contract EtherVault {
     if (payment.mode === "mock") {
       const verification = await confirmPaymentFor(record, `auto-${Date.now()}`);
       record.paymentStatus = verification;
-      if (verification.status === "paid") {
-        void runAudit(record);
-      }
+      await runAudit(record);
     } else {
-      // In live x402 mode: if testnet payer credentials are present, auto-pay via x402!
-      if (payerAccount && payerKey && record.payment) {
+      // In live x402 mode: auto-pay and execute the swarm audit
+      if (payerAccount && payerKey && record.payment?.x402) {
         try {
-          console.log(`💳 [x402 Auto-Payment] Signing micropayment quote from payer ${payerAccount}...`);
-          const resource = resourceUrl(c, record.id);
-          const reqs = await payerClient.getRequirements(resource);
+          const reqs = record.payment.x402;
           const payload = await payerClient.signPayment(reqs);
           const settlement = await payerClient.settlePayment(payload, reqs);
           const verification = await confirmPaymentFor(record, settlement.transaction ?? `live-${Date.now()}`, payload);
           record.paymentStatus = verification;
-          console.log(`   Payment verified on Hedera testnet! Status: ${verification.status}`);
-          if (verification.status === "paid") {
-            void runAudit(record);
-          }
         } catch (err) {
-          console.warn(`   x402 payment notice: ${(err as Error).message}. Running swarm audit for demo...`);
-          void runAudit(record);
+          console.warn(`x402 payment note: ${(err as Error).message}. Proceeding with swarm analysis...`);
         }
-      } else {
-        void runAudit(record);
       }
+      await runAudit(record);
     }
     // Also register an open task in task pool for decentralized specialist submissions
     try {

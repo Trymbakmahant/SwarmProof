@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getApiBase } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+const API_BASE = getApiBase();
 
 /* ------------------------------------------------------------------ */
 /* Sample contracts (mirror of contracts/vulnerable)                  */

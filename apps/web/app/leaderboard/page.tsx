@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AgentInspectorModal } from "../components/AgentInspectorModal";
+import { getApiBase } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+const API_BASE = getApiBase();
 
 interface LeaderboardAgent {
   agentId: string;

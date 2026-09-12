@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { RegisterAgentModal } from "../components/RegisterAgentModal";
 import { CONTRACT_GRAPHS, type ContractGraphConfig, type GraphNode } from "./contractGraphs";
+import { getApiBase } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+const API_BASE = getApiBase();
 
 interface ActivityRow {
   id: string;

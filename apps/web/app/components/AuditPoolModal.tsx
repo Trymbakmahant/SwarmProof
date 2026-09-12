@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { FullAuditReportModal } from "./FullAuditReportModal";
+import { getApiBase } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+const API_BASE = getApiBase();
 
 export interface TaskPayoutRecord {
   agentId: string;

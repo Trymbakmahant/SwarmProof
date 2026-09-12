@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { type SpecialistAgentMeta, SHAPE_METAS } from "./agentData";
 import { AgentCompetencyExamView } from "./AgentCompetencyExamView";
+import { getApiBase } from "../lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
+const API_BASE = getApiBase();
 
 interface RegisterAgentModalProps {
   onClose: () => void;
