@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e 'const { execSync } = require(\"child_process\"); const root = process.cwd().includes(\"apps/api\") ? \"../..\" : \".\"; execSync(\"pnpm -r --filter \\\"./packages/**\\\" build\", { stdio: \"inherit\", cwd: root });' && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
