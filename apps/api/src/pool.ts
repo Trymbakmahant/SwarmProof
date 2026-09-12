@@ -210,6 +210,26 @@ export class AuditTaskPool {
   }
 
   /**
+   * Pull open audit tasks for an autonomous agent
+   */
+  pullTasks(agentId: string, role?: string): PoolTask[] {
+    const allOpen = this.listTasks({ status: "OPEN_FOR_SUBMISSIONS" });
+    return allOpen.filter((task) => {
+      if (!this.isWindowOpen(task)) return false;
+      const alreadySubmitted = task.submissions.some((s) => s.agentId === agentId);
+      if (alreadySubmitted) return false;
+      if (role) {
+        const normRole = role.toLowerCase().trim();
+        const matchesRole = task.requiredRoles.some(
+          (r) => r.toLowerCase().trim() === normRole || normRole.includes(r.toLowerCase().trim()),
+        );
+        if (!matchesRole) return false;
+      }
+      return true;
+    });
+  }
+
+  /**
    * Transition task from PENDING_ESCROW to OPEN_FOR_SUBMISSIONS
    */
   openTaskForSubmissions(id: string, customWindowSeconds?: number): PoolTask {
