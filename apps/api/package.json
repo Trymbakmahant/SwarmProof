@@ -22,16 +22,17 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "dotenv": "^16.4.0",
-    "hono": "^4.6.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@swarmproof/agents": "workspace:*",
-    "@swarmproof/swarm": "workspace:*",
     "@swarmproof/consensus": "workspace:*",
-    "@swarmproof/verification": "workspace:*",
     "@swarmproof/hedera": "workspace:*",
     "@swarmproof/payments": "workspace:*",
     "@swarmproof/plugins": "workspace:*",
-    "@swarmproof/x402": "workspace:*"
+    "@swarmproof/swarm": "workspace:*",
+    "@swarmproof/verification": "workspace:*",
+    "@swarmproof/x402": "workspace:*",
+    "dotenv": "^16.4.0",
+    "hono": "^4.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

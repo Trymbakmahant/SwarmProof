@@ -9,6 +9,7 @@ import {
 import { buildAuditProofMessage, type AuditProofClient } from "@swarmproof/hedera";
 import type { X402Client, X402PaymentRequirements } from "@swarmproof/x402";
 import { ReputationEngine } from "./reputation.js";
+import { dbSaveTask, dbSaveClaim, dbSaveSubmission, dbLoadAllTasks } from "./supabase.js";
 
 export type TaskPoolStatus =
   | "PENDING_ESCROW"
@@ -174,6 +175,23 @@ export class AuditTaskPool {
   }
 
   /**
+   * Initialize pool from Supabase database if configured
+   */
+  async init(): Promise<void> {
+    try {
+      const persisted = await dbLoadAllTasks();
+      if (persisted && persisted.length > 0) {
+        for (const t of persisted) {
+          this.tasks.set(t.id, t);
+        }
+        console.log(`[Supabase] Loaded ${persisted.length} persistent task(s) into memory.`);
+      }
+    } catch (err) {
+      console.warn(`[Supabase] Failed to initialize persistent tasks: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Create a new task in the pool
    */
   createTask(input: CreatePoolTaskInput): PoolTask {
@@ -210,6 +228,7 @@ export class AuditTaskPool {
     }
 
     this.tasks.set(id, task);
+    void dbSaveTask(task).catch(console.warn);
     return task;
   }
 
@@ -275,6 +294,7 @@ export class AuditTaskPool {
     task.openedAt = new Date(now).toISOString();
     task.submissionDeadline = new Date(now + windowSecs * 1000).toISOString();
     task.updatedAt = new Date(now).toISOString();
+    void dbSaveTask(task).catch(console.warn);
 
     return task;
   }
@@ -363,13 +383,17 @@ export class AuditTaskPool {
       return { ok: true, message: `Agent ${claim.agentId} already claimed role ${existingClaim.role}`, task };
     }
 
-    task.claims.push({
+    const claimRecord = {
       agentId: claim.agentId,
       role: normalizedRole,
       claimedAt: new Date().toISOString(),
       paymentAddress: claim.paymentAddress,
-    });
+    };
+
+    task.claims.push(claimRecord);
     task.updatedAt = new Date().toISOString();
+    void dbSaveClaim(taskId, claimRecord).catch(console.warn);
+    void dbSaveTask(task).catch(console.warn);
 
     return { ok: true, message: `Role slot "${claim.role}" claimed by ${claim.agentId}`, task };
   }
@@ -430,6 +454,8 @@ export class AuditTaskPool {
 
     task.submissions.push(newSub);
     task.updatedAt = new Date().toISOString();
+    void dbSaveSubmission(taskId, newSub).catch(console.warn);
+    void dbSaveTask(task).catch(console.warn);
 
     // Check if all required roles have submitted
     const submittedRoles = new Set(task.submissions.map((s) => s.role));
@@ -751,6 +777,7 @@ export class AuditTaskPool {
       }
     }
 
+    void dbSaveTask(task).catch(console.warn);
     return task;
   }
 }

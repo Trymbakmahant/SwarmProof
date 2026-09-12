@@ -134,6 +134,9 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
     reputationEngine,
   });
 
+  // Initialize pool from Supabase database if configured
+  void taskPool.init().catch((err) => console.warn(`[Supabase] Pool init: ${(err as Error).message}`));
+
   // Seed an initial demo audit task in the pool
   taskPool.createTask({
     contractName: "EtherVault",
