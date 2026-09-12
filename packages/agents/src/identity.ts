@@ -12,6 +12,9 @@ export const AgentIdentitySchema = z.object({
   paymentAddress: z.string().min(1),
   version: z.string().default("1.0.0"),
   identityReference: z.string().optional(),
+  publicKey: z.string().optional(),
+  hederaAccountId: z.string().optional(),
+  evmAddress: z.string().optional(),
 });
 export type AgentIdentity = z.infer<typeof AgentIdentitySchema>;
 

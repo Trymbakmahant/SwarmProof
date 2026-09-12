@@ -36,6 +36,11 @@ export const DEFAULT_SPECIALIST_WEIGHTS: SpecialistWeights = {
   "business-logic-agent": SPECIALIST_DEFAULT_WEIGHT,
   "economic-agent": SPECIALIST_DEFAULT_WEIGHT,
   "static-agent": SPECIALIST_DEFAULT_WEIGHT,
+  "reentrancy-sentinel": SPECIALIST_DEFAULT_WEIGHT,
+  "access-sentinel": SPECIALIST_DEFAULT_WEIGHT,
+  "invariant-agent": SPECIALIST_DEFAULT_WEIGHT,
+  "mev-sentinel": SPECIALIST_DEFAULT_WEIGHT,
+  "bytecode-verifier": SPECIALIST_DEFAULT_WEIGHT,
 };
 
 export interface OrchestratorDeps {

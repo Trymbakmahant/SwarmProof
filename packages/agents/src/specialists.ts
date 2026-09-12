@@ -21,13 +21,24 @@ export interface SecurityAgent {
   analyze(task: SecurityTask): Promise<Finding[]>;
 }
 
-export const SPECIALIST_IDS = [
+export const CORE_SPECIALIST_IDS = [
   "reentrancy-agent",
   "access-control-agent",
   "business-logic-agent",
   "economic-agent",
   "static-agent",
 ] as const;
+
+export const DUAL_SPECIALIST_IDS = [
+  ...CORE_SPECIALIST_IDS,
+  "reentrancy-sentinel",
+  "access-sentinel",
+  "invariant-agent",
+  "mev-sentinel",
+  "bytecode-verifier",
+] as const;
+
+export const SPECIALIST_IDS = DUAL_SPECIALIST_IDS;
 export type SpecialistId = (typeof SPECIALIST_IDS)[number];
 
 /* ------------------------------------------------------------------ */
@@ -313,6 +324,98 @@ async function analyzeStatic(task: SecurityTask): Promise<Finding[]> {
 }
 
 /* ------------------------------------------------------------------ */
+/* 6. Challenger Specialists (Dual Swarm Agents)                       */
+/* ------------------------------------------------------------------ */
+
+async function analyzeReentrancySentinel(task: SecurityTask): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const calls = valueTransferCalls(task.source);
+  if (calls.length === 0 || hasNonReentrantGuard(task.source)) return findings;
+
+  for (const call of calls) {
+    findings.push(
+      makeFinding(
+        "reentrancy-sentinel",
+        findings.length,
+        "reentrancy",
+        "critical",
+        call.loc,
+        `Reentrancy Sentinel: External callback invocation without ReentrancyGuard: ${call.pattern}. Recursive callback state drift detected.`,
+      ),
+    );
+  }
+  return findings;
+}
+
+async function analyzeAccessSentinel(task: SecurityTask): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  if (/\btx\.origin\b/.test(task.source)) {
+    findings.push(
+      makeFinding(
+        "access-sentinel",
+        findings.length,
+        "access-control",
+        "high",
+        "contract",
+        "Access Sentinel: Authentication relies on tx.origin instead of msg.sender, vulnerable to phishing and proxy bypass.",
+      ),
+    );
+  }
+  return findings;
+}
+
+async function analyzeInvariant(task: SecurityTask): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  if (/\/\s*[A-Za-z0-9_]+\s*\*/.test(task.source) || /mulDiv|precision/i.test(task.source)) {
+    findings.push(
+      makeFinding(
+        "invariant-agent",
+        findings.length,
+        "business-logic",
+        "high",
+        "division/precision site",
+        "Invariant Agent: Detected potential division before multiplication causing precision loss and accounting drift.",
+      ),
+    );
+  }
+  return findings;
+}
+
+async function analyzeMevSentinel(task: SecurityTask): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  if (/flashloan|flashBorrower|borrow\s*\(|swap\s*\(|getReserves|latestRoundData/i.test(task.source)) {
+    findings.push(
+      makeFinding(
+        "mev-sentinel",
+        findings.length,
+        "economic",
+        "high",
+        "pool interaction",
+        "MEV Sentinel: Atomic flash loan or AMM pool interaction detected without adequate slippage bounds or TWAP safeguards.",
+      ),
+    );
+  }
+  return findings;
+}
+
+async function analyzeBytecodeVerifier(task: SecurityTask): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  if (/\.delegatecall\s*\(/.test(task.source)) {
+    findings.push(
+      makeFinding(
+        "bytecode-verifier",
+        findings.length,
+        "static-analysis",
+        "critical",
+        "delegatecall",
+        "Bytecode Verifier: Low-level delegatecall preserves msg.sender and storage context; execution target must be strictly immutable.",
+      ),
+    );
+  }
+  return findings;
+}
+
+/* ------------------------------------------------------------------ */
 /* LLM Specialist Prompts                                             */
 /* ------------------------------------------------------------------ */
 
@@ -340,6 +443,10 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no reentrancy vulnerabilities are detected, return {"findings": []}.`,
 
+  "reentrancy-sentinel": `You are the Reentrancy Sentinel (Challenger Agent) in SwarmProof.
+Your focus is deep cross-contract callback validation, ERC receiver hooks, and transient state reentrancy.
+Return strictly {"findings": [...]} or {"findings": []}.`,
+
   "access-control-agent": `You are the Access Control Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting authorization and privilege vulnerabilities in Solidity contracts:
 - Missing onlyOwner, onlyRole, or custom authorization modifiers on critical/sensitive state-changing functions.
@@ -362,6 +469,10 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
   ]
 }
 If no access control vulnerabilities are detected, return {"findings": []}.`,
+
+  "access-sentinel": `You are the Access Sentinel (Challenger Agent) in SwarmProof.
+Your focus is privilege escalation vectors, proxy implementation slots, and authentication bypasses.
+Return strictly {"findings": [...]} or {"findings": []}.`,
 
   "business-logic-agent": `You are the Business Logic Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting contract-specific accounting and business logic flaws in Solidity:
@@ -386,6 +497,10 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no business logic vulnerabilities are detected, return {"findings": []}.`,
 
+  "invariant-agent": `You are the Invariant Challenger Agent in SwarmProof.
+Your focus is strict accounting equality, precision preservation, and balance tracking invariants.
+Return strictly {"findings": [...]} or {"findings": []}.`,
+
   "economic-agent": `You are the Economic Security Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting economic, market, and financial attack vectors in Solidity:
 - Spot price oracle manipulation (using reserves or spot prices from AMMs without TWAP or decentralized oracles like Chainlink).
@@ -409,6 +524,10 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no economic vulnerabilities are detected, return {"findings": []}.`,
 
+  "mev-sentinel": `You are the MEV & Flash Loan Sentinel in SwarmProof.
+Your focus is atomic arbitrage, sandwich vulnerability, liquidity manipulation, and oracle frontrunning.
+Return strictly {"findings": [...]} or {"findings": []}.`,
+
   "static-agent": `You are the Static Analysis Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting code safety, low-level call hazards, and compiler-level issues in Solidity:
 - Unchecked return values of low-level calls (.call(), .delegatecall(), .staticcall()).
@@ -431,18 +550,29 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
   ]
 }
 If no code safety/static analysis vulnerabilities are detected, return {"findings": []}.`,
+
+  "bytecode-verifier": `You are the Bytecode & Opcode Verifier in SwarmProof.
+Your focus is low-level assembly safety, arbitrary delegatecall patterns, and return value validation.
+Return strictly {"findings": [...]} or {"findings": []}.`,
 };
 
 /* ------------------------------------------------------------------ */
 /* Registry & Factory                                                 */
 /* ------------------------------------------------------------------ */
 
-export const SPECIALIST_PAYMENT_ADDRESSES: Record<SpecialistId, string> = {
-  "reentrancy-agent": "0x1111111111111111111111111111111111111111",
-  "access-control-agent": "0x2222222222222222222222222222222222222222",
-  "business-logic-agent": "0x3333333333333333333333333333333333333333",
-  "economic-agent": "0x4444444444444444444444444444444444444444",
-  "static-agent": "0x5555555555555555555555555555555555555555",
+import {
+  SPECIALIST_KEYPAIRS,
+  SPECIALIST_PAYMENT_ADDRESSES,
+  SPECIALIST_EVM_ADDRESSES,
+  getSpecialistKeypair,
+  type SpecialistKeypair,
+} from "./agentKeypairs.js";
+export {
+  SPECIALIST_KEYPAIRS,
+  SPECIALIST_PAYMENT_ADDRESSES,
+  SPECIALIST_EVM_ADDRESSES,
+  getSpecialistKeypair,
+  type SpecialistKeypair,
 };
 
 export interface SpecialistFactoryOptions {
@@ -466,7 +596,8 @@ function resolveProvider(
 }
 
 /**
- * Build the five specialists with identities and analysis runners.
+ * Build specialists with identities and analysis runners.
+ * Supports dual specialists (at least 2 agents per specialty).
  *
  * When an LLM provider is available (either passed in or detected via ANTHROPIC_API_KEY,
  * OPENAI_API_KEY, or OLLAMA_BASE_URL), the specialist uses real LLM analysis.
@@ -474,14 +605,14 @@ function resolveProvider(
  * to deterministic AST/regex heuristics so offline tests and CI stay 100% green.
  */
 export function createSpecialistAgents(
-  optsOrAddresses?: Record<SpecialistId, string> | SpecialistFactoryOptions,
+  optsOrAddresses?: Record<string, string> | SpecialistFactoryOptions,
 ): Record<SpecialistId, SecurityAgent> {
   let addresses: Record<SpecialistId, string> = SPECIALIST_PAYMENT_ADDRESSES;
   let providerOpt: LLMProvider | Partial<Record<SpecialistId, LLMProvider>> | undefined = undefined;
 
   if (optsOrAddresses) {
     if (typeof (optsOrAddresses as Record<string, string>)["reentrancy-agent"] === "string") {
-      addresses = { ...SPECIALIST_PAYMENT_ADDRESSES, ...(optsOrAddresses as Record<SpecialistId, string>) };
+      addresses = { ...SPECIALIST_PAYMENT_ADDRESSES, ...(optsOrAddresses as Record<string, string>) };
       providerOpt = createLLMProviderFromEnv();
     } else {
       const opts = optsOrAddresses as SpecialistFactoryOptions;
@@ -496,11 +627,15 @@ export function createSpecialistAgents(
 
   const id = (agentId: SpecialistId, name: string, capabilities: string[]): AgentIdentity => {
     const p = resolveProvider(agentId, providerOpt);
+    const kp = SPECIALIST_KEYPAIRS[agentId];
     return {
       agentId,
       name: p ? `${name} [${p.name}]` : name,
       capabilities,
-      paymentAddress: addresses[agentId],
+      paymentAddress: addresses[agentId] || kp.hederaAccountId,
+      publicKey: kp.publicKey,
+      hederaAccountId: kp.hederaAccountId,
+      evmAddress: kp.evmAddress,
       version: "1.0.0",
     };
   };
@@ -513,10 +648,14 @@ export function createSpecialistAgents(
 
     return async (task: SecurityTask): Promise<Finding[]> => {
       if (!provider) {
-        return heuristicFn(task);
+        console.log(`⚙️ [Swarm Agent: ${agentId}] Running heuristic analysis on ${task.contractName}...`);
+        const findings = await heuristicFn(task);
+        console.log(`✓ [Swarm Agent: ${agentId}] Heuristic analyzer produced ${findings.length} findings.`);
+        return findings;
       }
 
       try {
+        console.log(`🤖 [Swarm Agent: ${agentId}] Running LLM inference on ${task.contractName}...`);
         const systemPrompt = SPECIALIST_SYSTEM_PROMPTS[agentId];
         const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${agentId}):
 
@@ -530,16 +669,19 @@ Analyze the code carefully and return your findings strictly in the specified JS
 
         const response = await provider.complete(systemPrompt, [{ role: "user", content: userPrompt }], {
           temperature: 0.1,
-          maxTokens: 1000,
+          maxTokens: 2500,
         });
 
         const findings = parseLLMFindings(response, agentId);
+        console.log(`✓ [Swarm Agent: ${agentId}] Inference completed: ${findings.length} finding(s) detected [${findings.map((f) => f.severity).join(", ") || "clean"}].`);
         return findings;
       } catch (err) {
         console.warn(
-          `[${agentId}] LLM analysis encountered error, falling back to heuristic detector: ${(err as Error).message}`,
+          `⚠️ [Swarm Agent: ${agentId}] LLM analysis encountered error, falling back to heuristic detector: ${(err as Error).message}`,
         );
-        return heuristicFn(task);
+        const findings = await heuristicFn(task);
+        console.log(`✓ [Swarm Agent: ${agentId}] Fallback heuristic produced ${findings.length} findings.`);
+        return findings;
       }
     };
   };
@@ -564,6 +706,26 @@ Analyze the code carefully and return your findings strictly in the specified JS
     "static-agent": {
       identity: id("static-agent", "Static Analysis Agent", ["delegatecall", "unchecked-arithmetic", "low-level-call"]),
       analyze: wrapAnalysis("static-agent", analyzeStatic),
+    },
+    "reentrancy-sentinel": {
+      identity: id("reentrancy-sentinel", "Reentrancy Sentinel", ["reentrancy-detection", "cross-function-reentrancy"]),
+      analyze: wrapAnalysis("reentrancy-sentinel", analyzeReentrancySentinel),
+    },
+    "access-sentinel": {
+      identity: id("access-sentinel", "Access Sentinel", ["access-control", "authorization-bypass"]),
+      analyze: wrapAnalysis("access-sentinel", analyzeAccessSentinel),
+    },
+    "invariant-agent": {
+      identity: id("invariant-agent", "Invariant Agent", ["business-logic", "precision-loss"]),
+      analyze: wrapAnalysis("invariant-agent", analyzeInvariant),
+    },
+    "mev-sentinel": {
+      identity: id("mev-sentinel", "MEV Sentinel", ["flash-loan", "oracle-manipulation", "mev-protection"]),
+      analyze: wrapAnalysis("mev-sentinel", analyzeMevSentinel),
+    },
+    "bytecode-verifier": {
+      identity: id("bytecode-verifier", "Bytecode Verifier", ["low-level-call", "delegatecall"]),
+      analyze: wrapAnalysis("bytecode-verifier", analyzeBytecodeVerifier),
     },
   };
 }

@@ -14,7 +14,7 @@ declare const process: { env: Record<string, string | undefined> } | undefined;
  */
 
 export interface LLMClientConfig {
-  provider: "openai" | "anthropic" | "ollama" | "stub";
+  provider: "openai" | "fireworks" | "anthropic" | "ollama" | "stub";
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -78,6 +78,77 @@ export class OpenAIProvider implements LLMProvider {
 
       const content = data.choices?.[0]?.message?.content;
       if (!content) throw new Error("OpenAI API returned empty response content");
+      return content;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Fireworks AI Provider (DeepSeek-V3, Qwen 2.5 Coder, Llama 3.3)   */
+/* ------------------------------------------------------------------ */
+
+export class FireworksProvider implements LLMProvider {
+  readonly name: string;
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(
+    config: { apiKey: string; baseUrl?: string; model?: string; timeoutMs?: number },
+    fetchFn?: typeof fetch,
+  ) {
+    this.apiKey = config.apiKey.trim();
+    this.baseUrl = (config.baseUrl ?? "https://api.fireworks.ai/inference/v1").replace(/\/$/, "");
+    this.model = config.model ?? "accounts/fireworks/models/deepseek-v4p1-flash";
+    this.name = `fireworks:${this.model}`;
+    this.timeoutMs = config.timeoutMs ?? 60_000;
+    this.fetchFn = fetchFn ?? fetch;
+  }
+
+  async complete(system: string, messages: ProviderMessage[], config?: AgentConfig): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    const formattedMessages = [
+      { role: "system", content: system },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
+    try {
+      const res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config?.model && config.model !== "default" && config.model !== "stub" ? config.model : this.model,
+          messages: formattedMessages,
+          temperature: config?.temperature ?? 0.1,
+          max_tokens: config?.maxTokens ?? 3000,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Fireworks API error [${res.status}]: ${errText.slice(0, 300)}`);
+      }
+
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
+      };
+
+      const msg = data.choices?.[0]?.message;
+      let content = msg?.content?.trim();
+      if (!content && msg?.reasoning_content) {
+        content = msg.reasoning_content.trim();
+      }
+      if (!content) throw new Error("Fireworks API returned empty response content");
       return content;
     } finally {
       clearTimeout(timer);
@@ -352,16 +423,26 @@ export function parseLLMFindings(rawResponse: string, agentId: SpecialistId): Fi
 
 /**
  * Create an LLM provider based on available environment variables:
- *  1. ANTHROPIC_API_KEY -> AnthropicProvider (Claude 3.5 Sonnet)
- *  2. OPENAI_API_KEY -> OpenAIProvider (GPT-4o / GPT-4o-mini)
- *  3. OLLAMA_BASE_URL -> OllamaProvider (Local models)
- *  4. None -> returns undefined (signals heuristic fallback mode)
+ *  1. FIREWORKS_API_KEY -> FireworksProvider (DeepSeek-V3 / Qwen 2.5 Coder)
+ *  2. ANTHROPIC_API_KEY -> AnthropicProvider (Claude 3.5 Sonnet)
+ *  3. OPENAI_API_KEY -> OpenAIProvider (GPT-4o / GPT-4o-mini)
+ *  4. OLLAMA_BASE_URL -> OllamaProvider (Local models)
+ *  5. None -> returns undefined (signals heuristic fallback mode)
  */
 export function createLLMProviderFromEnv(
   env: EnvMap = typeof process !== "undefined" && process?.env ? process.env : {},
 ): LLMProvider | undefined {
   if (env.SWARMPROOF_USE_MOCK_AGENTS === "true") {
     return undefined;
+  }
+
+  const fireworksKey = env.FIREWORKS_API_KEY ?? env.SWARMPROOF_FIREWORKS_API_KEY;
+  if (fireworksKey) {
+    return new FireworksProvider({
+      apiKey: fireworksKey.trim(),
+      baseUrl: env.FIREWORKS_BASE_URL ?? env.SWARMPROOF_FIREWORKS_BASE_URL,
+      model: env.FIREWORKS_MODEL ?? env.SWARMPROOF_LLM_MODEL ?? "accounts/fireworks/models/deepseek-v4p1-flash",
+    });
   }
 
   const anthropicKey = env.ANTHROPIC_API_KEY ?? env.SWARMPROOF_ANTHROPIC_API_KEY;
