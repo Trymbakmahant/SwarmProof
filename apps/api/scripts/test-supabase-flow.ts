@@ -93,7 +93,35 @@ async function runTest() {
   }
 
   console.log(`✅ Found task ${found.id} with ${found.submissions.length} submission(s) and ${found.payouts?.length || 0} payout(s)!`);
-  console.log("\n🎉 Supabase integration verification PASSED!");
+
+  console.log("\n3. Testing Agent Persistence (registered_agents)...");
+  const { dbSaveAgent, dbLoadAllAgents } = await import("../src/supabase.js");
+  const testAgent = {
+    agentId: `test_agent_${Date.now()}`,
+    name: "Verification Sentinel Agent",
+    role: "reentrancy",
+    capabilities: ["reentrancy", "state-validation"],
+    paymentAddress: "0.0.10417474",
+    publicKey: "033488e0b2c2cc6c352cfd3d0d4c09e4e6b4522432b09e5ce8d568179710f88661",
+    did: `did:hedera:testnet:0.0.10417469_test_agent_${Date.now()}`,
+    hcsTopicId: "0.0.10417469",
+    transactionId: "0.0.10119346@1789234172.220862325",
+    consensusTimestamp: new Date().toISOString(),
+    benchmarkScore: 92,
+    isVerified: true,
+  };
+
+  const agentSaved = await dbSaveAgent(testAgent);
+  if (agentSaved) {
+    console.log(`✅ Saved agent ${testAgent.agentId} to Supabase registered_agents!`);
+    const agents = await dbLoadAllAgents();
+    console.log(`✅ Loaded ${agents.length} agent(s) from Supabase registered_agents table.`);
+  } else {
+    console.log("ℹ️ registered_agents table not yet detected in Supabase schema cache.");
+    console.log("   (Run the registered_agents SQL block from supabase/schema.sql in the Supabase SQL Editor to enable)");
+  }
+
+  console.log("\n🎉 Supabase integration verification completed!");
 }
 
 runTest().catch((err) => {
