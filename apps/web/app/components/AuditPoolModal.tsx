@@ -100,6 +100,11 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [isEscrowing, setIsEscrowing] = useState<Record<string, boolean>>({});
   const [viewingFullReport, setViewingFullReport] = useState<PoolTask | null>(null);
 
+  // Code4rena Integration State
+  const [showCode4renaDrawer, setShowCode4renaDrawer] = useState(false);
+  const [code4renaLoading, setCode4renaLoading] = useState(false);
+  const [code4renaContests, setCode4renaContests] = useState<any[]>([]);
+
   // Clock tick every 1000ms for countdown timers
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -130,13 +135,18 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
     return () => clearInterval(pollInterval);
   }, []);
 
-  // Simulate Swarm Specialist Inflow
+  // Run 10-Agent Dual Swarm Inflow
   const handleSimulateSwarm = async (taskId: string) => {
     try {
       setIsSimulating((prev) => ({ ...prev, [taskId]: true }));
-      const res = await fetch(`${API_BASE}/pool/tasks/${taskId}/simulate-submissions`, {
+      let res = await fetch(`${API_BASE}/pool/tasks/${taskId}/run-swarm`, {
         method: "POST",
       });
+      if (!res.ok) {
+        res = await fetch(`${API_BASE}/pool/tasks/${taskId}/simulate-submissions`, {
+          method: "POST",
+        });
+      }
       if (res.ok) {
         await fetchTasks();
       }
@@ -211,6 +221,63 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
       console.error("Failed to create task:", err);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleLoadCode4renaContests = async () => {
+    setShowCode4renaDrawer(true);
+    setShowCreateTask(false);
+    setCode4renaLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/code4rena/contests`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.contests)) {
+          setCode4renaContests(data.contests);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch Code4rena contests:", err);
+    } finally {
+      setCode4renaLoading(false);
+    }
+  };
+
+  const handleImportCode4renaContract = async (contestId: string, contractPath: string, contractName: string) => {
+    setCode4renaLoading(true);
+    try {
+      const pullRes = await fetch(`${API_BASE}/code4rena/pull`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contest: contestId, contractPath }),
+      });
+      if (pullRes.ok) {
+        const data = await pullRes.json();
+        const createRes = await fetch(`${API_BASE}/pool/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contractName: data.contractName || contractName,
+            source: data.source,
+            submissionWindowSeconds: 120,
+            bountyTotal: "2.50",
+            currency: "USD",
+            requireEscrow: false,
+          }),
+        });
+        if (createRes.ok) {
+          const created = await createRes.json();
+          await fetchTasks();
+          if (created.task?.id) {
+            setSelectedTaskId(created.task.id);
+          }
+          setShowCode4renaDrawer(false);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to import Code4rena contract:", err);
+    } finally {
+      setCode4renaLoading(false);
     }
   };
 
@@ -293,7 +360,31 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
-              onClick={() => setShowCreateTask(!showCreateTask)}
+              onClick={handleLoadCode4renaContests}
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                backgroundColor: showCode4renaDrawer ? "#f4f4f5" : "#4f46e5",
+                color: showCode4renaDrawer ? "#4f46e5" : "#ffffff",
+                border: "1px solid #4f46e5",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>🏆</span>
+              <span>{showCode4renaDrawer ? "Close Code4rena" : "Pull from Code4rena"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateTask(!showCreateTask);
+                setShowCode4renaDrawer(false);
+              }}
               style={{
                 padding: "6px 12px",
                 fontSize: 12,
@@ -320,6 +411,99 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
 
         {/* Modal Body */}
         <div style={{ padding: 22 }}>
+          {/* Code4rena Contest Puller Drawer */}
+          {showCode4renaDrawer && (
+            <div
+              style={{
+                backgroundColor: "#f8fafc",
+                border: "1px solid #cbd5e1",
+                borderRadius: 8,
+                padding: 16,
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                    🏆 Live Code4rena Competitive Audit Contests
+                  </h4>
+                  <p style={{ margin: "3px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                    Fetch real active smart contract audit problems directly from Code4rena's competitive bounty repositories.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCode4renaDrawer(false)}
+                  style={{ background: "none", border: "none", fontSize: 16, cursor: "pointer", color: "#64748b" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {code4renaLoading ? (
+                <div style={{ padding: "20px 0", textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                  Fetching live contest problems from Code4rena...
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+                  {code4renaContests.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 6,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{c.title}</span>
+                          <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px", borderRadius: 4, backgroundColor: "#ecfdf5", color: "#059669", fontWeight: 600 }}>
+                            {c.prizePool}
+                          </span>
+                        </div>
+                        <a
+                          href={c.githubUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 11, color: "#4f46e5", textDecoration: "none" }}
+                        >
+                          View on GitHub ↗
+                        </a>
+                      </div>
+                      <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b" }}>{c.description}</p>
+                      
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {c.contracts?.map((ct: any) => (
+                          <button
+                            key={ct.path}
+                            type="button"
+                            onClick={() => handleImportCode4renaContract(c.id, ct.path, ct.name)}
+                            disabled={code4renaLoading}
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: 11,
+                              borderRadius: 4,
+                              backgroundColor: "#f1f5f9",
+                              border: "1px solid #cbd5e1",
+                              color: "#1e293b",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>📥 Pull &amp; Audit:</span>
+                            <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{ct.name}.sol</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {/* Create Task Drawer */}
           {showCreateTask && (
             <form

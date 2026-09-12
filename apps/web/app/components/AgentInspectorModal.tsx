@@ -30,16 +30,29 @@ export function AgentInspectorModal({
   onRunSingleAgentSimulation,
   agents = SPECIALIST_AGENTS,
 }: AgentInspectorModalProps) {
-  const [activeTab, setActiveTab] = useState<"findings" | "thoughts" | "identity">("findings");
+  const [activeTab, setActiveTab] = useState<"findings" | "thoughts" | "identity">("identity");
   const [isSimulating, setIsSimulating] = useState(false);
   const [thoughtIndex, setThoughtIndex] = useState(0);
   const [viewJsonMode, setViewJsonMode] = useState<"none" | "did" | "credential">("none");
   const [copiedDid, setCopiedDid] = useState(false);
+  const [copiedPub, setCopiedPub] = useState(false);
+  const [copiedEvm, setCopiedEvm] = useState(false);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedDid(true);
     setTimeout(() => setCopiedDid(false), 2500);
+  };
+
+  const copyCustom = (text: string, type: "pub" | "evm") => {
+    navigator.clipboard.writeText(text);
+    if (type === "pub") {
+      setCopiedPub(true);
+      setTimeout(() => setCopiedPub(false), 2000);
+    } else {
+      setCopiedEvm(true);
+      setTimeout(() => setCopiedEvm(false), 2000);
+    }
   };
 
   const agent: SpecialistAgentMeta | undefined = agentId ? agents[agentId] : undefined;
@@ -484,21 +497,83 @@ export function AgentInspectorModal({
                   <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 2, fontFamily: "var(--font-mono)" }}>
                     Hedera HCS Topic:
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700, fontSize: 13 }}>
-                    {agent.identityTopicId || "0.0.10417469"}
-                  </span>
-                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>Anchor on Hedera Testnet</p>
+                  <a
+                    href={`https://hashscan.io/testnet/topic/${agent.identityTopicId || "0.0.10417469"}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700, fontSize: 13, textDecoration: "underline" }}
+                  >
+                    {agent.identityTopicId || "0.0.10417469"} ↗
+                  </a>
+                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>Consensus Topic on Hedera Testnet</p>
                 </div>
 
                 <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
                   <span style={{ color: "#71717a", display: "block", fontSize: 11, marginBottom: 2, fontFamily: "var(--font-mono)" }}>
-                    Payout Revenue Share (x402):
+                    Hedera Payout Account:
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700, fontSize: 13 }}>
-                    {agent.paymentAddress || "0.0.10417474"}
-                  </span>
-                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>Direct micropayment allocation</p>
+                  <a
+                    href={`https://hashscan.io/testnet/account/${agent.hederaAccountId || agent.paymentAddress || "0.0.10417470"}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontFamily: "var(--font-mono)", color: "#166534", fontWeight: 700, fontSize: 13, textDecoration: "underline" }}
+                  >
+                    {agent.hederaAccountId || agent.paymentAddress || "0.0.10417470"} ↗
+                  </a>
+                  <p style={{ margin: "2px 0 0 0", fontSize: 10, color: "#71717a" }}>x402 Micropayment Revenue Wallet</p>
                 </div>
+              </div>
+
+              {/* Cryptographic Keypair & Sovereign Wallet */}
+              <div style={{ padding: 14, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ color: "#09090b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>🔑</span> Sovereign Cryptographic Keypair (SECP256K1)
+                  </span>
+                  <span style={{ fontSize: 10, backgroundColor: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                    Deterministic Signature Ready
+                  </span>
+                </div>
+
+                {/* EVM Address */}
+                {agent.evmAddress && (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                      <span style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>EVM Address:</span>
+                      <button
+                        type="button"
+                        onClick={() => copyCustom(agent.evmAddress || "", "evm")}
+                        className="btn-swarm-secondary"
+                        style={{ fontSize: 10, padding: "2px 6px" }}
+                      >
+                        {copiedEvm ? "✓ Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#09090b", backgroundColor: "#ffffff", padding: "6px 8px", borderRadius: 6, border: "1px solid #e4e4e7" }}>
+                      {agent.evmAddress}
+                    </div>
+                  </div>
+                )}
+
+                {/* Public Key */}
+                {agent.publicKey && (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                      <span style={{ color: "#71717a", fontSize: 11, fontFamily: "var(--font-mono)" }}>Public Key (Compressed):</span>
+                      <button
+                        type="button"
+                        onClick={() => copyCustom(agent.publicKey || "", "pub")}
+                        className="btn-swarm-secondary"
+                        style={{ fontSize: 10, padding: "2px 6px" }}
+                      >
+                        {copiedPub ? "✓ Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#09090b", backgroundColor: "#ffffff", padding: "6px 8px", borderRadius: 6, border: "1px solid #e4e4e7", wordBreak: "break-all" }}>
+                      {agent.publicKey}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {agent.identityReference && (

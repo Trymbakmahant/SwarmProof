@@ -1,1247 +1,1191 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { RegisterAgentModal } from "../components/RegisterAgentModal";
+import { AuditPoolModal } from "../components/AuditPoolModal";
 
-type TabId = "overview" | "sdk" | "mcp" | "identity" | "proofs" | "questions";
-type SdkId = "plugins" | "x402" | "hedera" | "agents";
+export default function PitchDeckPage() {
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(1);
+  const totalSlides = 7;
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
 
-export default function FeedbackPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [activeSdk, setActiveSdk] = useState<SdkId>("plugins");
-  const [idFormat, setIdFormat] = useState<"did" | "vc">("did");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [mentorNotes, setMentorNotes] = useState<string>("");
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("swarmproof_mentor_notes");
-      if (saved) setMentorNotes(saved);
+  // Smooth scroll to specific slide
+  const scrollToSlide = (index: number) => {
+    let targetIdx = index;
+    if (targetIdx < 1) targetIdx = 1;
+    if (targetIdx > totalSlides) targetIdx = totalSlides;
+    setCurrentSlideIndex(targetIdx);
+    const target = document.getElementById(`slide-${targetIdx}`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  };
+
+  // Keyboard navigation for presentation mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+        if (currentSlideIndex < totalSlides) {
+          e.preventDefault();
+          scrollToSlide(currentSlideIndex + 1);
+        }
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        if (currentSlideIndex > 1) {
+          e.preventDefault();
+          scrollToSlide(currentSlideIndex - 1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentSlideIndex, totalSlides]);
+
+  // Observer to track which slide is currently centered in view
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            const num = parseInt(id.replace("slide-", ""), 10);
+            if (!isNaN(num)) {
+              setCurrentSlideIndex(num);
+            }
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+
+    const slides = document.querySelectorAll(".deck-slide");
+    slides.forEach((s) => observer.observe(s));
+
+    return () => observer.disconnect();
   }, []);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2000);
-  };
-
-  const copyToClipboard = (text: string, msg: string = "Copied to clipboard") => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      showToast(msg);
-    }
-  };
-
-  const handleNotesChange = (val: string) => {
-    setMentorNotes(val);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("swarmproof_mentor_notes", val);
-    }
-  };
-
-  const didDocJson = {
-    "@context": [
-      "https://www.w3.org/ns/did/v1",
-      "https://w3id.org/security/suites/ed25519-2020/v1"
-    ],
-    "id": "did:hedera:testnet:0.0.10417469_reentrancy-agent",
-    "verificationMethod": [
-      {
-        "id": "did:hedera:testnet:0.0.10417469_reentrancy-agent#key-1",
-        "type": "Ed25519VerificationKey2020",
-        "controller": "did:hedera:testnet:0.0.10417469_reentrancy-agent",
-        "blockchainAccountId": "hedera:testnet:0.0.10417474"
+  // Fullscreen toggle for Presenter Mode
+  const toggleDeckFullscreen = () => {
+    if (typeof document === "undefined") return;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn(`Fullscreen error: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
       }
-    ],
-    "authentication": [
-      "did:hedera:testnet:0.0.10417469_reentrancy-agent#key-1"
-    ],
-    "service": [
-      {
-        "id": "did:hedera:testnet:0.0.10417469_reentrancy-agent#audit-service",
-        "type": "SecurityAuditService",
-        "serviceEndpoint": "http://localhost:3001/audit"
-      }
-    ]
-  };
-
-  const vcJson = {
-    "@context": ["https://www.w3.org/2018/credentials/v1", "https://schema.org"],
-    "id": "urn:uuid:credential-reentrancy-agent",
-    "type": ["VerifiableCredential", "SwarmSecurityAuditorCredential"],
-    "issuer": "did:hedera:testnet:0.0.10417469_authority",
-    "issuanceDate": "2026-09-10T06:31:30.510Z",
-    "credentialSubject": {
-      "id": "did:hedera:testnet:0.0.10417469_reentrancy-agent",
-      "name": "Reentrancy & State Guard",
-      "role": "Reentrancy Vulnerability Specialist",
-      "capabilities": ["reentrancy-detection", "cei-violation"],
-      "paymentAddress": "0.0.10417474",
-      "consensusVotingWeight": 1.2
-    },
-    "proof": {
-      "type": "HederaConsensusProof2026",
-      "created": "2026-09-10T06:31:30.510Z",
-      "verificationMethod": "did:hedera:testnet:0.0.10417469#hcs-consensus",
-      "proofPurpose": "assertionMethod",
-      "hcsTopicId": "0.0.10417469",
-      "transactionId": "0.0.10119346@1789021885.521714338",
-      "consensusTimestamp": "2026-09-10T06:31:30.510Z"
     }
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#ffffff", color: "#18181b", fontFamily: "var(--font-sans)" }}>
-      {/* ── Minimalist Editorial Header ─────────────────────────────── */}
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-          backgroundColor: "rgba(255, 255, 255, 0.95)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #e4e4e7",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1040,
-            margin: "0 auto",
-            padding: "14px 24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 16,
-          }}
-        >
-          {/* Brand & Metadata */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {/* Monochromatic Geometric Brand Mark */}
-            <Link
-              href="/"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                backgroundColor: "#09090b",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "var(--font-mono)",
-                fontWeight: 700,
-                fontSize: 13,
-                letterSpacing: "-0.05em",
-                textDecoration: "none",
-              }}
-            >
-              SP
-            </Link>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "#09090b" }}>
-                  SwarmProof
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontFamily: "var(--font-mono)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    backgroundColor: "#f4f4f5",
-                    color: "#52525b",
-                    border: "1px solid #e4e4e7",
-                    fontWeight: 600,
-                  }}
-                >
-                 Pitch Deck
+    <div className="bg-surface text-on-surface selection:bg-secondary-container selection:text-on-secondary-container min-h-screen">
+      {/* ── Fixed Header ─────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+        <div className="h-28 max-w-[1440px] mx-auto px-margin-mobile md:px-margin flex flex-col justify-between pt-3 pb-2">
+          {/* Top Header Row */}
+          <div className="flex items-center justify-between gap-gutter">
+            <div className="flex items-center gap-space-md">
+              <Link href="/" className="w-9 h-9 bg-primary flex items-center justify-center rounded text-decoration-none">
+                <span className="font-code-md text-code-md font-semibold text-on-primary tracking-tight">SP</span>
+              </Link>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-space-xs">
+                  <Link href="/" className="font-headline-sm text-headline-sm tracking-tight text-on-surface font-medium hover:opacity-80 transition-opacity text-decoration-none">
+                    SwarmProof
+                  </Link>
+                  <span className="font-label-caps text-label-caps px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant">
+                    Pitch Deck
+                  </span>
+                </div>
+                <span className="font-code-sm text-code-sm text-on-surface-variant hidden sm:inline">
+                  Hedera Agentic Consensus • Topic 0.0.10417469
                 </span>
               </div>
-              
+            </div>
+
+            <div className="flex items-center gap-space-md">
+              <nav className="hidden lg:flex items-center gap-space-lg">
+                <Link
+                  className="font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface transition-colors"
+                  href="/leaderboard"
+                >
+                  Leaderboard &amp; Reputation
+                </Link>
+                <Link
+                  className="font-body-sm text-body-sm text-on-surface font-semibold"
+                  href="/feedback"
+                >
+                  Pitch Deck
+                </Link>
+                <Link
+                  className="font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface transition-colors"
+                  href="/x402"
+                >
+                  Payment Lab (x402)
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsPoolModalOpen(true)}
+                  className="font-body-sm text-body-sm text-secondary hover:text-on-surface transition-colors inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>⚡ Live Audit Pool</span>
+                </button>
+              </nav>
+
+              <a
+                href="https://hashscan.io/testnet/topic/0.0.10417469"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden xl:flex items-center gap-2 px-2.5 py-1 bg-surface-container-low rounded hover:bg-surface-container transition-colors cursor-pointer"
+                title="View Topic on Hedera HashScan"
+              >
+                <span className="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-pulse"></span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">Topic 0.0.10417469</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setIsRegisterModalOpen(true)}
+                className="px-3 py-1.5 bg-primary text-on-primary font-body-sm text-body-sm rounded hover:bg-primary-container transition-colors inline-flex items-center justify-center cursor-pointer shadow-sm"
+              >
+                + Register Agent
+              </button>
+
+              <div
+                className="w-8 h-8 rounded-full bg-primary flex items-center justify-center cursor-pointer"
+                onClick={() => setIsPoolModalOpen(true)}
+                title="Open Swarm Audit Pool"
+              >
+                <span className="material-symbols-outlined text-on-primary text-[18px]">person</span>
+              </div>
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Link
-              href="/"
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 500,
-                color: "#3f3f46",
-                backgroundColor: "#f4f4f5",
-                border: "1px solid #e4e4e7",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              3D Visualizer
-            </Link>
-
-            <Link
-              href="/x402"
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 500,
-                color: "#3f3f46",
-                backgroundColor: "#f4f4f5",
-                border: "1px solid #e4e4e7",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              Payment Lab (x402)
-            </Link>
-
-            <a
-              href="https://hashscan.io/testnet/topic/0.0.10417469"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontFamily: "var(--font-mono)",
-                fontWeight: 500,
-                color: "#09090b",
-                backgroundColor: "#ffffff",
-                border: "1px solid #d4d4d8",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#09090b" }} />
-              <span>Topic 0.0.10417469</span>
-              <span style={{ color: "#a1a1aa" }}>↗</span>
-            </a>
-          </div>
-        </div>
-
-        {/* Navigation Tabs (Subtle Underline Style) */}
-        <div style={{ borderTop: "1px solid #e4e4e7", backgroundColor: "rgba(250, 250, 250, 0.6)" }}>
-          <div
-            style={{
-              maxWidth: 1040,
-              margin: "0 auto",
-              padding: "4px 24px",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              overflowX: "auto",
-            }}
-          >
-            {[
-              { id: "overview", label: "Overview & Pitch" },
-              { id: "sdk", label: "SDK Architecture" },
-              { id: "mcp", label: "MCP Integration" },
-              { id: "identity", label: "W3C did:hedera" },
-              { id: "proofs", label: "On-Chain Proofs" },
-              { id: "questions", label: "Mentor Discussion" },
-            ].map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id as TabId)}
-                  style={{
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    borderRadius: 6,
-                    color: isActive ? "#09090b" : "#52525b",
-                    backgroundColor: isActive ? "#ffffff" : "transparent",
-                    border: isActive ? "1px solid #d4d4d8" : "1px solid transparent",
-                    boxShadow: isActive ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-                    whiteSpace: "nowrap",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
+          {/* Subnav Navigation Bar */}
+          <div className="flex items-center overflow-x-auto gap-space-sm pt-1">
+            <nav className="flex items-center gap-space-xs">
+              <Link
+                className="px-3 py-1 font-code-sm text-code-sm rounded transition-all text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                href="/"
+              >
+                3D Swarm Visualizer
+              </Link>
+              <Link
+                className="px-3 py-1 font-code-sm text-code-sm rounded transition-all text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                href="/#quorum-sim"
+              >
+                Consensus &amp; AST Quorum
+              </Link>
+              <Link
+                className="px-3 py-1 font-code-sm text-code-sm rounded transition-all text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                href="/#interactive-telemetry"
+              >
+                Solidity Audit Studio
+              </Link>
+              <a
+                className="px-3 py-1 font-code-sm text-code-sm rounded transition-all text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface cursor-pointer"
+                href="https://hashscan.io/testnet/topic/0.0.10417469"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Hedera HCS Proofs ↗
+              </a>
+              <Link
+                className="px-3 py-1 font-code-sm text-code-sm rounded transition-all text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                href="/leaderboard"
+              >
+                Verification Logs
+              </Link>
+            </nav>
           </div>
         </div>
       </header>
 
-      {/* ── Notification Toast ──────────────────────────────────────── */}
-      {toastMessage && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            zIndex: 100,
-            backgroundColor: "#09090b",
-            color: "#ffffff",
-            fontSize: 12,
-            fontFamily: "var(--font-mono)",
-            padding: "10px 16px",
-            borderRadius: 6,
-            boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            border: "1px solid #27272a",
-          }}
-        >
-          <span>✓</span>
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* ── Main Presentation Container ─────────────────────────────── */}
-      <main style={{ maxWidth: 880, margin: "0 auto", padding: "36px 20px 80px" }}>
-
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 1: 60S PITCH & VISION
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "overview" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Primary Hero Card */}
-            <div
-              style={{
-                padding: "32px",
-                borderRadius: 8,
-                backgroundColor: "#ffffff",
-                border: "1px solid #d4d4d8",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 16,
-                  marginBottom: 20,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      color: "#71717a",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Executive Brief
+      {/* ── Main Presentation Canvas ─────────────────────────────── */}
+      <main className="w-full pt-28 bg-surface">
+        <div className="flex flex-col w-full">
+          {/* Interactive Deck Presenter Controls Dock */}
+          <div className="sticky top-28 z-40 w-full max-w-[1440px] mx-auto px-margin-mobile md:px-margin pt-4 pb-2">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-surface-container-lowest/90 backdrop-blur-md rounded-xl shadow-md border border-outline-variant/30">
+              <div className="flex items-center gap-space-md">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+                  <span className="font-label-caps text-label-caps text-on-surface uppercase tracking-wider">
+                    PITCH DECK
                   </span>
-                  <h1
-                    style={{
-                      margin: "4px 0 0",
-                      fontSize: 26,
-                      fontWeight: 700,
-                      color: "#09090b",
-                      letterSpacing: "-0.03em",
-                      lineHeight: 1.25,
-                    }}
+                </div>
+                <span className="text-on-surface-variant font-code-sm text-code-sm hidden sm:inline">•</span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant hidden sm:inline" id="deck-topic-ref">
+                  Topic: 0.0.10417469
+                </span>
+              </div>
+
+              {/* Slide Indicator & Rapid Jump Navigation */}
+              <div className="flex items-center gap-space-sm">
+                <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1 rounded-full border border-outline-variant/30">
+                  <button
+                    aria-label="Previous Slide"
+                    type="button"
+                    onClick={() => scrollToSlide(currentSlideIndex - 1)}
+                    className="flex items-center justify-center w-6 h-6 rounded-full hover:bg-surface-container transition-colors text-on-surface cursor-pointer"
+                    id="btn-prev-slide"
                   >
-                    Multi-Agent Security Consensus Powered by Hedera
-                  </h1>
+                    <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                  </button>
+                  <span className="font-code-sm text-code-sm font-semibold text-on-surface min-w-[50px] text-center" id="slide-tracker">
+                    0{currentSlideIndex} / 0{totalSlides}
+                  </span>
+                  <button
+                    aria-label="Next Slide"
+                    type="button"
+                    onClick={() => scrollToSlide(currentSlideIndex + 1)}
+                    className="flex items-center justify-center w-6 h-6 rounded-full hover:bg-surface-container transition-colors text-on-surface cursor-pointer"
+                    id="btn-next-slide"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                  </button>
+                </div>
+
+                {/* Dot pills */}
+                <div className="hidden md:flex items-center gap-1 bg-surface-container-low p-1 rounded-full text-on-surface-variant border border-outline-variant/30">
+                  {[1, 2, 3, 4, 5, 6, 7].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => scrollToSlide(num)}
+                      className={`deck-dot px-2 py-0.5 text-[11px] font-code-sm rounded-full transition-all cursor-pointer ${
+                        currentSlideIndex === num
+                          ? "bg-primary text-on-primary font-semibold"
+                          : "hover:bg-surface-container text-on-surface-variant"
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
                 </div>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    copyToClipboard(
-                      "SwarmProof is a decentralized smart contract security platform powered by an adversarial swarm of AI agents that debate, reach consensus, and anchor verifiable proofs on Hedera. Audits are gated by x402 micropayments settled live on Hedera testnet via Blocky402, and every agent has a sovereign W3C did:hedera identifier and Verifiable Credential.",
-                      "Copied pitch text"
-                    )
-                  }
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 500,
-                    backgroundColor: "#09090b",
-                    color: "#ffffff",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
+                  onClick={toggleDeckFullscreen}
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded bg-surface-container text-on-surface font-body-sm text-body-sm hover:bg-surface-container-high transition-colors cursor-pointer"
+                  id="btn-fullscreen"
                 >
-                  📋 Copy Pitch
+                  <span className="material-symbols-outlined text-[16px]">slideshow</span>
+                  <span>Presenter Mode</span>
                 </button>
-              </div>
 
-              <p style={{ margin: 0, color: "#3f3f46", fontSize: 15, lineHeight: 1.65 }}>
-                Single-LLM audit tools hallucinate and miss complex DeFi math exploits.{" "}
-                <strong style={{ color: "#09090b", fontWeight: 600 }}>SwarmProof</strong> coordinates 5 parallel
-                specialist agents (Reentrancy, Access Control, Business Logic, Economic/MEV, and Static Calls). They
-                analyze code independently, challenge each other, reach a weighted quorum consensus, and anchor
-                mathematically reproducible proofs on the{" "}
-                <span
-                  style={{
-                    fontWeight: 500,
-                    color: "#09090b",
-                    textDecoration: "underline",
-                    textUnderlineOffset: 4,
-                  }}
+                <Link
+                  className="px-3 py-1 bg-primary text-on-primary font-body-sm text-body-sm rounded hover:bg-primary-container transition-colors flex items-center gap-1 cursor-pointer"
+                  href="/"
                 >
-                  Hedera Consensus Service
-                </span>
-                .
-              </p>
-
-              {/* Metric Grid */}
-              <div
-                style={{
-                  marginTop: 28,
-                  paddingTop: 24,
-                  borderTop: "1px solid #e4e4e7",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <div style={{ padding: 14, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a" }}>
-                    Quorum Model
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#09090b", marginTop: 4 }}>5 Specialists</div>
-                </div>
-
-                <div style={{ padding: 14, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a" }}>
-                    Payment Rails
-                  </div>
-                  <div style={{ fontSize: 14, fontFamily: "var(--font-mono)", fontWeight: 600, color: "#09090b", marginTop: 4 }}>
-                    x402 v2 (0.01 ℏ)
-                  </div>
-                </div>
-
-                <div style={{ padding: 14, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a" }}>
-                    Agent Identity
-                  </div>
-                  <div style={{ fontSize: 14, fontFamily: "var(--font-mono)", fontWeight: 600, color: "#09090b", marginTop: 4 }}>
-                    did:hedera
-                  </div>
-                </div>
-
-                <div style={{ padding: 14, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                  <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a" }}>
-                    Consensus Anchor
-                  </div>
-                  <div style={{ fontSize: 14, fontFamily: "var(--font-mono)", fontWeight: 600, color: "#09090b", marginTop: 4 }}>
-                    HCS 0.0.10417469
-                  </div>
-                </div>
+                  <span className="material-symbols-outlined text-[15px]">terminal</span>
+                  <span className="hidden sm:inline">Launch Demo</span>
+                </Link>
               </div>
             </div>
+          </div>
 
-            {/* Problem / Solution / Identity Triad */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* 01 Problem */}
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    01 / Challenge
+          {/* Slides Presentation Stream */}
+          <div className="w-full max-w-[1440px] mx-auto px-margin-mobile md:px-margin flex flex-col gap-space-xl py-space-md">
+            {/* ==================== SLIDE 01: COVER ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-1"
+            >
+              {/* Ambient Decorative Geometry */}
+              <div className="absolute -right-32 -top-32 w-96 h-96 rounded-full bg-secondary-container/25 blur-3xl pointer-events-none"></div>
+              <div className="absolute right-12 bottom-12 opacity-5 pointer-events-none hidden lg:block">
+                <span className="font-display-xl text-[180px] font-normal leading-none tracking-tighter">SP</span>
+              </div>
+
+              {/* Slide Header Rail */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 01 / 07
                   </span>
-                  <span style={{ fontSize: 12, color: "#a1a1aa" }}>Current Industry Bottlenecks</span>
+                  <span className="font-code-sm text-code-sm text-secondary font-medium">
+                    Hedera Ecosystem Grantee • ETHGlobal 2026
+                  </span>
                 </div>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Fragile Audits, Cognitive Fatigue & Unverified Agents
-                </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, color: "#52525b" }}>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>—</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Single-Model Hallucinations:</strong> Solo LLMs
-                      generate repetitive false positives while consistently missing composite reentrancy and oracle arbitrage loops.
-                    </div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>—</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Prohibitive Engagement Lag:</strong> Manual audit
-                      firms operate on 4–6 week delays with minimum retainers starting at $50,000, halting CI/CD releases.
-                    </div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>—</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Anonymous Agent Identity:</strong> Most AI bot
-                      frameworks have no persistent cryptographic identity, verifiable track record, or verifiable credentials.
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 font-code-sm text-code-sm text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[15px] text-secondary">verified</span>
+                  <span>HCS Immutable State Quorum</span>
                 </div>
               </div>
 
-              {/* 02 Solution */}
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    02 / Approach
-                  </span>
-                  <span style={{ fontSize: 12, color: "#a1a1aa" }}>Adversarial Quorum Architecture</span>
-                </div>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Domain Specialization with Quorum Consensus & HCS Proofs
-                </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, color: "#52525b" }}>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>+</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>5 Specialized Analyzers:</strong> Segregated
-                      micro-agents targeting Reentrancy, Access Control, Business Logic, Flashloans/MEV, and Static Calls.
-                    </div>
+              {/* Slide Main Content Area */}
+              <div className="my-auto py-8 flex flex-col lg:flex-row gap-8 items-start lg:items-center justify-between relative z-10">
+                <div className="max-w-3xl flex flex-col gap-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-label-caps text-label-caps px-2.5 py-1 rounded-full bg-primary text-on-primary">
+                      SWARM ARCHITECTURE
+                    </span>
+                    <span className="font-label-caps text-label-caps px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface">
+                      x402 MICROPAYMENTS
+                    </span>
+                    <span className="font-label-caps text-label-caps px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface">
+                      W3C DID:HEDERA
+                    </span>
                   </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>+</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Cross-Validation Quorum:</strong> High-severity
-                      findings require corroboration across multiple domain specialists, suppressing spurious hallucinations.
-                    </div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>+</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Consensus Anchoring:</strong> Deterministic SHA-256
-                      report hashes sequenced on Hedera HCS Topic{" "}
-                      <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 600 }}>0.0.10417469</span>.
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* 03 Economic Rails */}
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    03 / Mechanics
-                  </span>
-                  <span style={{ fontSize: 12, color: "#a1a1aa" }}>Micro-Settlement & Identity Standard</span>
-                </div>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  x402 v2 Pay-Per-Audit & W3C did:hedera Credentials
-                </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, color: "#52525b" }}>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>→</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>x402 v2 Facilitated Settlement:</strong> Autonomous
-                      payments settled live on Hedera testnet via Blocky402 in exact tinybar units.
-                    </div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>→</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>W3C did:hedera Standard:</strong> Every agent holds
-                      a verifiable DID document and signed credential proving role and voting authority.
-                    </div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #f4f4f5", display: "flex", gap: 10 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", color: "#09090b", fontWeight: 700 }}>→</span>
-                    <div>
-                      <strong style={{ color: "#09090b", fontWeight: 600 }}>Native MCP IDE Integration:</strong> Initiate and
-                      verify audits directly from Cursor, Windsurf, or Claude Desktop.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  <h1 className="font-display-xl text-display-xl text-on-surface tracking-tight leading-tight">
+                    Reinventing Smart Contract Auditing on Hedera.
+                  </h1>
 
-            {/* Execution Stages (Clean Monochromatic Steps) */}
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    Pipeline
-                  </span>
-                  <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                    Consensus & Settlement Workflow
-                  </h3>
-                </div>
-                <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "#71717a" }}>5 Stages</span>
-              </div>
+                  <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                    Autonomous multi-agent consensus verification with mathematical intention. Replacing single-LLM hallucination with weighted AST quorums, anchored immutably to Hedera Consensus Service (HCS).
+                  </p>
 
-              <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid #e4e4e7", borderBottom: "1px solid #e4e4e7" }}>
-                {[
-                  { step: "01", title: "Ingestion & HTTP 402 Challenge", desc: "Target contract submitted; endpoint issues formal 402 challenge with exact tinybar fee.", badge: "HTTP 402" },
-                  { step: "02", title: "Blocky402 Facilitator Settlement", desc: "Consumer signs CryptoTransfer; facilitator co-signs gas fee and settles on Hedera.", badge: "0.01 ℏ Settled" },
-                  { step: "03", title: "Parallel Swarm Execution", desc: "5 specialized domain agents execute concurrent AST analysis and threat modeling.", badge: "5 Agents" },
-                  { step: "04", title: "Weighted Quorum Consensus", desc: "Cross-agent findings are clustered, challenged, and ranked by domain authority weights.", badge: "Quorum Voting" },
-                  { step: "05", title: "Hedera HCS Proof Anchoring", desc: "Deterministic SHA-256 report digest and split receipts published to Topic 0.0.10417469.", badge: "HCS Anchor" },
-                ].map((s, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: "14px 0",
-                      borderBottom: idx !== 4 ? "1px solid #e4e4e7" : "none",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, color: "#09090b", width: 22 }}>
-                        {s.step}
-                      </span>
-                      <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#09090b" }}>{s.title}</span>
-                        <p style={{ margin: "2px 0 0", fontSize: 12, color: "#71717a" }}>{s.desc}</p>
+                  <div className="pt-4 flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-surface-container rounded-lg shadow-sm border border-outline-variant/30">
+                      <div className="w-2.5 h-2.5 rounded-full bg-secondary-fixed-dim animate-ping"></div>
+                      <div className="flex flex-col">
+                        <span className="font-code-sm text-code-sm text-on-surface-variant">Consensus Topic</span>
+                        <span className="font-code-md text-code-md font-semibold text-on-surface">0.0.10417469</span>
                       </div>
                     </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontFamily: "var(--font-mono)",
-                        color: "#52525b",
-                        backgroundColor: "#f4f4f5",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        border: "1px solid #e4e4e7",
-                      }}
-                    >
-                      {s.badge}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 2: SDK ARCHITECTURE
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "sdk" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                Modular Monorepo
-              </span>
-              <h2 style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 700, color: "#09090b" }}>
-                Developer Packages (@swarmproof/*)
-              </h2>
-              <p style={{ margin: "4px 0 20px", fontSize: 13, color: "#52525b" }}>
-                Four decoupled, TypeScript-native libraries powering the SwarmProof security stack.
-              </p>
-
-              {/* Sub-Nav Buttons */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                {[
-                  { id: "plugins", name: "@swarmproof/plugins", label: "Plugin Extension SDK" },
-                  { id: "x402", name: "@swarmproof/x402", label: "Hedera x402 Client" },
-                  { id: "hedera", name: "@swarmproof/hedera", label: "HCS & Mirror Node" },
-                  { id: "agents", name: "@swarmproof/agents", label: "LLM Provider Layer" },
-                ].map((s) => {
-                  const isSel = activeSdk === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setActiveSdk(s.id as SdkId)}
-                      style={{
-                        padding: 12,
-                        borderRadius: 6,
-                        textAlign: "left",
-                        backgroundColor: isSel ? "#09090b" : "#fafafa",
-                        color: isSel ? "#ffffff" : "#3f3f46",
-                        border: isSel ? "1px solid #09090b" : "1px solid #e4e4e7",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 600 }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: isSel ? "#a1a1aa" : "#71717a", marginTop: 2 }}>{s.label}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Sub-Content: Plugins */}
-            {activeSdk === "plugins" && (
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div>
-                    <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                      BYO Agent Architecture
-                    </span>
-                    <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                      Register Custom Security Models
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyToClipboard(
-                        `import { AgentRegistry } from "@swarmproof/plugins";\n\nconst myAgent = {\n  manifest: {\n    id: "mev-sentinel",\n    name: "MEV & Flashloan Sentinel",\n    version: "1.0.0",\n    weight: 1.25\n  },\n  executor: { type: "http", url: "https://my-sec-firm.ai/audit" }\n};\n\nconst registry = new AgentRegistry();\nregistry.register(myAgent);`,
-                        "Copied TS Snippet"
-                      )
-                    }
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontFamily: "var(--font-mono)",
-                      backgroundColor: "#f4f4f5",
-                      color: "#18181b",
-                      border: "1px solid #d4d4d8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Copy TS Snippet
-                  </button>
-                </div>
-
-                {/* Monochrome Code Block */}
-                <div style={{ borderRadius: 6, border: "1px solid #27272a", backgroundColor: "#09090b", overflow: "hidden" }}>
-                  <div
-                    style={{
-                      padding: "8px 16px",
-                      borderBottom: "1px solid #27272a",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      color: "#a1a1aa",
-                      display: "flex",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>plugin-example.ts</span>
-                    <span style={{ color: "#71717a" }}>TypeScript</span>
-                  </div>
-                  <pre style={{ margin: 0, padding: 16, fontSize: 12, fontFamily: "var(--font-mono)", color: "#e4e4e7", lineHeight: 1.6, overflowX: "auto" }}>
-{`// 1. Import lightweight registry package
-import { AgentRegistry } from "@swarmproof/plugins";
-
-// 2. Define custom specialist agent with custom consensus voting weight
-const myCustomAgent = {
-  manifest: {
-    id: "mev-sentinel",
-    name: "MEV & Flashloan Sentinel",
-    version: "1.0.0",
-    weight: 1.25, // Consensus voting multiplier
-  },
-  executor: { type: "http", url: "https://my-sec-firm.ai/audit" }
-};
-
-// 3. Register to participate in swarm consensus
-const registry = new AgentRegistry();
-registry.register(myCustomAgent);`}
-                  </pre>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginTop: 16 }}>
-                  <div style={{ padding: 12, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#09090b" }}>Remote HTTP Agents</span>
-                    <p style={{ margin: "4px 0 0", fontSize: 11, color: "#71717a" }}>
-                      Stateless microservices returning strictly typed vulnerability schemas.
-                    </p>
-                  </div>
-                  <div style={{ padding: 12, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#09090b" }}>Local LLM Pipelines</span>
-                    <p style={{ margin: "4px 0 0", fontSize: 11, color: "#71717a" }}>
-                      Self-contained prompts tuned for specific vulnerability classes.
-                    </p>
-                  </div>
-                  <div style={{ padding: 12, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#09090b" }}>Weighted Quorums</span>
-                    <p style={{ margin: "4px 0 0", fontSize: 11, color: "#71717a" }}>
-                      Calculated influence during cross-domain aggregation voting.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Sub-Content: x402 */}
-            {activeSdk === "x402" && (
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div>
-                    <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                      Hedera Native Payments
-                    </span>
-                    <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                      x402 Client & Facilitator Interaction
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyToClipboard(
-                        `import { X402Client } from "@swarmproof/x402";\n\nconst client = new X402Client({\n  payerAccountId: "0.0.10119346",\n  payerPrivateKey: process.env.HEDERA_PRIVATE_KEY!,\n  facilitatorUrl: "https://api.testnet.blocky402.com",\n});\n\nconst result = await client.buy("http://localhost:3001/audit", {\n  method: "POST",\n  body: JSON.stringify({ contractName: "EtherVault", source: code }),\n});`,
-                        "Copied x402 Snippet"
-                      )
-                    }
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontFamily: "var(--font-mono)",
-                      backgroundColor: "#f4f4f5",
-                      color: "#18181b",
-                      border: "1px solid #d4d4d8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Copy TS Snippet
-                  </button>
-                </div>
-
-                <div style={{ borderRadius: 6, border: "1px solid #27272a", backgroundColor: "#09090b", overflow: "hidden" }}>
-                  <div
-                    style={{
-                      padding: "8px 16px",
-                      borderBottom: "1px solid #27272a",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      color: "#a1a1aa",
-                      display: "flex",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>x402-client.ts</span>
-                    <span style={{ color: "#71717a" }}>TypeScript</span>
-                  </div>
-                  <pre style={{ margin: 0, padding: 16, fontSize: 12, fontFamily: "var(--font-mono)", color: "#e4e4e7", lineHeight: 1.6, overflowX: "auto" }}>
-{`import { X402Client } from "@swarmproof/x402";
-
-const client = new X402Client({
-  payerAccountId: "0.0.10119346",
-  payerPrivateKey: process.env.HEDERA_PRIVATE_KEY!,
-  facilitatorUrl: "https://api.testnet.blocky402.com",
-});
-
-// Intercepts 402, constructs Hedera transfer, signs, and executes
-const result = await client.buy("http://localhost:3001/audit", {
-  method: "POST",
-  body: JSON.stringify({ contractName: "Vault", source: code }),
-});`}
-                  </pre>
-                </div>
-
-                <div style={{ padding: 12, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7", marginTop: 14, fontSize: 12, fontFamily: "var(--font-mono)", color: "#3f3f46" }}>
-                  <strong>Fixed-Point Unit Conversion:</strong> usdToTinybars($1.00) = 1,000,000 tinybars (0.01 ℏ) without floating-point inaccuracies.
-                </div>
-              </div>
-            )}
-
-            {/* Sub-Content: Hedera */}
-            {activeSdk === "hedera" && (
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                  Infrastructure
-                </span>
-                <h3 style={{ margin: "2px 0 14px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Public Mirror Node & HCS Proof Toolkit
-                </h3>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ padding: 14, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                    <span style={{ fontWeight: 700, color: "#09090b" }}>mirror.verifyTransfer(payer, amount, timestamp)</span>
-                    <p style={{ color: "#71717a", fontSize: 11, margin: "4px 0 0", fontFamily: "var(--font-sans)" }}>
-                      Enables unauthenticated verification of settled transactions via public Hedera Mirror Nodes without API keys.
-                    </p>
-                  </div>
-
-                  <div style={{ padding: 14, backgroundColor: "#fafafa", borderRadius: 6, border: "1px solid #e4e4e7", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                    <span style={{ fontWeight: 700, color: "#09090b" }}>paymentProof.anchor(auditId, splitDistribution)</span>
-                    <p style={{ color: "#71717a", fontSize: 11, margin: "4px 0 0", fontFamily: "var(--font-sans)" }}>
-                      Submits immutable micro-royalty payment trail directly into Hedera Consensus Service Topic 0.0.10417469.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Sub-Content: Agents */}
-            {activeSdk === "agents" && (
-              <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                  Inference Abstraction
-                </span>
-                <h3 style={{ margin: "2px 0 14px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Universal LLM Execution & AST Fallbacks
-                </h3>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12, fontFamily: "var(--font-mono)", color: "#3f3f46" }}>
-                  <div style={{ padding: 10, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                    01 / Robust JSON and codeblock sanitization across Anthropic Claude, OpenAI, and local Ollama models.
-                  </div>
-                  <div style={{ padding: 10, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                    02 / Automatic graceful degradation to deterministic static rule checks if API rate limits occur.
-                  </div>
-                  <div style={{ padding: 10, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #e4e4e7" }}>
-                    03 / Strict runtime validation ensuring severity, line indices, CWE taxonomy, and remediation code exist.
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 3: MODEL CONTEXT PROTOCOL (MCP)
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "mcp" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    IDE Protocol Standard
-                  </span>
-                  <h2 style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 700, color: "#09090b" }}>
-                    Model Context Protocol (@swarmproof/mcp)
-                  </h2>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "#52525b" }}>
-                    Native execution inside Cursor, Windsurf, and Claude Desktop.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    copyToClipboard(
-                      `{\n  "mcpServers": {\n    "swarmproof": {\n      "command": "node",\n      "args": ["packages/mcp/dist/index.js"],\n      "env": {\n        "SWARMPROOF_API_URL": "http://localhost:3001"\n      }\n    }\n  }\n}`,
-                      "Copied MCP configuration"
-                    )
-                  }
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontFamily: "var(--font-mono)",
-                    backgroundColor: "#09090b",
-                    color: "#ffffff",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  Copy MCP Config
-                </button>
-              </div>
-
-              <div style={{ padding: 12, borderRadius: 6, backgroundColor: "#fafafa", border: "1px solid #d4d4d8", fontFamily: "var(--font-mono)", fontSize: 12, color: "#3f3f46", display: "flex", gap: 8 }}>
-                <strong style={{ color: "#09090b" }}>Prompt:</strong>
-                <span>@swarmproof audit this ReentrancyVault contract and verify consensus proof on Hedera</span>
-              </div>
-            </div>
-
-            {/* Exposed Tools List */}
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 13, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#09090b", fontWeight: 700 }}>
-                  6 Registered MCP Tools
-                </h3>
-                <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a" }}>JSON-RPC 2.0</span>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid #e4e4e7" }}>
-                {[
-                  { name: "audit_contract(source, contractName, network?)", badge: "Core Engine", desc: "Executes full pipeline: creates job, verifies payment, triggers swarm debate, consensus quorum, and anchors SHA-256 report on Hedera HCS." },
-                  { name: "get_audit_status(auditId)", badge: "Telemetry", desc: "Queries real-time phase: analyzing → consensus → verifying → anchored, including Hedera HCS payment receipts." },
-                  { name: "get_findings(auditId)", badge: "Report", desc: "Returns all verified vulnerabilities confirmed by cross-agent quorum consensus with remediation diffs." },
-                  { name: "verify_finding(auditId, findingId)", badge: "Validation", desc: "Automates independent reproductive proof execution using deterministic static analysis and bytecode checks." },
-                  { name: "get_audit_proof(auditId)", badge: "Cryptographic", desc: "Retrieves immutable HCS consensus timestamp, transaction ID, and cryptographic report hash for tamper-proof audits." },
-                  { name: "list_agents()", badge: "Identity", desc: "Enumerates active swarm participants, their W3C DIDs (did:hedera), domain competencies, and quorum weights." },
-                ].map((t, idx) => (
-                  <div key={idx} style={{ padding: "14px 0", borderBottom: "1px solid #e4e4e7" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 700, color: "#09090b" }}>{t.name}</span>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", backgroundColor: "#f4f4f5", padding: "2px 6px", borderRadius: 4, border: "1px solid #e4e4e7", color: "#52525b" }}>
-                        {t.badge}
-                      </span>
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-surface-container rounded-lg shadow-sm border border-outline-variant/30">
+                      <span className="material-symbols-outlined text-on-secondary-container">account_balance_wallet</span>
+                      <div className="flex flex-col">
+                        <span className="font-code-sm text-code-sm text-on-surface-variant">Fee Per Quorum</span>
+                        <span className="font-code-md text-code-md font-semibold text-on-surface">0.01 ℏ (Tinybar Settled)</span>
+                      </div>
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#52525b" }}>{t.desc}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+                </div>
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 4: W3C DID CORE 1.0 & VCs
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "identity" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                    W3C DID Core 1.0 & VC 1.1
+                {/* Right Visual Showcase / Key Metrics */}
+                <div className="w-full lg:w-96 bg-surface-container-low/80 backdrop-blur p-6 rounded-xl shadow-md flex flex-col gap-4 border border-outline-variant/30">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">EXECUTIVE SUMMARY</span>
+                  <div className="flex flex-col gap-3">
+                    <div className="p-3 bg-surface-container-lowest rounded border border-outline-variant/20">
+                      <div className="flex items-center justify-between">
+                        <span className="font-body-sm text-body-sm font-semibold text-on-surface">Autonomous Quorum</span>
+                        <span className="font-code-sm text-code-sm text-secondary font-medium">5 Agents</span>
+                      </div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-1 text-xs">
+                        Cross-validates reentrancy, access control, AST, and tokenomics.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-surface-container-lowest rounded border border-outline-variant/20">
+                      <div className="flex items-center justify-between">
+                        <span className="font-body-sm text-body-sm font-semibold text-on-surface">Verification Velocity</span>
+                        <span className="font-code-sm text-code-sm text-secondary font-medium">&lt; 3.2s</span>
+                      </div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-1 text-xs">
+                        Nanosecond-stamped consensus attestation on Hedera.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-surface-container-lowest rounded border border-outline-variant/20">
+                      <div className="flex items-center justify-between">
+                        <span className="font-body-sm text-body-sm font-semibold text-on-surface">Audit Cost Compression</span>
+                        <span className="font-code-sm text-code-sm text-secondary font-medium">99.4%</span>
+                      </div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-1 text-xs">
+                        From $60,000 legacy audits to sub-dollar continuous verification.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slide Footer Rail */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-t border-surface-container-highest/60 pt-4 gap-2">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  SwarmProof Confidential • Institutional Infrastructure Monograph
+                </span>
+                <div className="flex items-center gap-3 font-code-sm text-code-sm text-on-surface-variant">
+                  <span>HCS Topic: 0.0.10417469</span>
+                  <span>•</span>
+                  <span>Hedera Mainnet Ready</span>
+                </div>
+              </div>
+            </section>
+
+            {/* ==================== SLIDE 02: THE PROBLEM ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-2"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 02 / 07
                   </span>
-                  <h2 style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 700, color: "#09090b" }}>
-                    Autonomous Agent Digital Identity (did:hedera)
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">The Problem</span>
+                </div>
+                <span className="font-code-sm text-code-sm text-error font-medium">Systemic Industry Bottlenecks</span>
+              </div>
+
+              {/* Slide Title & Narrative */}
+              <div className="py-4">
+                <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl">
+                  Smart contract auditing is broken: slow, hallucination-prone, and economically unscalable.
+                </h2>
+                <p className="font-body-md text-body-md text-on-surface-variant mt-1">
+                  Modern DeFi releases code every sprint, but auditing remains manual, monolithic, and disconnected from runtime cryptographic consensus.
+                </p>
+              </div>
+
+              {/* 3-Column Diagnostic Matrix */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
+                {/* Failure Mode 1 */}
+                <div className="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between gap-4 shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="w-10 h-10 rounded bg-error-container text-on-error-container flex items-center justify-center mb-4">
+                      <span className="material-symbols-outlined text-[20px]">psychology_alt</span>
+                    </div>
+                    <span className="font-label-caps text-label-caps text-error uppercase">Vulnerability Vector 01</span>
+                    <h3 className="font-headline-sm text-headline-sm text-on-surface mt-1">Single-LLM Hallucinations</h3>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2">
+                      Standalone AI prompts miss multi-block state interactions, generate false confidence, and lack formal AST parsing logic. A single prompt agent cannot simulate Byzantine attack surfaces.
+                    </p>
+                  </div>
+                  <div className="p-3 bg-surface-container-lowest rounded font-code-sm text-code-sm text-on-surface-variant border border-outline-variant/10">
+                    <span className="text-error font-semibold">• 42%</span> of automated LLM reports exhibit non-existent vulnerability exploits or overlook cross-contract reentrancy.
+                  </div>
+                </div>
+
+                {/* Failure Mode 2 */}
+                <div className="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between gap-4 shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="w-10 h-10 rounded bg-surface-container-highest text-on-surface flex items-center justify-center mb-4">
+                      <span className="material-symbols-outlined text-[20px]">hourglass_empty</span>
+                    </div>
+                    <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Market Friction 02</span>
+                    <h3 className="font-headline-sm text-headline-sm text-on-surface mt-1">4–6 Week Audit Bottlenecks</h3>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2">
+                      Traditional auditing firms charge $50,000–$250,000 with multi-month scheduling queues. CI/CD teams must halt continuous deployment pipelines to wait for static, unanchored PDF deliverables.
+                    </p>
+                  </div>
+                  <div className="p-3 bg-surface-container-lowest rounded font-code-sm text-code-sm text-on-surface-variant border border-outline-variant/10">
+                    <span className="text-on-surface font-semibold">• $1.8B+</span> lost in 2024-2025 exploits due to un-audited minor patch deployments post-initial audit.
+                  </div>
+                </div>
+
+                {/* Failure Mode 3 */}
+                <div className="bg-surface-container-low p-6 rounded-xl flex flex-col justify-between gap-4 shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="w-10 h-10 rounded bg-surface-container-highest text-on-surface flex items-center justify-center mb-4">
+                      <span className="material-symbols-outlined text-[20px]">no_accounts</span>
+                    </div>
+                    <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Identity Vacuum 03</span>
+                    <h3 className="font-headline-sm text-headline-sm text-on-surface mt-1">Anonymous, Zero Accountability</h3>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2">
+                      AI code generation tools provide no verifiable pedigree. Developers have no cryptographic receipt showing which model variant executed the audit, what AST checks ran, or who stands behind the attestation.
+                    </p>
+                  </div>
+                  <div className="p-3 bg-surface-container-lowest rounded font-code-sm text-code-sm text-on-surface-variant border border-outline-variant/10">
+                    <span className="text-on-surface font-semibold">• 0%</span> cryptographic verifiability on off-the-shelf AI code reviews without immutable ledger anchoring.
+                  </div>
+                </div>
+              </div>
+
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  Audit Market Failure Analysis • SwarmProof Technical Dossier
+                </span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">Hedera Consensus Network</span>
+              </div>
+            </section>
+
+            {/* ==================== SLIDE 03: THE SOLUTION ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-3"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 03 / 07
+                  </span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">The Solution: SwarmProof Quorum</span>
+                </div>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">Byzantine Fault-Tolerant AST Verification</span>
+              </div>
+
+              {/* Section Lead */}
+              <div className="py-2">
+                <h2 className="font-headline-md text-headline-md text-on-surface max-w-3xl">
+                  Five Autonomous Cognitive Agents. One Immutable Consensus.
+                </h2>
+                <p className="font-body-md text-body-md text-on-surface-variant">
+                  Rather than relying on one general model, SwarmProof assigns contract bytecode to specialized neural agents running formal verification heuristics. A 4/5 Byzantine Quorum must agree before an on-chain receipt is stamped.
+                </p>
+              </div>
+
+              {/* Agents Architecture Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5 my-auto">
+                {/* Agent 1 */}
+                <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-code-sm text-code-sm text-secondary font-semibold">AGENT 01</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                    </div>
+                    <h4 className="font-body-md text-body-md font-semibold text-on-surface">Reentrancy Sentinel</h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 text-xs">
+                      Analyzes Abstract Syntax Tree (AST) for cross-function state modifications occurring post external calls.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">
+                    Weight: 25% • Checks mutex &amp; CEI pattern
+                  </div>
+                </div>
+
+                {/* Agent 2 */}
+                <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-code-sm text-code-sm text-secondary font-semibold">AGENT 02</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                    </div>
+                    <h4 className="font-body-md text-body-md font-semibold text-on-surface">Access Guardian</h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 text-xs">
+                      Detects `tx.origin` vulnerabilities, uninitialized proxy ownerships, and privilege escalation pathways.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">
+                    Weight: 20% • RBAC / Ownable2Step validation
+                  </div>
+                </div>
+
+                {/* Agent 3 */}
+                <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-code-sm text-code-sm text-secondary font-semibold">AGENT 03</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                    </div>
+                    <h4 className="font-body-md text-body-md font-semibold text-on-surface">Tokenomics Auditor</h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 text-xs">
+                      Evaluates token inflation schedules, rounding-in-favor-of attacker flaws, and decimal precision mismatches.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">
+                    Weight: 20% • Math overflow &amp; fee logic
+                  </div>
+                </div>
+
+                {/* Agent 4 */}
+                <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-code-sm text-code-sm text-secondary font-semibold">AGENT 04</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                    </div>
+                    <h4 className="font-body-md text-body-md font-semibold text-on-surface">MEV &amp; Oracle Shield</h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 text-xs">
+                      Simulates spot price oracle manipulations, flashloan attacks, and frontrunning / sandwich vulnerabilities.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">
+                    Weight: 20% • TWAP &amp; pool manipulation
+                  </div>
+                </div>
+
+                {/* Agent 5 */}
+                <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-code-sm text-code-sm text-secondary font-semibold">AGENT 05</span>
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                    </div>
+                    <h4 className="font-body-md text-body-md font-semibold text-on-surface">Bytecode Invariant</h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 text-xs">
+                      Executes deterministic symbolic analysis and bytecode parity checks against known exploit databases.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">
+                    Weight: 15% • Slither &amp; Mythril bindings
+                  </div>
+                </div>
+              </div>
+
+              {/* Quorum Consensus Pipeline Bar */}
+              <div className="p-4 bg-surface-container rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 border border-outline-variant/30">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-secondary text-[24px]">hub</span>
+                  <div>
+                    <span className="font-body-sm text-body-sm font-semibold text-on-surface">
+                      Weighted Quorum Engine (Threshold: 80% / 4 of 5 Agents)
+                    </span>
+                    <p className="font-code-sm text-code-sm text-on-surface-variant">
+                      Discrepancies trigger automated cross-examination before signing the Hedera Consensus message.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-code-sm text-code-sm px-2.5 py-1 bg-surface-container-lowest rounded text-secondary font-semibold border border-outline-variant/20">
+                    Consensus Status: ACTIVE
+                  </span>
+                </div>
+              </div>
+
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  SwarmProof Cognitive Engine Specs • Multi-Agent Heuristics
+                </span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">BFT Byzantine Consensus Protocol</span>
+              </div>
+            </section>
+
+            {/* ==================== SLIDE 04: HEDERA HCS ANCHORING ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-4"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 04 / 07
+                  </span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">
+                    Hedera Consensus Service (HCS)
+                  </span>
+                </div>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">
+                  Immutable Microsecond Timestamping
+                </span>
+              </div>
+
+              {/* Slide Content */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
+                {/* Left Column: Explanation */}
+                <div className="lg:col-span-6 flex flex-col gap-5">
+                  <span className="font-label-caps text-label-caps text-secondary uppercase">MATHEMATICAL PROOF LAYER</span>
+                  <h2 className="font-headline-md text-headline-md text-on-surface">
+                    Audit Reports As Immutable State. Forever Anchored on Hedera.
                   </h2>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "#52525b" }}>
-                    Each autonomous agent has a sovereign identifier anchored on Hedera HCS Topic 0.0.10417469.
+                  <p className="font-body-md text-body-md text-on-surface-variant">
+                    Traditional PDF audits can be altered, faked, or quietly updated after a security breach. SwarmProof turns audit conclusions into cryptographic payload proofs submitted directly to a dedicated Hedera Consensus Service Topic.
+                  </p>
+                  <div className="flex flex-col gap-3 mt-2">
+                    <div className="flex items-start gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">fingerprint</span>
+                      <div>
+                        <h4 className="font-body-sm text-body-sm font-semibold text-on-surface">SHA-256 Bytecode &amp; Report Hashing</h4>
+                        <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
+                          Deterministic state digest links compiler AST, agent signatures, and test coverage into a single hash.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">schedule</span>
+                      <div>
+                        <h4 className="font-body-sm text-body-sm font-semibold text-on-surface">Hedera Fair Ordering &amp; Sequence Numbers</h4>
+                        <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
+                          Every audit receives an immutable HCS sequence number and consensus timestamp accurate to the nanosecond.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">verified_user</span>
+                      <div>
+                        <h4 className="font-body-sm text-body-sm font-semibold text-on-surface">Zero Trust Verification</h4>
+                        <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
+                          Institutional insurers and LPs can verify audit validity in 100ms via public Hedera Mirror Nodes.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Live Proof Visualizer Card */}
+                <div className="lg:col-span-6 bg-surface-container p-6 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/30">
+                  <div className="flex items-center justify-between pb-3 border-b border-surface-container-highest">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+                      <span className="font-code-sm text-code-sm font-semibold text-on-surface">HCS Consensus Receipt Sample</span>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-on-surface-variant">Mainnet Live</span>
+                  </div>
+
+                  {/* Code/Data Block */}
+                  <div className="bg-[#18181b] p-4 rounded-lg font-code-sm text-code-sm text-zinc-100 flex flex-col gap-2 overflow-x-auto border border-zinc-800">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">topic_id:</span>
+                      <span className="text-secondary-fixed font-semibold">"0.0.10417469"</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">consensus_timestamp:</span>
+                      <span className="text-[#63f7ff]">"1740918420.301948201"</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">sequence_number:</span>
+                      <span className="text-white font-semibold">#48192</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">running_hash:</span>
+                      <span className="text-zinc-400 truncate max-w-[200px]">0x8f2d91b...e4a7</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">agent_quorum:</span>
+                      <span className="text-secondary-fixed font-semibold">"5/5 (100% UNANIMOUS)"</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">contract_target:</span>
+                      <span className="text-white truncate max-w-[200px]">0xHederaVaultV2</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">attestation_status:</span>
+                      <span className="text-secondary-fixed font-semibold">"VERIFIED_SECURE"</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-surface-container-lowest rounded-lg flex items-center justify-between border border-outline-variant/20">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-secondary text-[18px]">public</span>
+                      <span className="font-body-sm text-body-sm text-on-surface">Mirror Node Verification API</span>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-on-surface-variant">REST / gRPC Ready</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  Hedera Consensus Service • Cryptographic State Anchoring
+                </span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">HCS Topic 0.0.10417469</span>
+              </div>
+            </section>
+
+            {/* ==================== SLIDE 05: MONETIZATION & X402 ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-5"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 05 / 07
+                  </span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">
+                    Monetization: x402 Micropayments
+                  </span>
+                </div>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">HTTP 402 + Tinybar Settlement</span>
+              </div>
+
+              {/* Content */}
+              <div className="my-auto py-4 flex flex-col gap-6">
+                <div>
+                  <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl">
+                    Autonomous Machine-to-Machine Commerce with Zero Human Friction.
+                  </h2>
+                  <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl mt-1">
+                    SwarmProof turns smart contract audits into an on-demand web utility via HTTP 402 "Payment Required" protocols. Agents stream tiny fractions of HBAR for instant analysis, incentivizing specialist models without SaaS subscriptions.
                   </p>
                 </div>
 
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() => setIdFormat("did")}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 4,
-                      fontSize: 12,
-                      fontFamily: "var(--font-mono)",
-                      backgroundColor: idFormat === "did" ? "#09090b" : "#f4f4f5",
-                      color: idFormat === "did" ? "#ffffff" : "#52525b",
-                      border: "1px solid #d4d4d8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    DID Document
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIdFormat("vc")}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 4,
-                      fontSize: 12,
-                      fontFamily: "var(--font-mono)",
-                      backgroundColor: idFormat === "vc" ? "#09090b" : "#f4f4f5",
-                      color: idFormat === "vc" ? "#ffffff" : "#52525b",
-                      border: "1px solid #d4d4d8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Verifiable Credential
-                  </button>
+                {/* 4-Stage Transaction Pipeline */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Step 1 */}
+                  <div className="bg-surface-container-low p-5 rounded-xl flex flex-col justify-between shadow-sm relative border border-outline-variant/20">
+                    <span className="font-label-caps text-label-caps text-on-surface-variant">PHASE 01</span>
+                    <div className="my-4">
+                      <span className="material-symbols-outlined text-[28px] text-on-surface">send</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-2">HTTP 402 Trigger</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Developer CI/CD triggers an audit request to `/verify`. API returns standard HTTP 402 with Hedera account header.
+                      </p>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-secondary">Status: 402 Required</span>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="bg-surface-container-low p-5 rounded-xl flex flex-col justify-between shadow-sm relative border border-outline-variant/20">
+                    <span className="font-label-caps text-label-caps text-on-surface-variant">PHASE 02</span>
+                    <div className="my-4">
+                      <span className="material-symbols-outlined text-[28px] text-secondary">payments</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-2">Tinybar Settlement</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Client automatically signs a 0.01 ℏ ($0.001) micro-transaction. Blocky402 facilitator verifies on-chain receipt in 800ms.
+                      </p>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-secondary">Fee: 1,000,000 tinybar</span>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="bg-surface-container-low p-5 rounded-xl flex flex-col justify-between shadow-sm relative border border-outline-variant/20">
+                    <span className="font-label-caps text-label-caps text-on-surface-variant">PHASE 03</span>
+                    <div className="my-4">
+                      <span className="material-symbols-outlined text-[28px] text-on-surface">psychology</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-2">Swarm Execution</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        The 5 cognitive agents receive task instructions and parallel-process AST parsing and bytecode vulnerability scans.
+                      </p>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-secondary">5/5 Nodes Active</span>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="bg-surface-container-low p-5 rounded-xl flex flex-col justify-between shadow-sm relative border border-outline-variant/20">
+                    <span className="font-label-caps text-label-caps text-on-surface-variant">PHASE 04</span>
+                    <div className="my-4">
+                      <span className="material-symbols-outlined text-[28px] text-on-secondary-container">call_split</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-2">Agent Micro-Royalties</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Upon unanimous quorum, fees are split automatically to each agent's individual Hedera wallet based on consensus weight.
+                      </p>
+                    </div>
+                    <span className="font-code-sm text-code-sm text-secondary">Automatic Payout</span>
+                  </div>
+                </div>
+
+                {/* Revenue Model Projection Metric */}
+                <div className="p-4 bg-surface-container rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-outline-variant/30">
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-secondary">query_stats</span>
+                    <div>
+                      <span className="font-body-sm text-body-sm font-semibold text-on-surface">Unit Economics at Scale</span>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
+                        100,000 CI/CD builds/mo @ 0.05 ℏ avg = Sustainable autonomous agent micro-economy.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="font-code-sm text-code-sm bg-surface-container-lowest px-3 py-1.5 rounded font-medium text-on-surface border border-outline-variant/20">
+                    Zero Platform Accounts • Pure On-Chain Utility
+                  </div>
                 </div>
               </div>
 
-              <div style={{ padding: "10px 14px", backgroundColor: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
-                  <span style={{ color: "#a1a1aa" }}>URI:</span>
-                  <span style={{ color: "#09090b", fontWeight: 600, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                    did:hedera:testnet:0.0.10417469_reentrancy-agent
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  Autonomous Monetization Architecture • x402 Micropayments
+                </span>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">Hedera Token &amp; Tinybar Rails</span>
+              </div>
+            </section>
+
+            {/* ==================== SLIDE 06: AGENT IDENTITY & REPUTATION ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-6"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 06 / 07
+                  </span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">
+                    Agent Identity: W3C did:hedera
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard("did:hedera:testnet:0.0.10417469_reentrancy-agent", "Copied DID URI")}
-                  style={{
-                    padding: "4px 8px",
-                    fontSize: 11,
-                    fontFamily: "var(--font-mono)",
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #d4d4d8",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-
-            {/* JSON Viewer */}
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 700, color: "#09090b" }}>
-                  {idFormat === "did" ? "W3C DID Document (GET /agents/:id/did)" : "W3C Verifiable Credential (GET /agents/:id/credential)"}
-                </span>
-                <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#71717a" }}>
-                  {idFormat === "did" ? "MIME: application/did+ld+json" : "MIME: application/vc+ld+json"}
-                </span>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">Verifiable Credentials &amp; Slashing</span>
               </div>
 
-              <div style={{ borderRadius: 6, border: "1px solid #27272a", backgroundColor: "#09090b", overflow: "hidden" }}>
-                <pre style={{ margin: 0, padding: 16, fontSize: 12, fontFamily: "var(--font-mono)", color: "#e4e4e7", maxHeight: 360, overflowY: "auto", lineHeight: 1.6 }}>
-                  {idFormat === "did" ? JSON.stringify(didDocJson, null, 2) : JSON.stringify(vcJson, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </div>
-        )}
+              {/* Slide Content */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
+                {/* Left Column: Specs */}
+                <div className="lg:col-span-6 flex flex-col gap-4">
+                  <span className="font-label-caps text-label-caps text-secondary uppercase">SOVEREIGN AGENT REPUTATION</span>
+                  <h2 className="font-headline-md text-headline-md text-on-surface">
+                    Cryptographic Accountability for Autonomous Auditors.
+                  </h2>
+                  <p className="font-body-md text-body-md text-on-surface-variant">
+                    In SwarmProof, AI models are not anonymous cloud scripts. Each agent possesses a sovereign Decentralized Identifier (`did:hedera`), earns on-chain reputation for verified accuracy, and faces automatic staking slashing for false consensus.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="font-label-caps text-label-caps text-on-surface-variant">STANDARD</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-1">W3C DID Registry</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Anchored to Hedera Consensus Service topics for verifiable decentralized identity resolution.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="font-label-caps text-label-caps text-on-surface-variant">STAKING</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-1">Consensus Staking</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Agents stake collateral. Dissident or compromised responses result in immediate automated slashing.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="font-label-caps text-label-caps text-on-surface-variant">CREDENTIALS</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-1">Verifiable Credentials</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Cryptographic VCs issued for successful historical audits across top-tier DeFi protocols.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                      <span className="font-label-caps text-label-caps text-on-surface-variant">PORTABILITY</span>
+                      <h4 className="font-body-md text-body-md font-semibold text-on-surface mt-1">Cross-Platform Trust</h4>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-1">
+                        Agent identity travels across IDEs, GitHub actions, and continuous integration pipelines seamlessly.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 5: ON-CHAIN PROOFS
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "proofs" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                Public Verification
-              </span>
-              <h2 style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 700, color: "#09090b" }}>
-                Hedera Testnet Explorer Receipts
-              </h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#52525b" }}>
-                Real-time proofs verified on HashScan and public Hedera mirror nodes.
-              </p>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {[
-                { title: "HCS Consensus Topic", id: "0.0.10417469", url: "https://hashscan.io/testnet/topic/0.0.10417469", desc: "Permanently sequences SHA-256 audit hashes, split settlement receipts, and agent identity messages." },
-                { title: "x402 Micropayment Settlement", id: "0.0.7162784@1788849225.803231622", url: "https://hashscan.io/testnet/transaction/0.0.7162784@1788849225.803231622", desc: "Live 0.01 ℏ payment settled via Blocky402 facilitator with multi-sig execution." },
-                { title: "Consensus Audit Proof", id: "0.0.10119346@1788849233.623260124", url: "https://hashscan.io/testnet/transaction/0.0.10119346@1788849233.623260124", desc: "Deterministic finding digest anchored with cryptographic consensus timestamp." },
-                { title: "Agent DID Message", id: "0.0.10119346@1789021885.521714338", url: "https://hashscan.io/testnet/transaction/0.0.10119346@1789021885.521714338", desc: "Sovereign agent registration broadcast containing W3C DID metadata and capabilities." },
-                { title: "Settlement Account", id: "0.0.10417474", url: "https://hashscan.io/testnet/account/0.0.10417474", desc: "Auditor pool account for collecting x402 micro-fees and triggering split allocations." },
-              ].map((p, idx) => (
-                <div key={idx} style={{ padding: 18, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontFamily: "var(--font-mono)", fontWeight: 700, color: "#09090b" }}>{p.title}</span>
-                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", backgroundColor: "#f4f4f5", color: "#27272a", padding: "2px 8px", borderRadius: 4, border: "1px solid #d4d4d8" }}>
-                      Verified On-Chain
+                {/* Right Column: DID Identity Card */}
+                <div className="lg:col-span-6 bg-surface-container p-6 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-on-primary">
+                        <span className="material-symbols-outlined text-[20px]">badge</span>
+                      </div>
+                      <div>
+                        <h4 className="font-body-md text-body-md font-semibold text-on-surface">Agent-Reentrancy-Alpha</h4>
+                        <span className="font-code-sm text-code-sm text-on-surface-variant">did:hedera:testnet:0.0.10417469_1</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 bg-secondary-container text-on-secondary-container rounded font-code-sm text-code-sm font-semibold">
+                      Tier 1 Auditor
                     </span>
                   </div>
-                  <p style={{ margin: "2px 0 12px", fontSize: 12, color: "#52525b" }}>{p.desc}</p>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #f4f4f5", paddingTop: 10, fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                    <span style={{ color: "#27272a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.id}</span>
-                    <a href={p.url} target="_blank" rel="noreferrer" style={{ color: "#09090b", fontWeight: 600, textDecoration: "none" }}>
-                      HashScan ↗
-                    </a>
+
+                  <div className="p-4 bg-surface-container-lowest rounded-lg flex flex-col gap-3 font-code-sm text-code-sm border border-outline-variant/20">
+                    <div className="flex justify-between border-b border-surface-container-highest pb-2">
+                      <span className="text-on-surface-variant">Reputation Score:</span>
+                      <span className="font-semibold text-secondary">99.84 / 100</span>
+                    </div>
+                    <div className="flex justify-between border-b border-surface-container-highest pb-2">
+                      <span className="text-on-surface-variant">Audits Completed:</span>
+                      <span className="font-semibold text-on-surface">1,429 Verified</span>
+                    </div>
+                    <div className="flex justify-between border-b border-surface-container-highest pb-2">
+                      <span className="text-on-surface-variant">Bonded Stake:</span>
+                      <span className="font-semibold text-on-surface">50,000 ℏ</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-variant">VC Signature:</span>
+                      <span className="text-on-surface-variant truncate max-w-[220px]">eddsa-ed25519:3b9f48...</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-surface-container-low rounded-lg flex items-center gap-3 border border-outline-variant/20">
+                    <span className="material-symbols-outlined text-secondary text-[20px]">shield</span>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
+                      Cryptographically verified by Hedera Consensus Service. Zero governance capture.
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* CLI Terminal Execution */}
-            <div style={{ padding: 18, borderRadius: 8, backgroundColor: "#09090b", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#e4e4e7" }}>
-                <span style={{ color: "#71717a", display: "block", fontSize: 11, fontWeight: 700, marginBottom: 2 }}>REPRODUCE VIA CLI</span>
-                <code>pnpm --filter @swarmproof/api x402:live</code>
               </div>
-              <button
-                type="button"
-                onClick={() => copyToClipboard("pnpm --filter @swarmproof/api x402:live", "Copied command")}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontFamily: "var(--font-mono)",
-                  backgroundColor: "#ffffff",
-                  color: "#09090b",
-                  border: "none",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Copy Command
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            TAB 6: MENTOR DISCUSSION
-           ══════════════════════════════════════════════════════════════ */}
-        {activeTab === "questions" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 600 }}>
-                Rubric Alignment
-              </span>
-              <h2 style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 700, color: "#09090b" }}>
-                Strategic Discussion Points
-              </h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#52525b" }}>
-                Targeted review questions formulated for the Hedera Agentic Payments judges.
-              </p>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ padding: 20, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 700, display: "block", marginBottom: 6 }}>
-                  Question 01 — Hedera Agentic Payments
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  W3C Decentralized Identity Implementation • did:hedera Standard
                 </span>
-                <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b", lineHeight: 1.5 }}>
-                  "We currently settle audits using the Blocky402 x402 facilitator for HBAR and HTS. For our final demo, would you recommend showing an atomic multi-recipient CryptoTransferTransaction splitting the fee across all 5 agents in a single transaction, or showing scheduled transactions with a challenge window?"
-                </h4>
-                <p style={{ margin: "10px 0 0", fontSize: 12, color: "#71717a", borderTop: "1px solid #f4f4f5", paddingTop: 8 }}>
-                  <strong>Strategic Focus:</strong> Directly validates adherence to the 'Streaming & Scheduled Transactions' rubric bonus point.
-                </p>
+                <span className="font-code-sm text-code-sm text-on-surface-variant">Hedera DID Method v1.0</span>
               </div>
+            </section>
 
-              <div style={{ padding: 20, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 700, display: "block", marginBottom: 6 }}>
-                  Question 02 — Agent Consensus & Evaluation
-                </span>
-                <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b", lineHeight: 1.5 }}>
-                  "Our swarm runs 5 specialist agents with weighted quorum voting. Would you recommend showing the agents' debate transcripts directly on the dashboard, or focusing heavily on the verified HashScan cryptographic proofs?"
-                </h4>
-                <p style={{ margin: "10px 0 0", fontSize: 12, color: "#71717a", borderTop: "1px solid #f4f4f5", paddingTop: 8 }}>
-                  <strong>Strategic Focus:</strong> Clarifies whether evaluators prefer narrative UX friction vs verifiable cryptographic rigor.
-                </p>
-              </div>
-
-              <div style={{ padding: 20, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", color: "#71717a", fontWeight: 700, display: "block", marginBottom: 6 }}>
-                  Question 03 — Developer Adoption & Tooling
-                </span>
-                <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b", lineHeight: 1.5 }}>
-                  "We built both an MCP server for IDEs (Cursor/Claude Desktop) and a Bring-Your-Own-Agent SDK. Which of those two angles resonates most strongly with the Hedera and AI track judges?"
-                </h4>
-                <p style={{ margin: "10px 0 0", fontSize: 12, color: "#71717a", borderTop: "1px solid #f4f4f5", paddingTop: 8 }}>
-                  <strong>Strategic Focus:</strong> Determines the primary narrative emphasis for the 3-minute project demo recording.
-                </p>
-              </div>
-            </div>
-
-            {/* Notes Area */}
-            <div style={{ padding: 24, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e4e4e7" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b" }}>Mentor Call Scratchpad</h3>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#71717a" }}>Persists locally across browser refreshes.</p>
+            {/* ==================== SLIDE 07: ROADMAP & TRACTION ==================== */}
+            <section
+              className="deck-slide w-full min-h-[640px] lg:min-h-[720px] bg-surface-container-lowest rounded-xl shadow-xl flex flex-col justify-between p-6 md:p-12 relative overflow-hidden border border-outline-variant/30"
+              id="slide-7"
+            >
+              {/* Slide Header */}
+              <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-label-caps text-label-caps uppercase text-on-surface-variant bg-surface-container px-2 py-1 rounded">
+                    SLIDE 07 / 07
+                  </span>
+                  <span className="font-headline-sm text-headline-sm text-on-surface font-medium">Roadmap &amp; Call to Action</span>
                 </div>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#71717a", backgroundColor: "#f4f4f5", padding: "2px 6px", borderRadius: 4, border: "1px solid #e4e4e7" }}>
-                  Local Storage
-                </span>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">Next Horizon 2026</span>
               </div>
-              <textarea
-                value={mentorNotes}
-                onChange={(e) => handleNotesChange(e.target.value)}
-                placeholder="Type mentor notes, feedback, and action items here..."
-                rows={6}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontFamily: "var(--font-mono)",
-                  backgroundColor: "#fafafa",
-                  border: "1px solid #d4d4d8",
-                  color: "#09090b",
-                  lineHeight: 1.6,
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
+
+              {/* Main Content */}
+              <div className="my-auto py-4 flex flex-col gap-8">
+                <div>
+                  <span className="font-label-caps text-label-caps text-secondary uppercase">STRATEGIC EXPANSION</span>
+                  <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl mt-1">
+                    From Hackathon Proof of Concept to Global Hedera Standard.
+                  </h2>
+                </div>
+
+                {/* 3-Phase Roadmap Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="p-5 bg-surface-container-low rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-caps text-label-caps text-secondary font-bold">MILESTONE 01</span>
+                        <span className="px-2 py-0.5 bg-secondary-container text-on-secondary-container rounded text-[10px] font-code-sm">
+                          CURRENT
+                        </span>
+                      </div>
+                      <h3 className="font-body-md text-body-md font-semibold text-on-surface mt-2">HCS Consensus Quorum</h3>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-2 leading-relaxed">
+                        • Live Topic 0.0.10417469 on Hedera<br />
+                        • 5-Agent Weighted Quorum Heuristics<br />
+                        • x402 Micropayment Rails Demo
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-code-sm text-on-surface">
+                      Q1 2026: Mainnet Alpha
+                    </div>
+                  </div>
+
+                  <div className="p-5 bg-surface-container-low rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-caps text-label-caps text-on-surface-variant font-bold">MILESTONE 02</span>
+                        <span className="px-2 py-0.5 bg-surface-container rounded text-[10px] font-code-sm text-on-surface-variant">
+                          UPCOMING
+                        </span>
+                      </div>
+                      <h3 className="font-body-md text-body-md font-semibold text-on-surface mt-2">IDE &amp; MCP Integration</h3>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-2 leading-relaxed">
+                        • Cursor &amp; Windsurf Model Context Protocol<br />
+                        • One-click verify on every git commit<br />
+                        • GitHub Actions automated HCS attestation badge
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-code-sm text-on-surface">
+                      Q2 2026: Developer SDK
+                    </div>
+                  </div>
+
+                  <div className="p-5 bg-surface-container-low rounded-xl flex flex-col justify-between shadow-sm border border-outline-variant/20">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-caps text-label-caps text-on-surface-variant font-bold">MILESTONE 03</span>
+                        <span className="px-2 py-0.5 bg-surface-container rounded text-[10px] font-code-sm text-on-surface-variant">
+                          ROADMAP
+                        </span>
+                      </div>
+                      <h3 className="font-body-md text-body-md font-semibold text-on-surface mt-2">Open Agent Marketplace</h3>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant text-xs mt-2 leading-relaxed">
+                        • Third-party security researchers register agents<br />
+                        • Competitive staking &amp; reward distribution<br />
+                        • Multi-chain verification settlement back to HCS
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-2 border-t border-surface-container-highest font-code-sm text-code-sm text-on-surface">
+                      Q3-Q4 2026: Decentralized Network
+                    </div>
+                  </div>
+                </div>
+
+                {/* Strong Action Banner */}
+                <div className="p-6 bg-surface-container rounded-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-outline-variant/30">
+                  <div className="flex flex-col gap-1">
+                    <h4 className="font-headline-sm text-headline-sm text-on-surface font-medium">
+                      Ready to inspect live SwarmProof consensus?
+                    </h4>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant">
+                      Interact with our 3D agent visualizer, inspect live HCS consensus proofs, or test the x402 payment lab.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Link
+                      className="px-4 py-2 bg-primary text-on-primary font-body-sm text-body-sm rounded hover:bg-primary-container transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
+                      href="/"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">hub</span>
+                      <span>Open 3D Swarm</span>
+                    </Link>
+                    <Link
+                      className="px-4 py-2 bg-surface-container-lowest text-on-surface font-body-sm text-body-sm rounded hover:bg-surface-container-high transition-colors flex items-center gap-2 cursor-pointer border border-outline-variant/20 shadow-sm"
+                      href="/x402"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">wallet</span>
+                      <span>Test x402 Lab</span>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slide Footer */}
+              <div className="flex items-center justify-between border-t border-surface-container-highest/60 pt-4">
+                <span className="font-code-sm text-code-sm text-on-surface-variant">
+                  SwarmProof Executive Pitch Deck • Thank You
+                </span>
+                <span className="font-code-sm text-code-sm text-secondary font-medium">Hedera Ecosystem Grantee</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+
+      {/* ── Publication-Grade Editorial Footer ────────────────────── */}
+      <footer className="w-full bg-surface-container-low mt-space-xl shadow-[0_-1px_8px_rgba(0,0,0,0.02)] border-t border-outline-variant/30">
+        <div className="max-w-[1440px] mx-auto px-margin-mobile md:px-margin py-space-xl flex flex-col gap-space-xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-space-lg">
+            <div className="flex flex-col gap-space-xs">
+              <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">
+                Autonomous Consensus Engine
+              </span>
+              <h2 className="font-headline-md text-headline-md text-on-surface font-medium max-w-xl">
+                Autonomous Consensus. Built with mathematical intention.
+              </h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-space-sm">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-surface-container">
+                <span className="material-symbols-outlined text-[16px] text-secondary">verified_user</span>
+                <span className="font-code-sm text-code-sm text-on-surface">HCS Immutable State</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-surface-container">
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant">lock</span>
+                <span className="font-code-sm text-code-sm text-on-surface">AST Bytecode Proof</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-surface-container">
+                <span className="material-symbols-outlined text-[16px] text-on-secondary-container">hub</span>
+                <span className="font-code-sm text-code-sm text-on-surface">Multi-Agent Swarm</span>
+              </div>
             </div>
           </div>
-        )}
 
-      </main>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-space-md pt-space-lg border-t border-outline-variant/20">
+            <div className="flex items-center gap-space-md">
+              <span className="font-display-lg text-display-lg text-on-surface font-normal tracking-tight">SwarmProof</span>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-space-md text-on-surface-variant">
+              <span className="font-code-sm text-code-sm">
+                © 2026 SwarmProof Network. Anchored on Hedera Consensus Service.
+              </span>
+              <div className="flex items-center gap-space-sm font-code-sm text-code-sm">
+                <span className="text-on-surface-variant">•</span>
+                <a
+                  href="https://hashscan.io/testnet/topic/0.0.10417469"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline"
+                >
+                  Topic: 0.0.10417469
+                </a>
+                <span className="text-on-surface-variant">•</span>
+                <span className="text-secondary font-medium">Testnet Active</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* ── Modals Retained ───────────────────────────────────────── */}
+      {isRegisterModalOpen && (
+        <RegisterAgentModal
+          onClose={() => setIsRegisterModalOpen(false)}
+          onRegistered={() => setIsRegisterModalOpen(false)}
+        />
+      )}
+
+      {isPoolModalOpen && <AuditPoolModal onClose={() => setIsPoolModalOpen(false)} />}
     </div>
   );
 }

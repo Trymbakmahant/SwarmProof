@@ -221,6 +221,25 @@ export default function LeaderboardPage() {
               Pitch Deck
             </Link>
             <Link
+              href="/graph"
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#0891b2",
+                backgroundColor: "#ecfeff",
+                border: "1px solid #a5f3fc",
+                borderRadius: 6,
+                padding: "6px 12px",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <span>🌐</span>
+              <span>The Graph</span>
+            </Link>
+            <Link
               href="/x402"
               style={{
                 fontSize: 12,

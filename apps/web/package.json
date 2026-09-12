@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "deploy:vercel": "next build && mkdir -p .vercel-temp && npx vercel deploy out --temporary --yes -Q .vercel-temp",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
