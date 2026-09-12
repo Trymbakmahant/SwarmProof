@@ -181,6 +181,7 @@ contract EtherVault {
     facilitator: payerFacilitator,
     signer: payerAccount && payerKey ? { accountId: payerAccount, privateKey: payerKey, network: env.X402_NETWORK ?? network } : undefined,
   });
+  taskPool.setPayerClient(payerClient);
 
   // HCS-14-style identity registration for every specialist (mock offline).
   for (const agent of Object.values(specialists)) {
@@ -2295,12 +2296,16 @@ contract EtherVault {
     if (!task) return c.json({ error: `Task ${id} not found` }, 404);
 
     const payload = payloadFromRequest(c);
-    const body = await c.req.json<{ reference?: string; payerAddress?: string }>().catch(() => ({ reference: undefined, payerAddress: undefined }));
+    const body = await c.req
+      .json<{ reference?: string; payerAddress?: string; payRealX402?: boolean }>()
+      .catch(() => ({ reference: undefined, payerAddress: undefined, payRealX402: false }));
     let ref = body.reference;
+    let escrowReceipt: (typeof task)["escrowReceipt"] = undefined;
+
+    const amountTinybars = Math.round((parseFloat(task.bountyTotal) || 1.0) * (Number(env.X402_TINYBARS_PER_USD) || 1_000_000)).toString();
 
     if (payload) {
       try {
-        const amountTinybars = Math.round((parseFloat(task.bountyTotal) || 1.0) * (Number(env.X402_TINYBARS_PER_USD) || 1_000_000)).toString();
         const quote: X402PaymentRequirements = {
           scheme: "exact",
           network: constants.network,
@@ -2316,10 +2321,59 @@ contract EtherVault {
         const verification = await payerClient.verifyPayment(payload, quote);
         if (verification.isValid) {
           const settlement = await payerClient.settlePayment(payload, quote);
-          ref = settlement.transaction || `x402-escrow-${Date.now()}`;
+          if (settlement.success && settlement.transaction) {
+            ref = settlement.transaction;
+            escrowReceipt = {
+              transactionId: settlement.transaction,
+              payer: settlement.payer || payerAccount || "0.0.10119346",
+              amountUSD: task.bountyTotal,
+              amountTinybars: Number(amountTinybars),
+              hashscanUrl: `https://hashscan.io/testnet/transaction/${settlement.transaction}`,
+              settledAt: new Date().toISOString(),
+              facilitator: "Blocky402",
+            };
+          }
         }
       } catch (e) {
         console.warn(`[Escrow] x402 verification fallback: ${(e as Error).message}`);
+      }
+    } else if (body.payRealX402 || body.payRealX402 === undefined) {
+      // Caller requested direct real x402 payment from configured / authorized payer wallet
+      try {
+        const feePayer = await payerFacilitator.feePayer(network).catch(() => undefined);
+        const quote: X402PaymentRequirements = {
+          scheme: "exact",
+          network: constants.network,
+          amount: amountTinybars,
+          payTo: constants.gatewayAddress,
+          maxTimeoutSeconds: 300,
+          asset: env.X402_ASSET ?? "0.0.0",
+          extra: {
+            service: "swarmproof-audit-escrow",
+            auditId: task.id,
+            feePayer,
+          },
+        };
+        const signedPayload = await payerClient.signPayment(quote);
+        const verification = await payerClient.verifyPayment(signedPayload, quote);
+        if (verification.isValid) {
+          const settlement = await payerClient.settlePayment(signedPayload, quote);
+          if (settlement.success && settlement.transaction) {
+            ref = settlement.transaction;
+            escrowReceipt = {
+              transactionId: settlement.transaction,
+              payer: settlement.payer || payerAccount || "0.0.10119346",
+              amountUSD: task.bountyTotal,
+              amountTinybars: Number(amountTinybars),
+              hashscanUrl: `https://hashscan.io/testnet/transaction/${settlement.transaction}`,
+              settledAt: new Date().toISOString(),
+              facilitator: "Blocky402",
+            };
+            console.log(`[Escrow] Real on-chain x402 escrow settled: ${ref}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[Escrow] Real x402 payment attempt notice: ${(e as Error).message}`);
       }
     }
 
@@ -2328,11 +2382,14 @@ contract EtherVault {
     }
 
     try {
-      const opened = taskPool.escrowTask(id, ref);
+      const opened = taskPool.escrowTask(id, ref, escrowReceipt);
       return c.json({
         ok: true,
-        message: `x402 escrow confirmed ($${task.bountyTotal} ${task.currency}). Task window opened for specialist submissions.`,
+        message: escrowReceipt
+          ? `Real x402 escrow confirmed ($${task.bountyTotal} ${task.currency}) via Blocky402 on Hedera Testnet (Tx: ${escrowReceipt.transactionId}). Window opened.`
+          : `x402 escrow confirmed ($${task.bountyTotal} ${task.currency}). Task window opened for specialist submissions.`,
         reference: ref,
+        escrowReceipt: escrowReceipt || null,
         task: {
           ...opened,
           remainingSeconds: taskPool.getRemainingSeconds(opened),
@@ -2358,6 +2415,7 @@ contract EtherVault {
       escrowStatus: task.escrowStatus,
       bountyTotal: task.bountyTotal,
       currency: task.currency,
+      escrowReceipt: task.escrowReceipt || null,
       settlementReceipt: task.settlementReceipt || null,
       payouts: task.payouts || [],
       proofReceipt: task.proofReceipt || null,

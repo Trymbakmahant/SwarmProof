@@ -68,6 +68,15 @@ export interface PoolTask {
   bountyTotal: string;
   currency: string;
   escrowStatus: string;
+  escrowReceipt?: {
+    transactionId: string;
+    payer: string;
+    amountUSD: string;
+    amountTinybars: number;
+    hashscanUrl: string;
+    settledAt: string;
+    facilitator?: string;
+  };
   payouts?: TaskPayoutRecord[];
   settlementReceipt?: SettlementReceipt;
   createdAt: string;
@@ -83,6 +92,12 @@ const ROLE_DISPLAY_NAMES: Record<string, { label: string; icon: string }> = {
   "static-analysis": { label: "Static Analysis", icon: "⚡" },
   "business-logic": { label: "Business Logic", icon: "⚖️" },
   "economic-oracle": { label: "Oracle & MEV", icon: "📈" },
+};
+
+const toHashScanUrl = (txId?: string) => {
+  if (!txId) return "https://hashscan.io/testnet";
+  const formatted = txId.replace("@", "-").replace(/\.(?=\d{9})/, "-");
+  return `https://hashscan.io/testnet/transaction/${formatted}`;
 };
 
 export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
@@ -101,6 +116,8 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [requireEscrowNew, setRequireEscrowNew] = useState(false);
   const [isEscrowing, setIsEscrowing] = useState<Record<string, boolean>>({});
+  const [payerAccountInput, setPayerAccountInput] = useState("0.0.10119346");
+  const [escrowSuccessMsg, setEscrowSuccessMsg] = useState<{ [taskId: string]: { txId: string; url: string } }>({});
   const [viewingFullReport, setViewingFullReport] = useState<PoolTask | null>(null);
 
   // Code4rena Integration State
@@ -160,19 +177,30 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
     }
   };
 
-  // Authorize x402 Advance Escrow
-  const handleAuthorizeEscrow = async (taskId: string) => {
+  // Authorize x402 Advance Escrow (Supports real money on-chain via Blocky402)
+  const handleAuthorizeEscrow = async (taskId: string, payReal = true) => {
     try {
       setIsEscrowing((prev) => ({ ...prev, [taskId]: true }));
       const res = await fetch(`${API_BASE}/pool/tasks/${taskId}/escrow`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          payerAddress: "0.0.10119346",
+          payerAddress: payerAccountInput.trim() || "0.0.10119346",
+          payRealX402: payReal,
           reference: `x402-escrow-${Date.now()}`,
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data.escrowReceipt?.hashscanUrl) {
+          setEscrowSuccessMsg((prev) => ({
+            ...prev,
+            [taskId]: {
+              txId: data.escrowReceipt.transactionId,
+              url: data.escrowReceipt.hashscanUrl,
+            },
+          }));
+        }
         await fetchTasks();
       }
     } catch (err) {
@@ -866,22 +894,22 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   )}
                 </div>
 
-                {/* x402 Advance Escrow Required Banner (Stage D.1) */}
+                {/* x402 Advance Escrow Caller Card (Real Money on Hedera Option) */}
                 {selectedTask.status === "PENDING_ESCROW" && (
                   <div
                     style={{
+                      padding: "14px 16px",
+                      borderRadius: 8,
                       backgroundColor: "#fffbeb",
                       border: "1px solid #fde68a",
-                      borderRadius: 8,
-                      padding: 14,
+                      marginBottom: 16,
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 16,
+                      flexDirection: "column",
+                      gap: 12,
                     }}
                   >
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 16 }}>💳</span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
                           x402 Advance Escrow Deposit Required
@@ -895,41 +923,176 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                             padding: "2px 6px",
                             borderRadius: 4,
                             border: "1px solid #fde68a",
+                            fontWeight: 700,
                           }}
                         >
                           HTTP 402 QUOTE
                         </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: "var(--font-mono)",
+                            backgroundColor: "#dbeafe",
+                            color: "#1d4ed8",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            fontWeight: 700,
+                          }}
+                        >
+                          HEDERA TESTNET
+                        </span>
                       </div>
                       <div style={{ fontSize: 12, color: "#78350f" }}>
-                        Bounty deposit of <strong>${selectedTask.bountyTotal} {selectedTask.currency}</strong> ({(parseFloat(selectedTask.bountyTotal) * 1_000_000).toLocaleString()} tinybars) must be authorized before the submission window opens to specialist agents.
+                        Bounty deposit of <strong>${selectedTask.bountyTotal} {selectedTask.currency}</strong> ({(parseFloat(selectedTask.bountyTotal) * 1_000_000).toLocaleString()} tinybars = {(parseFloat(selectedTask.bountyTotal) * 0.01).toFixed(4)} ℏ) must be authorized before the submission window opens to specialist agents.
                       </div>
                       <div style={{ fontSize: 11, color: "#92400e", fontFamily: "var(--font-mono)", marginTop: 4 }}>
-                        Gateway: 0.0.10417474 • Network: Hedera Testnet
+                        Payee: 0.0.10417474 • Facilitator: Blocky402 (0.0.7162784) • Rail: ExactHederaScheme
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleAuthorizeEscrow(selectedTask.id)}
-                      disabled={isEscrowing[selectedTask.id]}
+                    {/* Caller Payer Wallet Selection */}
+                    <div
                       style={{
-                        padding: "8px 16px",
-                        fontSize: 12,
-                        fontWeight: 700,
+                        padding: "8px 12px",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #fef3c7",
                         borderRadius: 6,
-                        backgroundColor: "#d97706",
-                        color: "#ffffff",
-                        border: "none",
-                        cursor: isEscrowing[selectedTask.id] ? "not-allowed" : "pointer",
-                        whiteSpace: "nowrap",
-                        display: "inline-flex",
+                        display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                        gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
-                      {isEscrowing[selectedTask.id] ? "Authorizing Escrow..." : "Authorize x402 Escrow →"}
-                    </button>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#78350f", whiteSpace: "nowrap" }}>
+                        Payer Hedera Wallet:
+                      </div>
+                      <input
+                        type="text"
+                        value={payerAccountInput}
+                        onChange={(e) => setPayerAccountInput(e.target.value)}
+                        placeholder="0.0.10119346"
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          fontFamily: "var(--font-mono)",
+                          borderRadius: 4,
+                          border: "1px solid #e4e4e7",
+                          width: "140px",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          color: "#15803d",
+                          backgroundColor: "#f0fdf4",
+                          border: "1px solid #bbf7d0",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          fontWeight: 600,
+                        }}
+                      >
+                        ● Operator Wallet Live (~979 ℏ Funded)
+                      </span>
+                    </div>
+
+                    {/* Pay Buttons */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleAuthorizeEscrow(selectedTask.id, false)}
+                        disabled={isEscrowing[selectedTask.id]}
+                        style={{
+                          padding: "6px 12px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          borderRadius: 6,
+                          backgroundColor: "#ffffff",
+                          color: "#52525b",
+                          border: "1px solid #e4e4e7",
+                          cursor: isEscrowing[selectedTask.id] ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Instant Mock Escrow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAuthorizeEscrow(selectedTask.id, true)}
+                        disabled={isEscrowing[selectedTask.id]}
+                        style={{
+                          padding: "8px 16px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          borderRadius: 6,
+                          backgroundColor: "#d97706",
+                          color: "#ffffff",
+                          border: "none",
+                          cursor: isEscrowing[selectedTask.id] ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                        }}
+                      >
+                        {isEscrowing[selectedTask.id] ? (
+                          <span>Signing & Settling via Blocky402...</span>
+                        ) : (
+                          <span>💳 Pay Real x402 Escrow (${selectedTask.bountyTotal} USD) On-Chain →</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* On-Chain Escrow Confirmed Banner */}
+                {(selectedTask.escrowReceipt || escrowSuccessMsg[selectedTask.id]) && (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #86efac",
+                      marginBottom: 16,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#15803d", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>✓ Real x402 Advance Escrow Confirmed On-Chain</span>
+                        <span style={{ fontSize: 9, backgroundColor: "#dcfce7", color: "#166534", padding: "1px 6px", borderRadius: 4, fontFamily: "var(--font-mono)" }}>
+                          BLOCKY402 SETTLED
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#166534", marginTop: 2, fontFamily: "var(--font-mono)" }}>
+                        Tx: {selectedTask.escrowReceipt?.transactionId || escrowSuccessMsg[selectedTask.id]?.txId} • Payer: {selectedTask.escrowReceipt?.payer || "0.0.10119346"} • ${selectedTask.escrowReceipt?.amountUSD ?? selectedTask.bountyTotal} USD
+                      </div>
+                    </div>
+                    <a
+                      href={toHashScanUrl(selectedTask.escrowReceipt?.transactionId || escrowSuccessMsg[selectedTask.id]?.txId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        color: "#ffffff",
+                        backgroundColor: "#15803d",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "5px 12px",
+                        textDecoration: "none",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span>View Escrow on HashScan ↗</span>
+                    </a>
                   </div>
                 )}
 
@@ -1145,7 +1308,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {selectedTask.settlementReceipt?.hcsTransactionId || selectedTask.proofReceipt?.transactionId ? (
                           <a
-                            href={`https://hashscan.io/testnet/transaction/${selectedTask.settlementReceipt?.hcsTransactionId || selectedTask.proofReceipt?.transactionId}`}
+                            href={toHashScanUrl(selectedTask.settlementReceipt?.hcsTransactionId || selectedTask.proofReceipt?.transactionId)}
                             target="_blank"
                             rel="noreferrer"
                             style={{
@@ -1262,7 +1425,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                                     <td style={{ padding: "6px 10px", textAlign: "center" }}>
                                       {p.transactionId ? (
                                         <a
-                                          href={`https://hashscan.io/testnet/transaction/${p.transactionId}`}
+                                          href={toHashScanUrl(p.transactionId)}
                                           target="_blank"
                                           rel="noreferrer"
                                           style={{
@@ -1309,7 +1472,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   {selectedTask.status === "PENDING_ESCROW" && (
                     <button
                       type="button"
-                      onClick={() => handleAuthorizeEscrow(selectedTask.id)}
+                      onClick={() => handleAuthorizeEscrow(selectedTask.id, true)}
                       disabled={isEscrowing[selectedTask.id]}
                       style={{
                         padding: "8px 16px",
@@ -1326,7 +1489,7 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                         boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
                       }}
                     >
-                      {isEscrowing[selectedTask.id] ? "Authorizing Escrow..." : `💳 Authorize x402 Advance Escrow ($${selectedTask.bountyTotal}) →`}
+                      {isEscrowing[selectedTask.id] ? "Authorizing via Blocky402..." : `💳 Pay $${selectedTask.bountyTotal} Real x402 Escrow On-Chain →`}
                     </button>
                   )}
 

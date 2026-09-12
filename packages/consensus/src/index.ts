@@ -125,8 +125,9 @@ export function normalizeFindings(raw: RawFinding[]): NormalizedFinding[] {
     }
     norm.agents.push(agentId);
     norm.locations.push(finding.location);
-    norm.snippets.push(finding.evidence.join(" | "));
-    norm.finding.evidence.push(...finding.evidence);
+    const evArr = Array.isArray(finding.evidence) ? finding.evidence : [];
+    norm.snippets.push(evArr.join(" | "));
+    norm.finding.evidence.push(...evArr);
     if (SEVERITY_RANK[finding.severity] > SEVERITY_RANK[norm.severity]) {
       norm.severity = finding.severity;
       norm.finding.severity = finding.severity;
