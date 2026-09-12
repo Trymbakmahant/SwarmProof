@@ -180,4 +180,107 @@ contract DeFiVault {
     expect(simData.task.score).toBeGreaterThanOrEqual(0);
     expect(simData.task.score).toBeLessThanOrEqual(100);
   });
+
+  it("GET /pool/tasks/pull allows agents to query pending open tasks", async () => {
+    // 1. Create task
+    const createRes = await app.request("/pool/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contractName: "PullTestContract",
+        source: "contract PullTestContract {}",
+        submissionWindowSeconds: 120,
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const { task } = await createRes.json();
+
+    // 2. Pull with role filter
+    const pullRes = await app.request(`/pool/tasks/pull?agentId=reentrancy-agent&role=reentrancy`);
+    expect(pullRes.status).toBe(200);
+    const pullData = await pullRes.json();
+    expect(pullData.ok).toBe(true);
+    expect(pullData.agentId).toBe("reentrancy-agent");
+    expect(pullData.role).toBe("reentrancy");
+    expect(pullData.tasks.some((t: any) => t.id === task.id)).toBe(true);
+  });
+
+  it("POST /pool/tasks/:id/run-swarm coordinates dual agents across all 5 specialties (10 agents) from start to end", async () => {
+    // 1. Create open task
+    const createRes = await app.request("/pool/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contractName: "MultiAgentVault",
+        source: `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+contract MultiAgentVault {
+    mapping(address => uint256) public balances;
+    function deposit() external payable { balances[msg.sender] += msg.value; }
+    function withdraw() external {
+        uint256 b = balances[msg.sender];
+        (bool s, ) = msg.sender.call{value: b}("");
+        require(s);
+        balances[msg.sender] = 0;
+    }
+}`,
+        submissionWindowSeconds: 120,
+        bountyTotal: "1.00",
+      }),
+    });
+    const { task } = await createRes.json();
+
+    // 2. Run dual-swarm autonomous pull & audit
+    const runRes = await app.request(`/pool/tasks/${task.id}/run-swarm`, {
+      method: "POST",
+    });
+    expect(runRes.status).toBe(200);
+    const runData = await runRes.json();
+
+    expect(runData.ok).toBe(true);
+    expect(runData.auditId).toBe(task.id);
+    expect(runData.agentsParticipated).toBe(10);
+    expect(runData.agents).toEqual(
+      expect.arrayContaining([
+        "reentrancy-agent",
+        "reentrancy-sentinel",
+        "access-control-agent",
+        "access-sentinel",
+        "business-logic-agent",
+        "invariant-agent",
+        "economic-agent",
+        "mev-sentinel",
+        "static-agent",
+        "bytecode-verifier",
+      ]),
+    );
+
+    // 3. Status settled and anchored on Hedera HCS
+    expect(runData.task.status).toBe("SETTLED");
+    expect(runData.task.consensusReport).toBeDefined();
+    expect(runData.task.proofReceipt).toBeDefined();
+    expect(runData.task.proofReceipt.hcsTopicId).toMatch(/0\.0\.(10417469|mock-topic)/);
+    expect(runData.task.payouts.length).toBeGreaterThan(0);
+  });
+
+  it("POST /pool/run-swarm-audit creates task and completes full dual-swarm audit in one request", async () => {
+    const res = await app.request("/pool/run-swarm-audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contractName: "OneClickAudit",
+        source: `contract OneClickAudit {
+          function test() external {}
+        }`,
+        bountyTotal: "1.00",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.agentsParticipated).toBe(10);
+    expect(data.task.status).toBe("SETTLED");
+    expect(data.task.proofReceipt).toBeDefined();
+  });
 });
