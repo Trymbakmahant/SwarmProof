@@ -20,7 +20,7 @@ export interface McpClientConfig {
   fetchImpl?: typeof fetch;
 }
 
-const DEFAULT_API = "http://localhost:3001";
+const DEFAULT_API = "https://swarm-proof-api.vercel.app";
 
 /** Minimal typed HTTP helper against the SwarmProof API. */
 export class SwarmProofApiClient {
