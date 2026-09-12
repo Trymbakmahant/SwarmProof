@@ -14,7 +14,7 @@ const client = new SwarmProofApiClient();
 const tools = createToolRegistry(client);
 
 const SERVER_NAME = "swarmproof-mcp";
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.2.0";
 
 function log(...args: unknown[]): void {
   process.stderr.write(`[swarmproof-mcp] ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ")}\n`);

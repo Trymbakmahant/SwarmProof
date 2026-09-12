@@ -1,6 +1,6 @@
 {
   "name": "swarmproof-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Official Model Context Protocol (MCP) server for SwarmProof — multi-agent smart contract security auditing on Hedera",
   "type": "module",
   "main": "./dist/index.js",

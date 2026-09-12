@@ -3,9 +3,6 @@
  *
  * Per the architecture, the MCP layer contains NO business logic: every tool
  * calls the API gateway (base URL via SWARMPROOF_API_URL / McpClient config).
- *
- * Future transports (stdio/SSE via @modelcontextprotocol/sdk) wrap this same
- * tool registry — the SDK wiring is milestone M6.
  */
 
 export interface MCPTool<
@@ -41,12 +38,15 @@ export class SwarmProofApiClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok && res.status !== 400 && res.status !== 402 && res.status !== 404) {
+      throw new Error(`API POST ${path} -> HTTP ${res.status}`);
+    }
     return (await res.json()) as T;
   }
 
   async get<T>(path: string): Promise<T> {
     const res = await this.fetchImpl(`${this.base}${path}`);
-    if (!res.ok && res.status !== 404) throw new Error(`API ${path} -> ${res.status}`);
+    if (!res.ok && res.status !== 404) throw new Error(`API GET ${path} -> HTTP ${res.status}`);
     return (await res.json()) as T;
   }
 }
@@ -55,50 +55,88 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   {
     name: "audit_contract",
     description:
-      "Submit a contract for a SwarmProof audit: creates the job + payment requirement, confirms payment (mock/x402), runs the 5-agent swarm, consensus, verification, and returns the report + HCS proof.",
+      "Submit a Solidity contract for a multi-agent consensus audit. Dispatches to 10+ AI security specialists, aggregates consensus, verifies exploits in sandbox, and anchors proof on Hedera Consensus Service Topic 0.0.10417469.",
     inputSchema: {
       type: "object",
       properties: {
         source: { type: "string", description: "Solidity source code" },
         contractName: { type: "string", description: "Contract name" },
-        network: { type: "string", description: "Chain (default ethereum)" },
-        total: { type: "string", description: "Payment total (default 1.00)" },
+        network: { type: "string", description: "Target network (default 'ethereum')" },
+        total: { type: "string", description: "Audit bounty total in USD (default '1.00')" },
       },
       required: ["source", "contractName"],
     },
     async run(input: { source: string; contractName: string; network?: string; total?: string }) {
-      // 1. Create the job + payment requirement (client sees allocation BEFORE paying).
+      try {
+        const direct = await client.post<any>("/audits", {
+          contractName: input.contractName,
+          source: input.source,
+          network: input.network,
+          total: input.total,
+        });
+
+        if (direct && (direct.id || direct.auditId)) {
+          const auditId = direct.id || direct.auditId;
+          const proof = direct.proofReceipt || direct.proof || (await client.get<any>(`/audits/${auditId}/proof`).catch(() => ({})));
+          const rawFindings = direct.findings || direct.report?.findings || [];
+          const txId = proof?.transactionId;
+
+          return {
+            auditId,
+            status: direct.status || "done",
+            findingCount: Array.isArray(rawFindings) ? rawFindings.length : 0,
+            findings: rawFindings,
+            consensusReport: direct.report || direct.consensusReport,
+            proof: proof,
+            hashScanUrl: txId
+              ? `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
+              : undefined,
+          };
+        }
+      } catch {
+        // Fall back to 2-step challenge/payment flow if needed
+      }
+
+      // 1. Create the job + payment requirement
       const created = await client.post<{ auditId: string; status: string; payment?: unknown }>("/audit", {
         contractName: input.contractName,
         source: input.source,
         network: input.network,
         total: input.total,
       });
-      // 2. Confirm the single job payment (mock auto-pays; x402 expects a reference).
+
+      // 2. Confirm payment
       const paid = await client.post<{ auditId: string; status: string; payment?: unknown }>(
         `/audits/${created.auditId}/pay`,
         { reference: input.total ? `mcp:${input.total}` : "mcp:default" },
       );
-      // 3. Poll until the swarm finishes.
+
+      // 3. Poll until the swarm finishes
       let report: { status: string } | undefined;
       for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 600));
         const s = await client.get<{ status: string }>(`/audits/${created.auditId}/status`);
         if (s.status === "done" || s.status === "failed") {
           report = s;
           break;
         }
       }
-      const proof = await client.get<unknown>(`/audits/${created.auditId}/proof`);
-      const findings = await client.get<{ findings: unknown[] }>(`/audits/${created.auditId}/findings`);
+
+      const proof = await client.get<any>(`/audits/${created.auditId}/proof`).catch(() => ({}));
+      const findings = await client.get<{ findings: unknown[] }>(`/audits/${created.auditId}/findings`).catch(() => ({ findings: [] }));
+      const txId = proof?.transactionId;
+
       return {
         auditId: created.auditId,
-        payment: created.payment, // total / recipients / network / paymentId — visible to the caller
+        payment: created.payment,
         paymentStatus: paid.status,
         status: report?.status,
         findingCount: findings.findings.length,
-        reportHash: (proof as { reportHash?: string })?.reportHash,
-        proof: proof as { hcsTopicId?: string; transactionId?: string; consensusTimestamp?: string; verified?: boolean },
+        reportHash: proof?.reportHash,
+        proof,
+        hashScanUrl: txId
+          ? `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
+          : undefined,
       };
     },
   },
@@ -116,7 +154,7 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   },
   {
     name: "get_findings",
-    description: "Get the audit's accepted findings + verification artifacts.",
+    description: "Get verified vulnerability findings with line locations, severities, and remediation advice.",
     inputSchema: {
       type: "object",
       properties: { auditId: { type: "string" } },
@@ -128,7 +166,7 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   },
   {
     name: "verify_finding",
-    description: "Reproduce a single finding with the verification engine.",
+    description: "Reproduce a candidate vulnerability with the simulation verification engine.",
     inputSchema: {
       type: "object",
       properties: {
@@ -143,7 +181,7 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   },
   {
     name: "get_audit_proof",
-    description: "Get the HCS-anchored tamper-evident proof for an audit.",
+    description: "Get the tamper-evident proof anchored on Hedera Consensus Service Topic 0.0.10417469.",
     inputSchema: {
       type: "object",
       properties: { auditId: { type: "string" } },
@@ -155,45 +193,155 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   },
   {
     name: "list_agents",
-    description: "List the specialist agents available in the SwarmProof ecosystem.",
+    description: "List active security specialist agents in the SwarmProof ecosystem with roles and Hedera accounts.",
     inputSchema: { type: "object", properties: {}, required: [] },
     async run() {
       return client.get("/agents");
     },
   },
   {
-    name: "register_agent",
-    description:
-      "Register a new autonomous security auditor agent with SwarmProof. Anchors a W3C Decentralized Identifier (did:hedera) and Verifiable Credential on Hedera Consensus Service.",
+    name: "get_agent_challenge",
+    description: "Request an anti-replay cryptographic challenge nonce for enrolling an agent on Hedera Consensus Service.",
     inputSchema: {
       type: "object",
       properties: {
-        agentId: { type: "string", description: "Unique agent identifier, e.g. 'fireworks-auditor-1'" },
+        agentId: { type: "string", description: "Desired agent ID" },
+        accountId: { type: "string", description: "Hedera account ID (0.0.x) or EVM address" },
+      },
+      required: ["agentId"],
+    },
+    async run(input: { agentId: string; accountId?: string }) {
+      const q = new URLSearchParams({ agentId: input.agentId });
+      if (input.accountId) q.set("accountId", input.accountId);
+      return client.get(`/agents/challenge?${q.toString()}`);
+    },
+  },
+  {
+    name: "register_agent",
+    description:
+      "Register an autonomous security auditor agent with SwarmProof. Anchors a W3C Decentralized Identifier (did:hedera) and Verifiable Credential on Hedera Consensus Service.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Unique agent identifier, e.g. 'custom-sentinel-01'" },
         name: { type: "string", description: "Human-readable agent name" },
         role: { type: "string", description: "Audit specialty, e.g. 'reentrancy', 'access-control', 'business-logic', 'economic', 'static'" },
         capabilities: { type: "array", items: { type: "string" }, description: "List of detection capabilities" },
         paymentAddress: { type: "string", description: "Payout address (Hedera account 0.0.x or EVM 0x...)" },
-        provider: { type: "string", description: "LLM Provider: 'fireworks', 'openai', 'anthropic', 'ollama'" },
-        model: { type: "string", description: "Model identifier, e.g. 'accounts/fireworks/models/deepseek-v3'" },
-        benchmarkScore: { type: "number", description: "Benchmark examination score (default 90+)" },
-        signature: { type: "string", description: "Cryptographic challenge signature proving private key ownership" },
         publicKey: { type: "string", description: "Public key matching the challenge signature" },
+        signature: { type: "string", description: "Cryptographic challenge signature proving private key ownership" },
+        shape: { type: "string", description: "Visual shape: 'octahedron', 'dodecahedron', 'torusKnot', 'icosahedron', 'gyroscope'" },
+        color: { type: "string", description: "Hex brand color, e.g. '#00f5ff'" },
+        systemPrompt: { type: "string", description: "Custom LLM security system prompt" },
+        model: { type: "string", description: "Model identifier, e.g. 'deepseek-reasoner'" },
       },
       required: ["agentId", "name", "role", "paymentAddress"],
     },
-    async run(input: {
-      agentId: string;
-      name: string;
-      role: string;
-      capabilities?: string[];
-      paymentAddress: string;
-      provider?: string;
-      model?: string;
-      benchmarkScore?: number;
-      signature?: string;
-      publicKey?: string;
-    }) {
+    async run(input: Record<string, unknown>) {
       return client.post("/agents/register", input);
+    },
+  },
+  {
+    name: "get_agent_did",
+    description: "Resolve the official W3C Decentralized Identifier (DID) document for a registered agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID to resolve" },
+      },
+      required: ["agentId"],
+    },
+    async run(input: { agentId: string }) {
+      return client.get(`/agents/${input.agentId}/did`);
+    },
+  },
+  {
+    name: "get_agent_credential",
+    description: "Fetch the W3C Verifiable Credential issued to a registered agent, anchored on Hedera HCS.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID" },
+      },
+      required: ["agentId"],
+    },
+    async run(input: { agentId: string }) {
+      return client.get(`/agents/${input.agentId}/credential`);
+    },
+  },
+  {
+    name: "list_pool_tasks",
+    description: "List audit tasks in the decentralized task pool, with optional filter by status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description: "Filter status: 'OPEN_FOR_SUBMISSIONS', 'WINDOW_CLOSED', 'SETTLED', or undefined for all",
+        },
+      },
+      required: [],
+    },
+    async run(input: { status?: string }) {
+      const q = input.status ? `?status=${encodeURIComponent(input.status)}` : "";
+      return client.get(`/pool/tasks${q}`);
+    },
+  },
+  {
+    name: "get_pool_task",
+    description: "Get detailed status of a task pool audit including claimed slots, specialist submissions, consensus report, and on-chain Hedera micropayouts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task pool ID" },
+      },
+      required: ["taskId"],
+    },
+    async run(input: { taskId: string }) {
+      return client.get(`/pool/tasks/${input.taskId}`);
+    },
+  },
+  {
+    name: "create_pool_task",
+    description: "Post a new smart contract audit bounty to the decentralized task pool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contractName: { type: "string", description: "Contract name" },
+        source: { type: "string", description: "Solidity source code" },
+        bountyTotal: { type: "string", description: "Bounty total in USD (default '2.00')" },
+        currency: { type: "string", description: "Currency (default 'USD')" },
+        submissionWindowSeconds: { type: "number", description: "Submission window in seconds (default 180)" },
+        autoOpen: { type: "boolean", description: "Open immediately for submissions (default true)" },
+      },
+      required: ["contractName", "source"],
+    },
+    async run(input: {
+      contractName: string;
+      source: string;
+      bountyTotal?: string;
+      currency?: string;
+      submissionWindowSeconds?: number;
+      autoOpen?: boolean;
+    }) {
+      return client.post("/pool/tasks", input);
+    },
+  },
+  {
+    name: "claim_task_slot",
+    description: "Claim a specialist auditor slot on an open audit task before submitting findings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task pool ID" },
+        agentId: { type: "string", description: "Agent ID claiming slot" },
+        role: { type: "string", description: "Specialist role domain" },
+        paymentAddress: { type: "string", description: "Hedera payout account" },
+      },
+      required: ["taskId", "agentId", "role"],
+    },
+    async run(input: { taskId: string; agentId: string; role: string; paymentAddress?: string }) {
+      return client.post(`/pool/tasks/${input.taskId}/claim`, input);
     },
   },
   {

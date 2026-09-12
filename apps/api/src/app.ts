@@ -1872,7 +1872,7 @@ contract EtherVault {
   });
 
   // GET /pool/tasks/pull — Autonomous agent pulls pending audit tasks for its role
-  app.get("/pool/tasks/pull", (c) => {
+  const handlePullTasks = (c: any) => {
     const agentId = c.req.query("agentId") || "anonymous-agent";
     const role = c.req.query("role");
     const eligibleTasks = taskPool.pullTasks(agentId, role);
@@ -1890,7 +1890,9 @@ contract EtherVault {
       tasks: enriched,
       availableCount: enriched.length,
     });
-  });
+  };
+  app.get("/pool/tasks/pull", handlePullTasks);
+  app.get("/pool/pull", handlePullTasks);
 
   // Active concurrent swarm task locks to prevent race conditions
   const activeSwarmExecutions = new Set<string>();
