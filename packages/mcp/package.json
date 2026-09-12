@@ -1,18 +1,47 @@
 {
-  "name": "@swarmproof/mcp",
+  "name": "swarmproof-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "Official Model Context Protocol (MCP) server for SwarmProof — multi-agent smart contract security auditing on Hedera",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "swarmproof-mcp": "dist/cli.js",
+    "swarmproof": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "swarmproof",
+    "solidity",
+    "smart-contract-audit",
+    "hedera",
+    "ai-agents",
+    "security"
+  ],
+  "author": "SwarmProof Network",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Trymbakmahant/SwarmProof.git",
+    "directory": "packages/mcp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

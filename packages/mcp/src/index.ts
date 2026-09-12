@@ -161,4 +161,129 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
       return client.get("/agents");
     },
   },
+  {
+    name: "register_agent",
+    description:
+      "Register a new autonomous security auditor agent with SwarmProof. Anchors a W3C Decentralized Identifier (did:hedera) and Verifiable Credential on Hedera Consensus Service.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Unique agent identifier, e.g. 'fireworks-auditor-1'" },
+        name: { type: "string", description: "Human-readable agent name" },
+        role: { type: "string", description: "Audit specialty, e.g. 'reentrancy', 'access-control', 'business-logic', 'economic', 'static'" },
+        capabilities: { type: "array", items: { type: "string" }, description: "List of detection capabilities" },
+        paymentAddress: { type: "string", description: "Payout address (Hedera account 0.0.x or EVM 0x...)" },
+        provider: { type: "string", description: "LLM Provider: 'fireworks', 'openai', 'anthropic', 'ollama'" },
+        model: { type: "string", description: "Model identifier, e.g. 'accounts/fireworks/models/deepseek-v3'" },
+        benchmarkScore: { type: "number", description: "Benchmark examination score (default 90+)" },
+        signature: { type: "string", description: "Cryptographic challenge signature proving private key ownership" },
+        publicKey: { type: "string", description: "Public key matching the challenge signature" },
+      },
+      required: ["agentId", "name", "role", "paymentAddress"],
+    },
+    async run(input: {
+      agentId: string;
+      name: string;
+      role: string;
+      capabilities?: string[];
+      paymentAddress: string;
+      provider?: string;
+      model?: string;
+      benchmarkScore?: number;
+      signature?: string;
+      publicKey?: string;
+    }) {
+      return client.post("/agents/register", input);
+    },
+  },
+  {
+    name: "pull_task",
+    description: "Pull pending open audit tasks from the SwarmProof task pool for an autonomous agent and specialty role.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID requesting open tasks" },
+        role: { type: "string", description: "Specialty role filter, e.g. 'reentrancy'" },
+      },
+      required: ["agentId"],
+    },
+    async run(input: { agentId: string; role?: string }) {
+      const q = new URLSearchParams({ agentId: input.agentId });
+      if (input.role) q.set("role", input.role);
+      return client.get(`/pool/tasks/pull?${q.toString()}`);
+    },
+  },
+  {
+    name: "submit_task_finding",
+    description: "Submit candidate vulnerability findings for an active task pool audit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task pool ID" },
+        agentId: { type: "string", description: "Submitting agent ID" },
+        role: { type: "string", description: "Specialist role" },
+        findings: {
+          type: "array",
+          description: "List of candidate findings",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              title: { type: "string" },
+              category: { type: "string" },
+              severity: { type: "string" },
+              location: { type: "string" },
+              evidence: { type: "array", items: { type: "string" } },
+            },
+            required: ["id", "title", "category", "severity", "location", "evidence"],
+          },
+        },
+      },
+      required: ["taskId", "agentId", "role", "findings"],
+    },
+    async run(input: {
+      taskId: string;
+      agentId: string;
+      role: string;
+      findings: Array<{
+        id: string;
+        title: string;
+        category: string;
+        severity: string;
+        location: string;
+        evidence: string[];
+      }>;
+    }) {
+      return client.post(`/pool/tasks/${input.taskId}/submit`, {
+        agentId: input.agentId,
+        role: input.role,
+        findings: input.findings,
+      });
+    },
+  },
+  {
+    name: "run_swarm_audit",
+    description:
+      "Execute an end-to-end swarm audit: creates task, dispatches dual-agents for each specialty, aggregates consensus, verifies with Foundry/Solc PoC, and anchors Hedera HCS proof.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contractName: { type: "string", description: "Contract name" },
+        source: { type: "string", description: "Solidity source code" },
+        compiler: { type: "string", description: "Solidity compiler version, e.g. '0.8.20'" },
+        network: { type: "string", description: "Target network (default 'ethereum')" },
+        bountyTotal: { type: "string", description: "Bounty total in USD (default '1.00')" },
+      },
+      required: ["contractName", "source"],
+    },
+    async run(input: {
+      contractName: string;
+      source: string;
+      compiler?: string;
+      network?: string;
+      bountyTotal?: string;
+    }) {
+      return client.post("/pool/run-swarm-audit", input);
+    },
+  },
 ];
