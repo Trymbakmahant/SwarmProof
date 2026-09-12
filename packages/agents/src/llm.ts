@@ -103,7 +103,7 @@ export class FireworksProvider implements LLMProvider {
   ) {
     this.apiKey = config.apiKey.trim();
     this.baseUrl = (config.baseUrl ?? "https://api.fireworks.ai/inference/v1").replace(/\/$/, "");
-    this.model = config.model ?? "accounts/fireworks/models/deepseek-v4p1-flash";
+    this.model = config.model ? config.model.trim() : "accounts/fireworks/models/deepseek-v4p1-flash";
     this.name = `fireworks:${this.model}`;
     this.timeoutMs = config.timeoutMs ?? 60_000;
     this.fetchFn = fetchFn ?? fetch;
@@ -441,7 +441,7 @@ export function createLLMProviderFromEnv(
     return new FireworksProvider({
       apiKey: fireworksKey.trim(),
       baseUrl: env.FIREWORKS_BASE_URL ?? env.SWARMPROOF_FIREWORKS_BASE_URL,
-      model: env.FIREWORKS_MODEL ?? env.SWARMPROOF_LLM_MODEL ?? "accounts/fireworks/models/deepseek-v4p1-flash",
+      model: (env.FIREWORKS_MODEL ?? env.SWARMPROOF_LLM_MODEL ?? "accounts/fireworks/models/deepseek-v4p1-flash").trim(),
     });
   }
 
