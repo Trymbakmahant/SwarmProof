@@ -808,8 +808,8 @@ export default function Page() {
                   <span className="font-label-md text-label-md text-tertiary">Micro-settled on Hedera in ℏ &amp; USDC</span>
                 </div>
                 <div className="p-space-lg rounded-2xl bg-surface-container-lowest shadow-sm flex flex-col items-center justify-center text-center transition-all hover:translate-y-[-2px]">
-                  <span className="font-headline-sm text-headline-sm text-secondary mb-1">&lt; 3.2s Quorum</span>
-                  <span className="font-label-md text-label-md text-tertiary">Consensus Finality &amp; Anti-Hallucination</span>
+                  <span className="font-headline-sm text-headline-sm text-secondary mb-1">80% BFT Quorum</span>
+                  <span className="font-label-md text-label-md text-tertiary">Byzantine Consensus &amp; Anti-Hallucination</span>
                 </div>
               </div>
             </section>

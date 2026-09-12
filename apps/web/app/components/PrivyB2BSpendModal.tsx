@@ -270,8 +270,8 @@ export function PrivyB2BSpendModal({ onClose, onOpenTaskPool }: PrivyB2BSpendMod
                   <div className="text-zinc-200 font-bold mt-0.5">3 Specialists</div>
                 </div>
                 <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
-                  <div className="text-zinc-500">Settlement Speed</div>
-                  <div className="text-zinc-200 font-bold mt-0.5">&lt; 3.2s on HCS</div>
+                  <div className="text-zinc-500">Settlement Network</div>
+                  <div className="text-zinc-200 font-bold mt-0.5">Hedera HCS Finality</div>
                 </div>
               </div>
             </div>

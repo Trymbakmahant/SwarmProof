@@ -360,11 +360,11 @@ export default function PitchDeckPage() {
                 </div>
                 <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
                   <div className="flex items-center justify-between">
-                    <span className="font-title-md text-body-md font-semibold text-on-surface">Consensus Finality</span>
-                    <span className="font-label-sm text-primary font-bold">&lt; 3.2s Quorum</span>
+                    <span className="font-title-md text-body-md font-semibold text-on-surface">Byzantine Agreement</span>
+                    <span className="font-label-sm text-primary font-bold">80% Quorum Threshold</span>
                   </div>
                   <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    Weighted Byzantine agreement prevents hallucination before sealing HCS receipts.
+                    Weighted 4/5 agent agreement eliminates hallucination before sealing HCS receipts.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
