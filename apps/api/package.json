@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "x402:live": "tsx scripts/x402-live-testnet.ts"
+    "x402:live": "tsx scripts/x402-live-testnet.ts",
+    "test:supabase": "tsx scripts/test-supabase-flow.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
