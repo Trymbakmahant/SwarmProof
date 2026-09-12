@@ -1530,47 +1530,84 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   )}
 
                   {selectedTask.status === "OPEN_FOR_SUBMISSIONS" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleSimulateSwarm(selectedTask.id)}
-                        disabled={isSimulating[selectedTask.id]}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                      <div
                         style={{
-                          padding: "8px 14px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          borderRadius: 6,
-                          backgroundColor: "#09090b",
-                          color: "#ffffff",
-                          border: "none",
-                          cursor: isSimulating[selectedTask.id] ? "not-allowed" : "pointer",
-                          display: "inline-flex",
+                          display: "flex",
                           alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 12px",
+                          backgroundColor: "#f0fdf4",
+                          border: "1px solid #bbf7d0",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          color: "#166534",
+                          flexWrap: "wrap",
                           gap: 6,
                         }}
                       >
-                        {isSimulating[selectedTask.id] ? "Swarming Agents in..." : "🤖 Simulate Swarm Specialist Inflow →"}
-                      </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              backgroundColor: "#16a34a",
+                              boxShadow: "0 0 0 3px rgba(22, 163, 74, 0.2)",
+                            }}
+                          />
+                          <span>
+                            <strong>⚡ Autonomous Swarm Active:</strong> Agents continuously poll & auto-solve open pool tasks...
+                          </span>
+                        </div>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#15803d", fontWeight: 700 }}>
+                          {selectedTask.submissions?.length ?? 0} Submissions Received
+                        </span>
+                      </div>
 
-                      {selectedTask.submissions.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={() => handleTriggerConsensus(selectedTask.id)}
+                          onClick={() => handleSimulateSwarm(selectedTask.id)}
+                          disabled={isSimulating[selectedTask.id]}
                           style={{
                             padding: "8px 14px",
                             fontSize: 12,
-                            fontWeight: 600,
+                            fontWeight: 700,
                             borderRadius: 6,
-                            backgroundColor: "#f4f4f5",
-                            color: "#09090b",
-                            border: "1px solid #e4e4e7",
-                            cursor: "pointer",
+                            backgroundColor: "#09090b",
+                            color: "#ffffff",
+                            border: "none",
+                            cursor: isSimulating[selectedTask.id] ? "not-allowed" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
                           }}
                         >
-                          Trigger Consensus Now ⚖️
+                          {isSimulating[selectedTask.id] ? "Swarming Agents in..." : "⚡ Force Trigger Swarm Now →"}
                         </button>
-                      )}
-                    </>
+
+                        {selectedTask.submissions.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerConsensus(selectedTask.id)}
+                            style={{
+                              padding: "8px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              borderRadius: 6,
+                              backgroundColor: "#f4f4f5",
+                              color: "#09090b",
+                              border: "1px solid #e4e4e7",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Trigger Consensus Now ⚖️ ({selectedTask.submissions.length})
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

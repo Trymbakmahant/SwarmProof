@@ -1796,6 +1796,120 @@ contract EtherVault {
     });
   });
 
+  // Active concurrent swarm task locks to prevent race conditions
+  const activeSwarmExecutions = new Set<string>();
+
+  /**
+   * Autonomous Swarm Solver:
+   * Executes dual-agent specialist security analysis (10 agents across 5 domains),
+   * claims slots, submits findings, triggers consensus quorum, and settles micropayments.
+   */
+  async function executeSwarmForTask(taskId: string): Promise<PoolTask | undefined> {
+    if (activeSwarmExecutions.has(taskId)) {
+      return taskPool.getTask(taskId);
+    }
+    const task = taskPool.getTask(taskId);
+    if (!task) return undefined;
+    if (task.status === "SETTLED" || task.status === "CONSENSUS_AGGREGATION") {
+      return task;
+    }
+
+    activeSwarmExecutions.add(taskId);
+    try {
+      if (task.status === "PENDING_ESCROW") {
+        taskPool.openTaskForSubmissions(taskId);
+      }
+
+      const DUAL_AGENTS_PER_ROLE: Record<string, string[]> = {
+        reentrancy: ["reentrancy-agent", "reentrancy-sentinel"],
+        "access-control": ["access-control-agent", "access-sentinel"],
+        "business-logic": ["business-logic-agent", "invariant-agent"],
+        economic: ["economic-agent", "mev-sentinel"],
+        "economic-oracle": ["economic-agent", "mev-sentinel"],
+        "static-analysis": ["static-agent", "bytecode-verifier"],
+        static: ["static-agent", "bytecode-verifier"],
+        oracle: ["economic-agent", "mev-sentinel"],
+        delegatecall: ["static-agent", "bytecode-verifier"],
+      };
+
+      const rolesToAudit = task.requiredRoles.length > 0
+        ? task.requiredRoles
+        : ["reentrancy", "access-control", "business-logic", "economic", "static-analysis"];
+
+      const pairs: Array<{ normRole: string; agentKey: string }> = [];
+      for (const role of rolesToAudit) {
+        const normRole = role.toLowerCase().trim();
+        const agentKeys = DUAL_AGENTS_PER_ROLE[normRole] || [`${normRole}-agent`, `${normRole}-sentinel`];
+        for (const agentKey of agentKeys) {
+          pairs.push({ normRole, agentKey });
+        }
+      }
+
+      await Promise.all(
+        pairs.map(async ({ normRole, agentKey }) => {
+          const agent = (specialists as Record<string, SecurityAgent>)[agentKey] ?? Object.values(specialists).find((a) => a.identity.agentId === agentKey);
+          const agentId = agent ? agent.identity.agentId : agentKey;
+
+          let findings: Finding[] = [];
+          if (agent) {
+            try {
+              findings = await agent.analyze({
+                contractName: task.contractName,
+                source: task.source,
+                network: task.network ?? "ethereum",
+              });
+            } catch {
+              findings = [];
+            }
+          }
+
+          taskPool.claimSlot(task.id, {
+            agentId,
+            role: normRole,
+            paymentAddress: agent?.identity.paymentAddress,
+          });
+
+          taskPool.submitFindings(task.id, {
+            agentId,
+            role: normRole,
+            findings,
+          });
+        })
+      );
+
+      let settledTask = taskPool.getTask(taskId);
+      if (settledTask) {
+        try {
+          settledTask = await taskPool.triggerConsensus(taskId);
+        } catch (err) {
+          console.warn(`[Autonomous Swarm] Consensus trigger error for ${taskId}: ${(err as Error).message}`);
+        }
+      }
+
+      return settledTask;
+    } finally {
+      activeSwarmExecutions.delete(taskId);
+    }
+  }
+
+  // Autonomous Swarm Background Worker: automatically pulls tasks from the pool and solves them
+  if (process.env.NODE_ENV !== "test") {
+    const autoWorker = setInterval(async () => {
+      try {
+        const openTasks = taskPool.listTasks({ status: "OPEN_FOR_SUBMISSIONS" }).filter((t) => t.submissions.length === 0);
+        for (const t of openTasks) {
+          console.log(`[Autonomous Agent Swarm] Auto-pulling task ${t.id} (${t.contractName}) from pool...`);
+          await executeSwarmForTask(t.id);
+        }
+      } catch (err) {
+        console.warn(`[Autonomous Worker] Auto-pull error: ${(err as Error).message}`);
+      }
+    }, 4000);
+    if (autoWorker && typeof (autoWorker as any).unref === "function") {
+      (autoWorker as any).unref();
+    }
+  }
+
   // POST /pool/tasks — Create a new audit task in the pool
   app.post("/pool/tasks", async (c) => {
     try {
@@ -1862,6 +1976,12 @@ contract EtherVault {
           402,
           { "WWW-Authenticate": `X402 resource="${escrowUrl}"` },
         );
+      }
+
+      if (isAutoOpen) {
+        setTimeout(() => {
+          void executeSwarmForTask(task.id).catch(console.warn);
+        }, 1000);
       }
 
       return c.json({
@@ -2054,92 +2174,17 @@ contract EtherVault {
     const task = taskPool.getTask(id);
     if (!task) return c.json({ error: `Task ${id} not found` }, 404);
 
-    if (task.status === "PENDING_ESCROW") {
-      taskPool.openTaskForSubmissions(id);
-    }
-
-    const DUAL_AGENTS_PER_ROLE: Record<string, string[]> = {
-      reentrancy: ["reentrancy-agent", "reentrancy-sentinel"],
-      "access-control": ["access-control-agent", "access-sentinel"],
-      "business-logic": ["business-logic-agent", "invariant-agent"],
-      economic: ["economic-agent", "mev-sentinel"],
-      "economic-oracle": ["economic-agent", "mev-sentinel"],
-      "static-analysis": ["static-agent", "bytecode-verifier"],
-      static: ["static-agent", "bytecode-verifier"],
-      oracle: ["economic-agent", "mev-sentinel"],
-      delegatecall: ["static-agent", "bytecode-verifier"],
-    };
-
-    const rolesToAudit = task.requiredRoles.length > 0
-      ? task.requiredRoles
-      : ["reentrancy", "access-control", "business-logic", "economic", "static-analysis"];
-    const participatingSubmissions: Array<{ agentId: string; role: string; findingsCount: number }> = [];
-
-    const pairs: Array<{ normRole: string; agentKey: string }> = [];
-    for (const role of rolesToAudit) {
-      const normRole = role.toLowerCase().trim();
-      const agentKeys = DUAL_AGENTS_PER_ROLE[normRole] || [`${normRole}-agent`, `${normRole}-sentinel`];
-      for (const agentKey of agentKeys) {
-        pairs.push({ normRole, agentKey });
-      }
-    }
-
-    await Promise.all(
-      pairs.map(async ({ normRole, agentKey }) => {
-        const agent = (specialists as Record<string, SecurityAgent>)[agentKey] ?? Object.values(specialists).find((a) => a.identity.agentId === agentKey);
-        const agentId = agent ? agent.identity.agentId : agentKey;
-
-        let findings: Finding[] = [];
-        if (agent) {
-          try {
-            findings = await agent.analyze({
-              contractName: task.contractName,
-              source: task.source,
-              network: task.network ?? "ethereum",
-            });
-          } catch {
-            findings = [];
-          }
-        }
-
-        taskPool.claimSlot(task.id, {
-          agentId,
-          role: normRole,
-          paymentAddress: agent?.identity.paymentAddress,
-        });
-
-        taskPool.submitFindings(task.id, {
-          agentId,
-          role: normRole,
-          findings,
-        });
-
-        participatingSubmissions.push({
-          agentId,
-          role: normRole,
-          findingsCount: findings.length,
-        });
-      })
-    );
-
-    let settledTask = taskPool.getTask(id);
-    if (settledTask) {
-      try {
-        settledTask = await taskPool.triggerConsensus(id);
-      } catch (err) {
-        console.warn(`Consensus trigger error during dual swarm: ${(err as Error).message}`);
-      }
-    }
+    const settledTask = await executeSwarmForTask(id);
 
     return c.json({
       ok: true,
       auditId: id,
       mode: "dual-specialist-swarm",
       agentsPerRole: 2,
-      agentsParticipated: participatingSubmissions.length,
-      agents: participatingSubmissions.map((s) => s.agentId),
-      totalSpecialistsRun: participatingSubmissions.length,
-      submissions: participatingSubmissions,
+      agentsParticipated: settledTask?.submissions.length ?? 0,
+      agents: settledTask?.submissions.map((s) => s.agentId) ?? [],
+      totalSpecialistsRun: settledTask?.submissions.length ?? 0,
+      submissions: settledTask?.submissions ?? [],
       task: settledTask ? {
         ...settledTask,
         remainingSeconds: taskPool.getRemainingSeconds(settledTask),
@@ -2148,6 +2193,7 @@ contract EtherVault {
       consensusReport: settledTask?.consensusReport,
       proofReceipt: settledTask?.proofReceipt,
       settlementReceipt: settledTask?.settlementReceipt,
+      payouts: settledTask?.payouts,
     });
   });
 
@@ -2383,6 +2429,9 @@ contract EtherVault {
 
     try {
       const opened = taskPool.escrowTask(id, ref, escrowReceipt);
+      setTimeout(() => {
+        void executeSwarmForTask(id).catch(console.warn);
+      }, 1000);
       return c.json({
         ok: true,
         message: escrowReceipt
