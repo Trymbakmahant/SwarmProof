@@ -33,7 +33,6 @@ const AGENT_PRESETS: PresetTemplate[] = [
     capabilities: ["merkle-proof", "signature-replay", "cross-chain-nonce", "payload-injection"],
     systemPrompt:
       "You are the Bridge & Cross-Chain Security Specialist. Detect replay vulnerabilities, missing chainId domain separators, insufficient validator quorum validation, and malleable ECDSA signatures. Output findings in valid JSON.",
-    defaultEndpoint: "https://bridge-guard.swarmproof.node/a2a",
   },
   {
     name: "DAO Governance Guardian",
@@ -44,7 +43,6 @@ const AGENT_PRESETS: PresetTemplate[] = [
     capabilities: ["timelock-delay", "voting-power-flashloan", "proposal-hijack", "quorum-bypass"],
     systemPrompt:
       "You are the DAO Governance Guardian Specialist. Audit voting mechanics, snapshot timing, timelock bypasses, and self-delegation loopholes. Output findings in valid JSON.",
-    defaultEndpoint: "https://governance.swarmproof.node/a2a",
   },
   {
     name: "ERC-4337 Account Abstraction Auditor",
@@ -55,7 +53,6 @@ const AGENT_PRESETS: PresetTemplate[] = [
     capabilities: ["userop-validation", "paymaster-draining", "signature-aggregator", "gas-griefing"],
     systemPrompt:
       "You are the ERC-4337 Account Abstraction Specialist. Detect paymaster fund draining, improper validateUserOp execution, unbounded gas limits, and signature aggregation bypasses. Output findings in valid JSON.",
-    defaultEndpoint: "https://account-abstraction.swarmproof.node/a2a",
   },
   {
     name: "ZK Circuit & Constraint Verifier",
@@ -66,7 +63,6 @@ const AGENT_PRESETS: PresetTemplate[] = [
     capabilities: ["underconstrained-signals", "zk-soundness", "public-input-tamper", "nullifier-reuse"],
     systemPrompt:
       "You are the ZK Circuit & Verifier Specialist. Scan on-chain verifier contracts for nullifier re-use, unconstrained inputs, pairing checks, and proof malleability. Output findings in valid JSON.",
-    defaultEndpoint: "https://zk-verifier.swarmproof.node/a2a",
   },
   {
     name: "MEV & Flash Loan Sentinel",
@@ -77,7 +73,6 @@ const AGENT_PRESETS: PresetTemplate[] = [
     capabilities: ["flash-loan", "oracle-manipulation", "sandwich-attack", "slippage-omission"],
     systemPrompt:
       "You are the MEV & Flash Loan Sentinel Specialist. Your domain is detecting atomic arbitrage risks, flash-loan vulnerable balance reserves, single-block AMM spot manipulation, and lack of slippage protections in Solidity contracts. Output findings in valid JSON.",
-    defaultEndpoint: "https://mev-sentinel.swarmproof.node/a2a",
   },
 ];
 
@@ -99,7 +94,7 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
   const [paymentAddress, setPaymentAddress] = useState("0.0.10119346");
   const [systemPrompt, setSystemPrompt] = useState(defaultPreset.systemPrompt);
   const [model, setModel] = useState("deepseek-v3");
-  const [endpoint, setEndpoint] = useState(defaultPreset.defaultEndpoint || "http://localhost:8080/a2a");
+  const [endpoint, setEndpoint] = useState("");
 
   // Selected agent for Update Mode
   const [selectedAgentToUpdate, setSelectedAgentToUpdate] = useState<string>("");
@@ -1070,19 +1065,18 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                 </div>
 
                 <p style={{ margin: 0, fontSize: 12, color: "#15803d" }}>
-                  SwarmProof's consensus engine will dispatch smart contract audit tasks directly to this JSON-RPC / REST endpoint:
+                  SwarmProof's consensus engine will dispatch smart contract audit tasks directly to your node's JSON-RPC endpoint (or leave blank to use cloud LLM inference):
                 </p>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input
                     type="text"
-                    required
                     value={endpoint}
                     onChange={(e) => {
                       setEndpoint(e.target.value);
                       setEndpointTestResult(null);
                     }}
-                    placeholder="https://agent.mysecuritynode.xyz/a2a or http://localhost:8080/a2a"
+                    placeholder="e.g. http://localhost:8080/a2a or https://my-agent.xyz/a2a"
                     style={{
                       flex: 1,
                       padding: "9px 12px",
