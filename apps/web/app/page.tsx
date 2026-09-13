@@ -356,6 +356,9 @@ export default function Page() {
   const [isAuditing, setIsAuditing] = useState(false);
   const [pipelineStep, setPipelineStep] = useState<number>(5);
   const [pipelineStatus, setPipelineStatus] = useState<"READY" | "VERIFYING" | "FINALIZED">("READY");
+  const [liveStepLabel, setLiveStepLabel] = useState<string | null>(null);
+  const [liveStepSubtext, setLiveStepSubtext] = useState<string | null>(null);
+  const [liveStepTimestamp, setLiveStepTimestamp] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<any>(null);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [show3DSwarm, setShow3DSwarm] = useState(false);
@@ -402,24 +405,14 @@ export default function Page() {
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
 
-  // Run multi-agent consensus sequence
+  // Run multi-agent consensus sequence with real-time backend progress events
   const handleRunAudit = async () => {
     setIsAuditing(true);
     setPipelineStatus("VERIFYING");
     setPipelineStep(1);
-
-    // Realistic multi-stage pipeline pacing mirroring AI debate & HCS ledger anchoring
-    const t1 = setTimeout(() => setPipelineStep(2), 1800); // Ingest -> Swarm Debate
-    const t2 = setTimeout(() => setPipelineStep(3), 9500); // Debate -> Quorum Finalized
-    const t3 = setTimeout(() => setPipelineStep(4), 15000); // Quorum -> Bytecode Invariant Verified
-    const t4 = setTimeout(() => setPipelineStep(5), 20000); // Bytecode -> Sealing on Hedera HCS Topic
-
-    const clearTimers = () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
+    setLiveStepLabel("Ingest & AST Decomposition");
+    setLiveStepSubtext("Lexical & AST syntax parsing across contract functions");
+    setLiveStepTimestamp(new Date().toISOString());
 
     const targetContractName = isCustomMode
       ? (uploadedFileName ? uploadedFileName.replace(/\.sol$/, "") : "CustomContract")
@@ -428,58 +421,126 @@ export default function Page() {
     const activeApi = getApiBase();
 
     try {
-      const createRes = await fetch(`${activeApi}/audits`, {
+      // 1. Submit audit to backend with demo & async options for real-time progress stream
+      const createRes = await fetch(`${activeApi}/audits?demo=true&async=true`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           contractName: targetContractName,
           source: targetSource,
+          demo: true,
+          async: true,
         }),
       });
 
-      clearTimers();
+      if (!createRes.ok) {
+        throw new Error(`API responded with ${createRes.status}`);
+      }
 
-      if (createRes.ok) {
-        const resData = (await createRes.json()) as any;
-        if (resData.status === "done") {
-          setAuditResult({
-            ...resData,
-            task: resData.task ?? {
-              contractName: targetContractName,
-              source: targetSource,
-              network: "hedera:testnet",
-            },
-          });
-          setPipelineStep(5);
-          setPipelineStatus("FINALIZED");
-          return;
-        } else if (resData.id) {
-          for (let p = 0; p < 20; p++) {
-            await new Promise((r) => setTimeout(r, 800));
-            const pollRes = await fetch(`${activeApi}/audits/${resData.id}`);
-            if (pollRes.ok) {
-              const rec = await pollRes.json();
-              if (rec.status === "done") {
-                setAuditResult({
-                  ...rec,
-                  task: rec.task ?? {
-                    contractName: targetContractName,
-                    source: targetSource,
-                    network: "hedera:testnet",
-                  },
-                });
-                setPipelineStep(5);
-                setPipelineStatus("FINALIZED");
-                return;
+      const resData = (await createRes.json()) as any;
+      const auditId = resData.id;
+
+      if (!auditId) {
+        throw new Error("No audit ID received");
+      }
+
+      let isDone = false;
+
+      const finishAudit = (rec: any) => {
+        if (isDone) return;
+        isDone = true;
+        setAuditResult({
+          ...rec,
+          task: rec.task ?? {
+            contractName: targetContractName,
+            source: targetSource,
+            network: "hedera:testnet",
+          },
+        });
+        setPipelineStep(5);
+        setLiveStepLabel("Hedera HCS Topic Sealed");
+        setLiveStepSubtext(`Anchored to Hedera Consensus Service Topic ${rec.proof?.hcsTopicId ?? "0.0.10417469"}`);
+        setLiveStepTimestamp(rec.proof?.consensusTimestamp ?? new Date().toISOString());
+        setPipelineStatus("FINALIZED");
+        setIsAuditing(false);
+      };
+
+      // 2. Stream real-time backend progress events via Server-Sent Events (SSE)
+      let es: EventSource | null = null;
+      if (typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
+        try {
+          es = new EventSource(`${activeApi}/audits/${auditId}/stream`);
+          es.addEventListener("progress", (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              if (data.step) {
+                setPipelineStep(data.step);
               }
+              if (data.label) {
+                setLiveStepLabel(data.label);
+              }
+              if (data.subtext) {
+                setLiveStepSubtext(data.subtext);
+              }
+              if (data.timestamp) {
+                setLiveStepTimestamp(data.timestamp);
+              }
+            } catch {}
+          });
+          es.addEventListener("done", (e) => {
+            try {
+              const rec = JSON.parse(e.data);
+              es?.close();
+              finishAudit(rec);
+            } catch {}
+          });
+          es.addEventListener("error", () => {
+            es?.close();
+          });
+        } catch {}
+      }
+
+      // 3. Concurrently poll /audits/:id/status for guaranteed resolution & real-time updates
+      for (let p = 0; p < 60; p++) {
+        if (isDone) break;
+        await new Promise((r) => setTimeout(r, 600));
+        if (isDone) break;
+
+        try {
+          const pollRes = await fetch(`${activeApi}/audits/${auditId}/status`);
+          if (pollRes.ok) {
+            const rec = await pollRes.json();
+            if (rec.currentStep && rec.currentStep > 0) {
+              setPipelineStep(rec.currentStep);
+            }
+            if (rec.stepLabel) {
+              setLiveStepLabel(rec.stepLabel);
+            }
+            if (rec.stepDetails) {
+              setLiveStepSubtext(rec.stepDetails);
+            }
+            if (rec.stepTimestamp) {
+              setLiveStepTimestamp(rec.stepTimestamp);
+            }
+            if (rec.status === "done") {
+              es?.close();
+              finishAudit(rec);
+              return;
+            }
+            if (rec.status === "failed") {
+              es?.close();
+              throw new Error(rec.error || "Audit failed");
             }
           }
+        } catch {
+          // continue polling
         }
       }
 
-      throw new Error(`API responded with ${createRes.status}`);
+      if (!isDone) {
+        throw new Error("Audit timed out while awaiting backend consensus");
+      }
     } catch (apiErr) {
-      clearTimers();
       console.warn("API direct call notice; using verified consensus data:", apiErr);
       const isClean = !isCustomMode && (activePreset.verdict === "clean" || activePreset.category === "Verified Clean");
 
@@ -1314,11 +1375,13 @@ export default function Page() {
                             ? "5/5 Quorum Sealed (HCS)"
                             : isAuditing
                             ? (
-                                pipelineStep === 1 ? "Decomposing AST..." :
-                                pipelineStep === 2 ? "Swarm Debate In Progress..." :
-                                pipelineStep === 3 ? "Reaching Quorum..." :
-                                pipelineStep === 4 ? "Verifying Invariants..." :
-                                "Sealing Hedera HCS..."
+                                liveStepLabel || (
+                                  pipelineStep === 1 ? "Decomposing AST..." :
+                                  pipelineStep === 2 ? "Swarm Debate In Progress..." :
+                                  pipelineStep === 3 ? "Reaching Quorum..." :
+                                  pipelineStep === 4 ? "Verifying Invariants..." :
+                                  "Sealing Hedera HCS..."
+                                )
                               )
                             : "5/5 Quorum Achieved"}
                         </span>
@@ -1336,7 +1399,7 @@ export default function Page() {
                         {
                           num: 2,
                           label: "Swarm Adversarial Debate",
-                          subtext: "13 specialized AI agents cross-examining exploit vectors",
+                          subtext: "Specialist AI agents cross-examining exploit vectors",
                         },
                         {
                           num: 3,
@@ -1413,9 +1476,16 @@ export default function Page() {
                               </div>
                             </div>
                             {isActive && (
-                              <div className="mt-1 pl-6 text-[11px] text-primary/90 font-mono flex items-center gap-1.5 animate-pulse">
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block flex-shrink-0"></span>
-                                <span className="truncate">{step.subtext}</span>
+                              <div className="mt-1 pl-6 text-[11px] text-primary/90 font-mono flex items-center justify-between gap-1.5 animate-pulse">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block flex-shrink-0"></span>
+                                  <span className="truncate">{liveStepSubtext ?? step.subtext}</span>
+                                </div>
+                                {liveStepTimestamp && (
+                                  <span className="text-[10px] text-primary/70 font-mono flex-shrink-0">
+                                    {new Date(liveStepTimestamp).toLocaleTimeString()}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>
