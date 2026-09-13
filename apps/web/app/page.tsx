@@ -409,9 +409,18 @@ export default function Page() {
     setPipelineStatus("VERIFYING");
     setPipelineStep(1);
 
-    const stepInterval = setInterval(() => {
-      setPipelineStep((prev) => (prev < 4 ? prev + 1 : prev));
-    }, 450);
+    // Realistic multi-stage pipeline pacing mirroring AI debate & HCS ledger anchoring
+    const t1 = setTimeout(() => setPipelineStep(2), 1800); // Ingest -> Swarm Debate
+    const t2 = setTimeout(() => setPipelineStep(3), 9500); // Debate -> Quorum Finalized
+    const t3 = setTimeout(() => setPipelineStep(4), 15000); // Quorum -> Bytecode Invariant Verified
+    const t4 = setTimeout(() => setPipelineStep(5), 20000); // Bytecode -> Sealing on Hedera HCS Topic
+
+    const clearTimers = () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
 
     const targetContractName = isCustomMode
       ? (uploadedFileName ? uploadedFileName.replace(/\.sol$/, "") : "CustomContract")
@@ -429,7 +438,7 @@ export default function Page() {
         }),
       });
 
-      clearInterval(stepInterval);
+      clearTimers();
 
       if (createRes.ok) {
         const resData = (await createRes.json()) as any;
@@ -471,7 +480,7 @@ export default function Page() {
 
       throw new Error(`API responded with ${createRes.status}`);
     } catch (apiErr) {
-      clearInterval(stepInterval);
+      clearTimers();
       console.warn("API direct call notice; using verified consensus data:", apiErr);
       const isClean = !isCustomMode && (activePreset.verdict === "clean" || activePreset.category === "Verified Clean");
 
@@ -1301,11 +1310,11 @@ export default function Page() {
                     <div className="flex items-center justify-between mb-space-md">
                       <span className="font-title-md text-title-md text-on-surface font-semibold">Consensus Pipeline</span>
                       <span
-                        className={`inline-flex items-center gap-1.5 font-label-sm text-label-sm font-semibold px-2.5 py-1 rounded-full ${
+                        className={`inline-flex items-center gap-1.5 font-label-sm text-label-sm font-semibold px-2.5 py-1 rounded-full transition-all ${
                           pipelineStatus === "FINALIZED"
                             ? "bg-secondary-container/70 text-on-secondary-container"
                             : isAuditing
-                            ? "bg-amber-100 text-amber-900 animate-pulse"
+                            ? "bg-amber-100 text-amber-900 border border-amber-300/60"
                             : "bg-surface-container-highest text-on-surface-variant"
                         }`}
                       >
@@ -1320,65 +1329,116 @@ export default function Page() {
                         ></span>
                         <span>
                           {pipelineStatus === "FINALIZED"
-                            ? "5/5 Quorum Sealed"
+                            ? "5/5 Quorum Sealed (HCS)"
                             : isAuditing
-                            ? "Debating Consensus..."
+                            ? (
+                                pipelineStep === 1 ? "Decomposing AST..." :
+                                pipelineStep === 2 ? "Swarm Debate In Progress..." :
+                                pipelineStep === 3 ? "Reaching Quorum..." :
+                                pipelineStep === 4 ? "Verifying Invariants..." :
+                                "Sealing Hedera HCS..."
+                              )
                             : "5/5 Quorum Achieved"}
                         </span>
                       </span>
                     </div>
 
-                    {/* Steps Pipeline */}
+                    {/* Steps Pipeline with Realistic 3-State Indicators */}
                     <div className="space-y-space-xs mb-space-md">
-                      <div className="p-space-xs px-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between transition-all">
-                        <div className="flex items-center gap-space-sm">
-                          <span className="font-label-sm text-label-sm text-primary font-bold">01</span>
-                          <span className="font-label-sm text-label-sm text-on-surface">Ingest &amp; AST Decomposition</span>
-                        </div>
-                        <span className={`material-symbols-outlined text-[16px] ${pipelineStep >= 1 ? "text-secondary" : "text-outline-variant"}`}>
-                          {pipelineStep >= 1 ? "check_circle" : "radio_button_unchecked"}
-                        </span>
-                      </div>
+                      {[
+                        {
+                          num: 1,
+                          label: "Ingest & AST Decomposition",
+                          subtext: "Lexical & AST syntax parsing across contract functions",
+                        },
+                        {
+                          num: 2,
+                          label: "Swarm Adversarial Debate",
+                          subtext: "13 specialized AI agents cross-examining exploit vectors",
+                        },
+                        {
+                          num: 3,
+                          label: "Quorum Consensus Finalized",
+                          subtext: "Byzantine fault-tolerant vote aggregation & confidence score weighting",
+                        },
+                        {
+                          num: 4,
+                          label: "Bytecode Invariant Verified",
+                          subtext: "Tool-assisted verification engine reproducing findings",
+                        },
+                        {
+                          num: 5,
+                          label: "Hedera HCS Topic Sealed",
+                          subtext: "Submitting cryptographic audit proof to Hedera Testnet (0.0.10417469)",
+                        },
+                      ].map((step) => {
+                        const isDone = pipelineStatus === "FINALIZED" || pipelineStep > step.num;
+                        const isActive = isAuditing && pipelineStep === step.num;
+                        const isPending = !isDone && !isActive;
 
-                      <div className="p-space-xs px-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between transition-all">
-                        <div className="flex items-center gap-space-sm">
-                          <span className="font-label-sm text-label-sm text-primary font-bold">02</span>
-                          <span className="font-label-sm text-label-sm text-on-surface">Swarm Adversarial Debate</span>
-                        </div>
-                        <span className={`material-symbols-outlined text-[16px] ${pipelineStep >= 2 ? "text-secondary" : "text-outline-variant"}`}>
-                          {pipelineStep >= 2 ? "check_circle" : "radio_button_unchecked"}
-                        </span>
-                      </div>
-
-                      <div className="p-space-xs px-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between transition-all">
-                        <div className="flex items-center gap-space-sm">
-                          <span className="font-label-sm text-label-sm text-primary font-bold">03</span>
-                          <span className="font-label-sm text-label-sm text-on-surface">Quorum Consensus Finalized</span>
-                        </div>
-                        <span className={`material-symbols-outlined text-[16px] ${pipelineStep >= 3 ? "text-secondary" : "text-outline-variant"}`}>
-                          {pipelineStep >= 3 ? "check_circle" : "radio_button_unchecked"}
-                        </span>
-                      </div>
-
-                      <div className="p-space-xs px-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between transition-all">
-                        <div className="flex items-center gap-space-sm">
-                          <span className="font-label-sm text-label-sm text-primary font-bold">04</span>
-                          <span className="font-label-sm text-label-sm text-on-surface">Bytecode Invariant Verified</span>
-                        </div>
-                        <span className={`material-symbols-outlined text-[16px] ${pipelineStep >= 4 ? "text-secondary" : "text-outline-variant"}`}>
-                          {pipelineStep >= 4 ? "check_circle" : "radio_button_unchecked"}
-                        </span>
-                      </div>
-
-                      <div className="p-space-xs px-space-sm rounded-xl bg-surface-container-lowest flex items-center justify-between transition-all">
-                        <div className="flex items-center gap-space-sm">
-                          <span className="font-label-sm text-label-sm text-primary font-bold">05</span>
-                          <span className="font-label-sm text-label-sm text-on-surface">Hedera HCS Topic Sealed</span>
-                        </div>
-                        <span className={`material-symbols-outlined text-[16px] ${pipelineStep >= 5 ? "text-secondary" : "text-outline-variant"}`}>
-                          {pipelineStep >= 5 ? "check_circle" : "radio_button_unchecked"}
-                        </span>
-                      </div>
+                        return (
+                          <div
+                            key={step.num}
+                            className={`p-space-xs px-space-sm rounded-xl transition-all border ${
+                              isActive
+                                ? "bg-primary/5 border-primary/25 shadow-xs"
+                                : isDone
+                                ? "bg-surface-container-lowest border-black/[0.03]"
+                                : "bg-surface-container-lowest/60 border-transparent opacity-65"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-space-sm">
+                                <span
+                                  className={`font-label-sm text-label-sm font-bold ${
+                                    isActive
+                                      ? "text-primary"
+                                      : isDone
+                                      ? "text-secondary"
+                                      : "text-outline-variant"
+                                  }`}
+                                >
+                                  {step.num < 10 ? `0${step.num}` : step.num}
+                                </span>
+                                <span
+                                  className={`font-label-sm text-label-sm font-medium ${
+                                    isActive
+                                      ? "text-on-surface font-semibold"
+                                      : isDone
+                                      ? "text-on-surface"
+                                      : "text-on-surface-variant"
+                                  }`}
+                                >
+                                  {step.label}
+                                </span>
+                              </div>
+                              <div className="flex items-center">
+                                {isDone && (
+                                  <span className="material-symbols-outlined text-[16px] text-secondary font-bold">
+                                    check_circle
+                                  </span>
+                                )}
+                                {isActive && (
+                                  <span className="material-symbols-outlined text-[16px] text-primary animate-spin">
+                                    sync
+                                  </span>
+                                )}
+                                {isPending && (
+                                  <span className="material-symbols-outlined text-[16px] text-outline-variant">
+                                    radio_button_unchecked
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {isActive && (
+                              <div className="mt-1 pl-6 text-[11px] text-primary/90 font-mono flex items-center gap-1.5 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block flex-shrink-0"></span>
+                                <span className="truncate">{step.subtext}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Dynamic Findings & Consensus Summary */}
