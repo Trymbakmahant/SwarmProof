@@ -30,7 +30,299 @@ interface NodeInspectorState {
   hcsSeq: string;
   hcsHash: string;
   hcsTimestamp: string;
+  agentMetadata?: {
+    did?: string;
+    accountId?: string;
+    score?: number;
+    capabilities?: string[];
+    role?: string;
+    a2aSupported?: boolean;
+    endpoint?: string;
+    color?: string;
+  };
 }
+
+interface SwarmAgent {
+  id: string;
+  code: string;
+  name: string;
+  fullName: string;
+  role: string;
+  shortRole: string;
+  color: string;
+  did: string;
+  accountId: string;
+  score: number;
+  tier?: string;
+  capabilities: string[];
+  msg: string;
+  a2aSupported?: boolean;
+  endpoint?: string;
+  status: "ACTIVE" | "VERIFIED" | "SOVEREIGN";
+}
+
+const BASELINE_SWARM_AGENTS: SwarmAgent[] = [
+  {
+    id: "reentrancy-agent",
+    code: "A1",
+    name: "Reentrancy Sentry",
+    fullName: "Reentrancy Specialist Agent [fireworks:deepseek-v4p1-flash]",
+    role: "Checks-Effects-Interactions Specialist",
+    shortRole: "CEI & Call-Graph",
+    color: "#00f5ff",
+    did: "did:hedera:testnet:0.0.10417469_reentrancy-agent",
+    accountId: "0.0.10417470",
+    score: 99,
+    tier: "ELITE_SENTINEL",
+    capabilities: ["reentrancy-detection", "cei-flow", "call-graph"],
+    msg: "AST Call-graph cycle analyzer with strict Checks-Effects-Interactions pattern validation.",
+    status: "ACTIVE",
+  },
+  {
+    id: "reentrancy-sentinel",
+    code: "A2",
+    name: "Reentrancy Sentinel",
+    fullName: "Reentrancy Sentinel [fireworks:deepseek-v4p1-flash]",
+    role: "Token Callback & Hook Warden",
+    shortRole: "Token Callbacks",
+    color: "#10b981",
+    did: "did:hedera:testnet:0.0.10417469_reentrancy-sentinel",
+    accountId: "0.0.10417475",
+    score: 98,
+    tier: "ELITE_SENTINEL",
+    capabilities: ["reentrancy-detection", "erc777-hooks", "flash-callbacks"],
+    msg: "Monitors ERC-777/ERC-1155 fallback entrypoints and callback recursion vulnerabilities.",
+    status: "ACTIVE",
+  },
+  {
+    id: "verification-agent",
+    code: "A3",
+    name: "Verification Oracle",
+    fullName: "Tool Verification Oracle [Deterministic Sandbox]",
+    role: "Deterministic PoC Sandbox Oracle",
+    shortRole: "PoC Sandbox",
+    color: "#8b5cf6",
+    did: "did:hedera:testnet:0.0.10417469_verification-agent",
+    accountId: "0.0.10417479",
+    score: 98,
+    tier: "ELITE_SENTINEL",
+    capabilities: ["poc-execution", "sandbox-reproduction", "foundry-fuzzing"],
+    msg: "Automated exploit test execution & Sandbox PoC reproduction oracle on Hedera testnet.",
+    status: "VERIFIED",
+  },
+  {
+    id: "sentinel-live-fr1h",
+    code: "A4",
+    name: "Autonomous Sentinel (0.0.10518991)",
+    fullName: "Autonomous Sentinel Agent (0.0.10518991)",
+    role: "Autonomous A2A Sentinel Node",
+    shortRole: "Sovereign A2A",
+    color: "#00f5ff",
+    did: "did:hedera:testnet:0.0.10417469_sentinel-live-fr1h",
+    accountId: "0.0.10518991",
+    score: 94,
+    tier: "MASTER_AUDITOR",
+    capabilities: ["reentrancy", "ast-reasoning", "state-validation", "a2a-protocol"],
+    a2aSupported: true,
+    endpoint: "http://localhost:8199/a2a",
+    msg: "Autonomous A2A agent with live JSON-RPC daemon, challenge-response proof, and dedicated Hedera wallet.",
+    status: "SOVEREIGN",
+  },
+  {
+    id: "access-control-agent",
+    code: "A5",
+    name: "Access Control Guardian",
+    fullName: "Access Control Agent [fireworks:deepseek-v4p1-flash]",
+    role: "Privilege Escalation & Authorization Matrix",
+    shortRole: "Privilege & Auth",
+    color: "#3b82f6",
+    did: "did:hedera:testnet:0.0.10417469_access-control-agent",
+    accountId: "0.0.10417471",
+    score: 92,
+    tier: "MASTER_AUDITOR",
+    capabilities: ["access-control", "tx-origin", "initializer-bypass"],
+    msg: "Analyzes modifier hierarchies, tx.origin authentication, and role permission bounds.",
+    status: "ACTIVE",
+  },
+  {
+    id: "sentinel-live-hlra",
+    code: "A6",
+    name: "Autonomous Sentinel (0.0.10519019)",
+    fullName: "Autonomous Sentinel Agent (0.0.10519019)",
+    role: "Autonomous A2A Sentinel Node",
+    shortRole: "Sovereign A2A",
+    color: "#00f5ff",
+    did: "did:hedera:testnet:0.0.10417469_sentinel-live-hlra",
+    accountId: "0.0.10519019",
+    score: 91,
+    tier: "MASTER_AUDITOR",
+    capabilities: ["reentrancy", "ast-reasoning", "state-validation", "a2a-protocol"],
+    a2aSupported: true,
+    endpoint: "http://localhost:8199/a2a",
+    msg: "Sovereign agent verified on Hedera testnet with cryptographic challenge-response and micro-hbar payouts.",
+    status: "SOVEREIGN",
+  },
+  {
+    id: "access-sentinel",
+    code: "A7",
+    name: "Access Sentinel",
+    fullName: "Access Sentinel [fireworks:deepseek-v4p1-flash]",
+    role: "Role Boundary Warden",
+    shortRole: "Role Boundary",
+    color: "#f59e0b",
+    did: "did:hedera:testnet:0.0.10417469_access-sentinel",
+    accountId: "0.0.10417476",
+    score: 88,
+    tier: "MASTER_AUDITOR",
+    capabilities: ["access-control", "role-boundary", "ownership-transfer"],
+    msg: "Audits initializers, delegatecalls, and admin multi-sig invariants.",
+    status: "ACTIVE",
+  },
+  {
+    id: "test_agent_1789234433892",
+    code: "A8",
+    name: "Verification Sentinel Agent",
+    fullName: "Verification Sentinel Agent [Hedera Native]",
+    role: "State Invariant Verifier",
+    shortRole: "State Invariants",
+    color: "#06b6d4",
+    did: "did:hedera:testnet:0.0.10417469_test_agent_1789234433892",
+    accountId: "0.0.10417474",
+    score: 82,
+    tier: "VERIFIED_SENTINEL",
+    capabilities: ["reentrancy", "state-validation"],
+    msg: "Independent verification agent testing zero-knowledge proofs and state changes.",
+    status: "VERIFIED",
+  },
+  {
+    id: "node-access-control-avw4",
+    code: "A9",
+    name: "Node Access Worker",
+    fullName: "Node ACCESS-CONTROL Sentinel [Decentralized]",
+    role: "Decentralized Worker Node",
+    shortRole: "Access Worker",
+    color: "#10b981",
+    did: "did:hedera:testnet:0.0.10417469_node-access-control-avw4",
+    accountId: "0.0.10119346",
+    score: 78,
+    tier: "VERIFIED_SENTINEL",
+    capabilities: ["access-control", "ast-reasoning", "decentralized-worker"],
+    msg: "Decentralized worker node validating authorization AST subgraphs.",
+    status: "ACTIVE",
+  },
+  {
+    id: "static-agent",
+    code: "A10",
+    name: "Static Code Guard",
+    fullName: "Static Code Guard [Slither AST]",
+    role: "Cross-Signal & Slither Specialist",
+    shortRole: "Slither / AST",
+    color: "#06b6d4",
+    did: "did:hedera:testnet:0.0.10417469_static-agent",
+    accountId: "0.0.10417474",
+    score: 76,
+    tier: "VERIFIED_SENTINEL",
+    capabilities: ["low-level-call", "unchecked-math", "assembly-bounds"],
+    msg: "Static code analysis verifying low-level call boundaries and unchecked math.",
+    status: "ACTIVE",
+  },
+  {
+    id: "sentinel-worker-01",
+    code: "A11",
+    name: "Node Reentrancy Worker",
+    fullName: "Node REENTRANCY Sentinel [Decentralized]",
+    role: "Decentralized Worker Node",
+    shortRole: "Reentrancy Node",
+    color: "#00bcd4",
+    did: "did:hedera:testnet:0.0.10417469_sentinel-worker-01",
+    accountId: "0.0.10417474",
+    score: 75,
+    tier: "VERIFIED_SENTINEL",
+    capabilities: ["reentrancy", "ast-reasoning", "decentralized-worker"],
+    msg: "Decentralized worker listening to HCS consensus topic for AST checks.",
+    status: "ACTIVE",
+  },
+  {
+    id: "mev-sentinel",
+    code: "A12",
+    name: "MEV Sentinel",
+    fullName: "MEV Sentinel [Flash-Loan Guard]",
+    role: "Slippage & Arbitrage Guard",
+    shortRole: "MEV / Arbitrage",
+    color: "#ec4899",
+    did: "did:hedera:testnet:0.0.10417469_mev-sentinel",
+    accountId: "0.0.10417478",
+    score: 70,
+    tier: "VERIFIED_SENTINEL",
+    capabilities: ["flash-loan", "oracle-manipulation", "mev-protection"],
+    msg: "Monitors AMM reserve shifts, flash loan attacks, and sandwich opportunities.",
+    status: "ACTIVE",
+  },
+  {
+    id: "bytecode-verifier",
+    code: "A13",
+    name: "Bytecode Verifier",
+    fullName: "Bytecode Verifier [EVM Disassembly]",
+    role: "Low-Level EVM Disassembler",
+    shortRole: "EVM Opcodes",
+    color: "#2196f3",
+    did: "did:hedera:testnet:0.0.10417469_bytecode-verifier",
+    accountId: "0.0.10417479",
+    score: 65,
+    tier: "PROBATIONARY_AGENT",
+    capabilities: ["low-level-call", "delegatecall", "evm-opcodes"],
+    msg: "Disassembles compiled bytecode to detect compiler-introduced vulnerabilities.",
+    status: "ACTIVE",
+  },
+  {
+    id: "economic-agent",
+    code: "A14",
+    name: "Economic Security Agent",
+    fullName: "Economic & Oracle Sentinel [DeepSeek-v4p1]",
+    role: "MEV & Spot Distortion Guard",
+    shortRole: "Economic & AMM",
+    color: "#f59e0b",
+    did: "did:hedera:testnet:0.0.10417469_economic-agent",
+    accountId: "0.0.10417473",
+    score: 61,
+    tier: "PROBATIONARY_AGENT",
+    capabilities: ["flash-loans", "oracle-manipulation", "liquidation-risk"],
+    msg: "Simulates flash loan market attacks, price oracle manipulations, and liquidations.",
+    status: "ACTIVE",
+  },
+  {
+    id: "invariant-agent",
+    code: "A15",
+    name: "State Invariant Auditor",
+    fullName: "State Invariant Auditor [DeepSeek-v4p1]",
+    role: "State Drift & Invariant Auditor",
+    shortRole: "State Invariants",
+    color: "#a855f7",
+    did: "did:hedera:testnet:0.0.10417469_invariant-agent",
+    accountId: "0.0.10417477",
+    score: 55,
+    tier: "PROBATIONARY_AGENT",
+    capabilities: ["state-invariants", "precision-loss", "transition-drift"],
+    msg: "Mathematical invariant testing across multi-transaction state transitions.",
+    status: "ACTIVE",
+  },
+  {
+    id: "business-logic-agent",
+    code: "A16",
+    name: "Business Logic Specialist",
+    fullName: "Business Logic Agent [fireworks:deepseek-v4p1-flash]",
+    role: "State Machine & Protocol Invariants",
+    shortRole: "Protocol Logic",
+    color: "#e91e63",
+    did: "did:hedera:testnet:0.0.10417469_business-logic-agent",
+    accountId: "0.0.10417472",
+    score: 45,
+    tier: "PROBATIONARY_AGENT",
+    capabilities: ["state-machine", "rounding-precision", "input-boundaries"],
+    msg: "Complex protocol flow verification, deposit-withdraw parity, and fee accounting.",
+    status: "ACTIVE",
+  },
+];
 
 const INITIAL_ACTIVITY_ROWS: ActivityRow[] = [
   {
@@ -50,7 +342,7 @@ const INITIAL_ACTIVITY_ROWS: ActivityRow[] = [
   {
     id: "gq_1789192340",
     queryExpression: "RESOLVE AST::FunctionDefinition['flashLoan']",
-    agents: "All 10",
+    agents: "All 16",
     latency: "9ms",
     consensusState: "Anchored (HCS)",
   },
@@ -99,6 +391,7 @@ export default function GraphExplorerPage() {
 
   // Live dynamic data from backend API
   const [liveAgents, setLiveAgents] = useState<any[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [liveTelemetry, setLiveTelemetry] = useState<{
     tvlUsd?: number;
     dailyVolumeUsd?: number;
@@ -106,6 +399,63 @@ export default function GraphExplorerPage() {
     riskSignals?: string[];
     liveParameters?: Record<string, any>;
   }>({});
+
+  // Memoized 16+ Agent Swarm with dynamically computed SVG orbit coordinates
+  const allSwarmAgents: (SwarmAgent & { x: number; y: number })[] = useMemo(() => {
+    const list: SwarmAgent[] = [...BASELINE_SWARM_AGENTS];
+
+    if (Array.isArray(liveAgents) && liveAgents.length > 0) {
+      liveAgents.forEach((liveAg) => {
+        const id = liveAg.agentId || liveAg.id;
+        const existingIdx = list.findIndex((a) => a.id === id || a.did === liveAg.did);
+        const curr = existingIdx >= 0 ? list[existingIdx] : undefined;
+        if (curr && existingIdx >= 0) {
+          list[existingIdx] = {
+            ...curr,
+            score: liveAg.benchmarkScore ?? liveAg.reputationScore ?? curr.score,
+            accountId: liveAg.paymentAddress || liveAg.hederaAccountId || curr.accountId,
+            did: liveAg.did || curr.did,
+            a2aSupported: liveAg.a2aSupported ?? curr.a2aSupported,
+            endpoint: liveAg.endpoint || curr.endpoint,
+          };
+        } else if (id) {
+          const idx = list.length + 1;
+          list.push({
+            id,
+            code: `A${idx}`,
+            name: liveAg.name || id,
+            fullName: liveAg.name || id,
+            role: liveAg.role || "Decentralized Cognitive Agent",
+            shortRole: liveAg.role ? liveAg.role.slice(0, 16) : "Auditor",
+            color: liveAg.color || "#00f5ff",
+            did: liveAg.did || `did:hedera:testnet:0.0.10417469_${id}`,
+            accountId: liveAg.paymentAddress || liveAg.hederaAccountId || "0.0.10417469",
+            score: liveAg.benchmarkScore ?? liveAg.reputationScore ?? 85,
+            tier: liveAg.tier || "VERIFIED_SENTINEL",
+            capabilities: liveAg.capabilities || ["ast-reasoning"],
+            msg: `Registered agent verified on Hedera testnet with active consensus attestation.`,
+            status: liveAg.a2aSupported ? "SOVEREIGN" : "ACTIVE",
+            a2aSupported: liveAg.a2aSupported,
+            endpoint: liveAg.endpoint,
+          });
+        }
+      });
+    }
+
+    // Distribute around perimeter of SVG canvas (viewBox 0 0 920 620)
+    const cx = 460;
+    const cy = 300;
+    const Rx = 405;
+    const Ry = 260;
+    const total = list.length;
+
+    return list.map((agent, i) => {
+      const angle = (2 * Math.PI * i) / total - Math.PI / 2;
+      const x = Math.round(cx + Rx * Math.cos(angle));
+      const y = Math.round(cy + Ry * Math.sin(angle));
+      return { ...agent, x, y };
+    });
+  }, [liveAgents]);
 
   const [inspector, setInspector] = useState<NodeInspectorState>(() => {
     const firstNode = activeGraph.nodes[0];
@@ -200,12 +550,12 @@ export default function GraphExplorerPage() {
     let isGraphQL = q.startsWith("{") || q.startsWith("query") || q.includes("totalValueLockedUSD");
     let agentsAssigned =
       q.includes("Reentrancy") || q.includes("CEI")
-        ? "A1, A5"
-        : q.includes("tx.origin")
-        ? "A2"
+        ? "A1, A2, A4, A11"
+        : q.includes("tx.origin") || q.includes("Role")
+        ? "A5, A7, A9"
         : q.includes("Flashloan") || q.includes("Pool") || isGraphQL
-        ? "A4"
-        : "All 10";
+        ? "A12, A14"
+        : `All ${allSwarmAgents.length}`;
 
     // Detect matched nodes on active contract graph
     const matched = new Set<string>();
@@ -361,21 +711,34 @@ export default function GraphExplorerPage() {
       hcsSeq: activeGraph.hcsSeq,
       hcsHash: activeGraph.hcsHash,
       hcsTimestamp: activeGraph.hcsTimestamp,
+      agentMetadata: undefined,
     });
   };
 
-  const selectAgentNode = (agentId: string, role: string, status: string, message: string) => {
+  const handleSelectAgent = (agent: SwarmAgent & { x: number; y: number }) => {
+    setSelectedAgentId(agent.id);
     setInspector({
-      title: `${agentId} [${role}]`,
-      type: "NeuralCognitiveAgent",
-      lines: "Subscribed to Topic 0.0.10417469",
-      statusBadge: `AGENT STATE: ${status.toUpperCase()}`,
+      title: `${agent.code}: ${agent.name}`,
+      type: `Neural Swarm Agent [${agent.status}]`,
+      lines: `Hedera Account: ${agent.accountId}`,
+      statusBadge: `${agent.tier || "ACTIVE SENTINEL"} • SCORE: ${agent.score}/100`,
       statusBadgeType: "agent",
-      desc: message,
-      flaggedAgents: [agentId],
+      depth: `Swarm Rank: #${allSwarmAgents.findIndex((a) => a.id === agent.id) + 1} of ${allSwarmAgents.length}`,
+      desc: `${agent.msg} Specialized in: ${agent.capabilities.join(", ")}. Verified on HCS Topic 0.0.10417469 with cryptographic challenge attestation.`,
+      flaggedAgents: [agent.name, agent.code],
       hcsSeq: activeGraph.hcsSeq,
       hcsHash: activeGraph.hcsHash,
       hcsTimestamp: activeGraph.hcsTimestamp,
+      agentMetadata: {
+        did: agent.did,
+        accountId: agent.accountId,
+        score: agent.score,
+        capabilities: agent.capabilities,
+        role: agent.role,
+        a2aSupported: agent.a2aSupported,
+        endpoint: agent.endpoint,
+        color: agent.color,
+      },
     });
   };
 
@@ -592,7 +955,7 @@ export default function GraphExplorerPage() {
                 <div className="bg-surface-container-low px-3.5 py-2 rounded shadow-xs flex flex-col min-w-[110px] border border-black/[0.04]">
                   <span className="font-label-caps text-[10px] uppercase font-bold text-on-surface-variant">COGNITIVE AGENTS</span>
                   <span className="font-code-md text-code-md font-bold text-primary">
-                    {liveAgents.length > 0 ? `${liveAgents.length} Active` : "16 Registered"}
+                    {allSwarmAgents.length} Active
                   </span>
                 </div>
                 <div className="bg-surface-container-low px-3.5 py-2 rounded shadow-xs flex flex-col min-w-[110px] border border-black/[0.04]">
@@ -756,24 +1119,31 @@ export default function GraphExplorerPage() {
               <div className="relative w-full bg-surface-container-lowest rounded-xl shadow-lg overflow-hidden flex flex-col h-[640px] select-none border border-black/[0.06]">
                 {/* Canvas Top Bar HUD */}
                 <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-                  {/* Specialist Agents Legend Overlay */}
-                  <div className="pointer-events-auto flex items-center gap-1.5 bg-surface-container-lowest/95 backdrop-blur-md px-3 py-1.5 rounded-lg shadow-sm border border-black/[0.05]">
-                    <span className="font-label-caps text-[10px] uppercase font-bold text-on-surface-variant mr-1">NEURAL SWARM:</span>
-                    <span className="inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface font-semibold" title="Reentrancy Specialist">
-                      <span className="w-2 h-2 rounded-full bg-[#00bcd4]"></span>A1
+                  {/* Specialist Agents Legend Overlay - All 16+ Agents */}
+                  <div className="pointer-events-auto flex items-center gap-1 bg-surface-container-lowest/95 backdrop-blur-md px-2.5 py-1.5 rounded-lg shadow-sm border border-black/[0.05] max-w-[560px] overflow-x-auto no-scrollbar">
+                    <span className="font-label-caps text-[10px] uppercase font-bold text-on-surface-variant mr-1.5 whitespace-nowrap flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+                      NEURAL SWARM ({allSwarmAgents.length}):
                     </span>
-                    <span className="inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface font-semibold" title="Access Control Matrix">
-                      <span className="w-2 h-2 rounded-full bg-[#ff9800]"></span>A2
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface font-semibold" title="Business Logic Invariants">
-                      <span className="w-2 h-2 rounded-full bg-[#e91e63]"></span>A3
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface font-semibold" title="Economic Attack Vector">
-                      <span className="w-2 h-2 rounded-full bg-[#10b981]"></span>A4
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface font-semibold" title="Bytecode Disassembly">
-                      <span className="w-2 h-2 rounded-full bg-[#2196f3]"></span>A5
-                    </span>
+                    {allSwarmAgents.map((ag) => {
+                      const isSelected = selectedAgentId === ag.id;
+                      return (
+                        <button
+                          key={ag.id}
+                          id={`swarm-agent-hud-${ag.id}`}
+                          onClick={() => handleSelectAgent(ag)}
+                          className={`inline-flex items-center gap-1 font-code-sm text-[11px] px-1.5 py-0.5 rounded transition-all font-semibold whitespace-nowrap cursor-pointer ${
+                            isSelected
+                              ? "bg-primary text-on-primary shadow-xs ring-1 ring-primary scale-105"
+                              : "bg-surface-container text-on-surface hover:bg-surface-container-high"
+                          }`}
+                          title={`${ag.code}: ${ag.name} • ${ag.role} (${ag.accountId})`}
+                        >
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ag.color }}></span>
+                          <span>{ag.code}</span>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {/* Layout & Filter Controls */}
@@ -1003,30 +1373,87 @@ export default function GraphExplorerPage() {
                         );
                       })}
 
-                      {/* Specialist Agent Nodes (A1, A2, A3, A4, A5) */}
-                      {[
-                        { id: "A1", name: "Agent::Reentrancy", role: "Reentrancy Specialist", x: 140, y: 100, color: "#00bcd4", msg: "CEI flow analysis active." },
-                        { id: "A2", name: "Agent::Access", role: "Access Control Matrix", x: 720, y: 90, color: "#ff9800", msg: "Privilege modifiers verified on-chain." },
-                        { id: "A3", name: "Agent::Logic", role: "State Invariants", x: 820, y: 460, color: "#e91e63", msg: "State transitions bounded." },
-                        { id: "A4", name: "Agent::Economic", role: "Economic & Flash Loans", x: 100, y: 440, color: "#10b981", msg: "Subgraph TVL & reserve ratios monitored." },
-                        { id: "A5", name: "Agent::Bytecode", role: "Bytecode Disassembler", x: 100, y: 390, color: "#2196f3", msg: "Opcodes verified against HCS topic." },
-                      ].map((agent) => (
-                        <g
-                          key={agent.id}
-                          className="cursor-pointer transition-transform hover:scale-110"
-                          onClick={() => selectAgentNode(agent.id, agent.role, "Active", agent.msg)}
-                          transform={`translate(${agent.x}, ${agent.y})`}
-                        >
-                          <circle fill={`${agent.color}22`} r="20" stroke={agent.color} strokeWidth="1.5" />
-                          <circle fill={agent.color} r="14" />
-                          <text className="font-code-sm text-[9px] font-bold pointer-events-none" fill="#ffffff" textAnchor="middle" y="3">
-                            {agent.id}
-                          </text>
-                          <text className="font-code-sm text-[10px] font-semibold pointer-events-none" fill={agent.color} textAnchor="middle" y="30">
-                            {agent.name}
-                          </text>
-                        </g>
-                      ))}
+                      {/* Active Neural Swarm Laser/Audit Beam when an agent is selected */}
+                      {(() => {
+                        const selectedAgent = allSwarmAgents.find((a) => a.id === selectedAgentId);
+                        if (!selectedAgent) return null;
+                        const targetNode =
+                          layoutNodes.find((n) => n.name === inspector.title || n.label === inspector.title) ||
+                          layoutNodes.find((n) => n.isVuln) ||
+                          layoutNodes[0];
+                        const tx = targetNode ? targetNode.x : 460;
+                        const ty = targetNode ? targetNode.y : 280;
+
+                        return (
+                          <g className="pointer-events-none">
+                            <line
+                              x1={selectedAgent.x}
+                              y1={selectedAgent.y}
+                              x2={tx}
+                              y2={ty}
+                              stroke={selectedAgent.color}
+                              strokeWidth="2.5"
+                              strokeDasharray="5 3"
+                              opacity="0.85"
+                              className="animate-pulse"
+                            />
+                            <circle
+                              cx={tx}
+                              cy={ty}
+                              r="32"
+                              fill="none"
+                              stroke={selectedAgent.color}
+                              strokeWidth="2"
+                              strokeDasharray="3 3"
+                              opacity="0.75"
+                            />
+                          </g>
+                        );
+                      })()}
+
+                      {/* Specialist Agent Nodes (All Swarm Agents: A1 through A16+) */}
+                      {allSwarmAgents.map((agent) => {
+                        const isSelected = selectedAgentId === agent.id;
+                        return (
+                          <g
+                            key={agent.id}
+                            id={`canvas-agent-${agent.id}`}
+                            className="cursor-pointer transition-transform hover:scale-110"
+                            onClick={() => handleSelectAgent(agent)}
+                            transform={`translate(${agent.x}, ${agent.y})`}
+                          >
+                            {/* Outer selection / hover pulse halo */}
+                            <circle
+                              fill={`${agent.color}18`}
+                              r={isSelected ? 24 : 19}
+                              stroke={agent.color}
+                              strokeWidth={isSelected ? 2.5 : 1.2}
+                              strokeDasharray={isSelected ? "3 3" : undefined}
+                              className={isSelected ? "animate-spin" : undefined}
+                            />
+                            {/* Inner agent core node */}
+                            <circle fill={agent.color} r="13" />
+                            {/* Agent ID Code */}
+                            <text
+                              className="font-code-sm text-[9.5px] font-bold pointer-events-none"
+                              fill="#ffffff"
+                              textAnchor="middle"
+                              y="3.5"
+                            >
+                              {agent.code}
+                            </text>
+                            {/* Agent Label */}
+                            <text
+                              className="font-code-sm text-[9px] font-bold pointer-events-none drop-shadow-xs"
+                              fill={agent.color}
+                              textAnchor="middle"
+                              y={agent.y > 300 ? 25 : -18}
+                            >
+                              {agent.name.split(" ")[0]}
+                            </text>
+                          </g>
+                        );
+                      })}
                     </g>
                   </svg>
                 </div>
@@ -1109,6 +1536,76 @@ export default function GraphExplorerPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* On-Chain Sovereign Agent Identity Card */}
+                  {inspector.agentMetadata && (
+                    <div className="bg-surface-container p-3.5 rounded-lg flex flex-col gap-2.5 border border-black/[0.06] shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-caps text-[10px] uppercase font-bold text-on-surface-variant flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px] text-primary">verified_user</span>
+                          ON-CHAIN SOVEREIGN IDENTITY
+                        </span>
+                        <span className="font-code-sm text-[11px] px-2 py-0.5 rounded font-bold bg-primary/10 text-primary border border-primary/20">
+                          PoR Score: {inspector.agentMetadata.score}/100
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 font-code-sm text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-on-surface-variant font-medium">Hedera Account:</span>
+                          <a
+                            href={`https://hashscan.io/testnet/account/${inspector.agentMetadata.accountId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline font-bold flex items-center gap-1"
+                          >
+                            {inspector.agentMetadata.accountId}
+                            <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+                          </a>
+                        </div>
+
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-on-surface-variant font-medium">W3C DID:</span>
+                          <span
+                            className="font-code-sm text-[10px] text-on-surface font-semibold truncate bg-surface-container-high px-1.5 py-0.5 rounded"
+                            title={inspector.agentMetadata.did}
+                          >
+                            {inspector.agentMetadata.did}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-on-surface-variant font-medium">Primary Specialty:</span>
+                          <span className="text-on-surface font-semibold">{inspector.agentMetadata.role}</span>
+                        </div>
+
+                        {inspector.agentMetadata.a2aSupported && (
+                          <div className="flex items-center justify-between pt-1 border-t border-black/[0.05]">
+                            <span className="text-secondary font-bold flex items-center gap-1 text-[11px]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+                              A2A Daemon Live:
+                            </span>
+                            <span className="text-on-surface font-mono text-[10.5px]">
+                              {inspector.agentMetadata.endpoint || "http://localhost:8199/a2a"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {inspector.agentMetadata.capabilities && inspector.agentMetadata.capabilities.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1 border-t border-black/[0.05]">
+                          {inspector.agentMetadata.capabilities.map((cap) => (
+                            <span
+                              key={cap}
+                              className="font-code-sm text-[10px] px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold"
+                            >
+                              #{cap}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Semantic Reasoning / AST Description */}
                   <div className="bg-surface-container-low p-3 rounded-lg flex flex-col gap-1 border border-black/[0.04]">
