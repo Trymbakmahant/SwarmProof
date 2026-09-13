@@ -159,6 +159,8 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
       }
     }
     loadActiveAgents();
+    // Pre-fetch challenge for initial default preset
+    fetchChallenge(defaultPreset.agentId, paymentAddress);
   }, []);
 
   // Check if connected wallet owns any agents in quorum
@@ -191,6 +193,21 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
     } finally {
       setIsGeneratingChallenge(false);
     }
+  };
+
+  const applyPreset = (preset: PresetTemplate) => {
+    setName(preset.name);
+    setAgentId(preset.agentId);
+    setRole(preset.role);
+    setShape(preset.shape);
+    setColor(preset.color);
+    setCapabilitiesStr(preset.capabilities.join(", "));
+    setSystemPrompt(preset.systemPrompt);
+    if (preset.defaultEndpoint) setEndpoint(preset.defaultEndpoint);
+    // Reset signature so user signs the newly selected agent type/identity
+    setSignature("");
+    setVerificationStatus("unverified");
+    fetchChallenge(preset.agentId, walletAddress || paymentAddress);
   };
 
   const handleConnectWallet = async () => {
@@ -359,18 +376,6 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
       if (existing.color) setColor(existing.color);
       fetchChallenge(existing.agentId, walletAddress || existing.paymentAddress);
     }
-  };
-
-  const applyPreset = (preset: PresetTemplate) => {
-    setName(preset.name);
-    setAgentId(preset.agentId);
-    setRole(preset.role);
-    setShape(preset.shape);
-    setColor(preset.color);
-    setCapabilitiesStr(preset.capabilities.join(", "));
-    setSystemPrompt(preset.systemPrompt);
-    if (preset.defaultEndpoint) setEndpoint(preset.defaultEndpoint);
-    fetchChallenge(preset.agentId, walletAddress || paymentAddress);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -693,7 +698,7 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
               >
                 1
               </span>
-              <span>Proof of Wallet</span>
+              <span>Agent Specialty &amp; Proof</span>
             </div>
             <span style={{ color: "#d4d4d8" }}>→</span>
             <div
@@ -1068,6 +1073,117 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Agent Specialty & Role Selection (Before Signing) */}
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  backgroundColor: "#ffffff",
+                  border: "1.5px solid #dbeafe",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>🎯</span>
+                    <div>
+                      <h4 style={{ margin: "0 0 2px 0", fontSize: 13, fontWeight: 700, color: "#1e3a8a" }}>
+                        Select Agent Specialty &amp; Type to Register
+                      </h4>
+                      <p style={{ margin: 0, fontSize: 11, color: "#3b82f6" }}>
+                        Choose which role your agent performs. The cryptographic authorization challenge below binds to this agent identity.
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontFamily: "var(--font-mono)",
+                      backgroundColor: "#eff6ff",
+                      color: "#1d4ed8",
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontWeight: 600,
+                      border: "1px solid #bfdbfe",
+                    }}
+                  >
+                    Target ID: {agentId}
+                  </span>
+                </div>
+
+                {/* Specialty Preset Chips */}
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                  {AGENT_PRESETS.map((p) => {
+                    const isSelected = agentId === p.agentId;
+                    return (
+                      <button
+                        key={p.agentId}
+                        type="button"
+                        onClick={() => applyPreset(p)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          fontSize: 12,
+                          fontWeight: isSelected ? 700 : 500,
+                          backgroundColor: isSelected ? "#09090b" : "#f4f4f5",
+                          color: isSelected ? "#ffffff" : "#3f3f46",
+                          border: isSelected ? "1.5px solid #09090b" : "1px solid #e4e4e7",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: p.color }} />
+                        <span>{p.name.replace(/ Specialist| Agent| Auditor/gi, "")}</span>
+                        {isSelected && <span style={{ fontSize: 11 }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Selected Preset Details Preview */}
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "50%",
+                        backgroundColor: color,
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                        {name} <span style={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}>({role})</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>
+                        Capabilities: {capabilitiesStr}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, color: "#10b981", fontWeight: 600 }}>
+                    Ready for Signature
+                  </span>
+                </div>
               </div>
 
               {/* Challenge Signing Box */}
