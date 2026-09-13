@@ -1,6 +1,14 @@
 import type { AgentIdentity, SecurityTask } from "./identity.js";
 import type { Finding, Severity } from "./index.js";
 import { createLLMProviderFromEnv, parseLLMFindings, type LLMProvider } from "./llm.js";
+import {
+  parseSoliditySource,
+  runReentrancyHarness,
+  runAccessControlHarness,
+  runStaticAnalysisHarness,
+  runBusinessLogicHarness,
+  runEconomicHarness,
+} from "./harness.js";
 
 /**
  * Specialist security agents.
@@ -112,42 +120,8 @@ const ETH_TRANSFER_OUT =
 /* ------------------------------------------------------------------ */
 
 async function analyzeReentrancy(task: SecurityTask): Promise<Finding[]> {
-  const src = task.source;
-  const findings: Finding[] = [];
-  if (hasNonReentrantGuard(src)) return findings;
-  const calls = valueTransferCalls(src);
-  const bodies = functionBodies(src);
-  for (const c of calls) {
-    // Find the enclosing function to check call-before-write.
-    const owner = bodies.find((b) => b.body.includes(c.pattern));
-    const writeAfter = owner ? STATE_WRITE.test(owner.body) : false;
-    if (writeAfter) {
-      findings.push(
-        makeFinding(
-          "reentrancy-agent",
-          findings.length,
-          "reentrancy",
-          "critical",
-          c.loc,
-          `external ${c.pattern} before state update; no reentrancy guard detected`,
-        ),
-      );
-      break; // one consolidated finding per audit is enough for the cluster
-    }
-  }
-  if (findings.length === 0 && calls.length > 0) {
-    findings.push(
-      makeFinding(
-        "reentrancy-agent",
-        0,
-        "reentrancy",
-        "info",
-        "contract",
-        `external value transfers found but state-write-after-call not confirmed (${calls.length} call site(s)); deepening analysis recommended`,
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  return runReentrancyHarness(task, parsed);
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,39 +129,8 @@ async function analyzeReentrancy(task: SecurityTask): Promise<Finding[]> {
 /* ------------------------------------------------------------------ */
 
 async function analyzeAccessControl(task: SecurityTask): Promise<Finding[]> {
-  const src = task.source;
-  const findings: Finding[] = [];
-  const bodies = functionBodies(src);
-  for (const b of bodies) {
-    const isPrivileged = ETH_TRANSFER_OUT.test(b.body) || /setAdmin|setOwner|changeAdmin|transferOwnership|setFee|setImplementation/i.test(b.body);
-    if (!isPrivileged) continue;
-    const hasCheck = /require\s*\(|modifier\s+\w+/.test(b.body) || /onlyAdmin|onlyOwner|auth|permission/.test(b.body);
-    if (!hasCheck) {
-      findings.push(
-        makeFinding(
-          "access-control-agent",
-          findings.length,
-          "access-control",
-          "high",
-          `function ${b.name}`,
-          `privileged action in ${b.name}() has no access check`,
-        ),
-      );
-    }
-  }
-  if (/\btx\.origin\b/.test(src)) {
-    findings.push(
-      makeFinding(
-        "access-control-agent",
-        findings.length,
-        "access-control",
-        "medium",
-        "contract",
-        "tx.origin used for authorization — vulnerable to phishing-style attacks",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  return runAccessControlHarness(task, parsed);
 }
 
 /* ------------------------------------------------------------------ */
@@ -195,40 +138,8 @@ async function analyzeAccessControl(task: SecurityTask): Promise<Finding[]> {
 /* ------------------------------------------------------------------ */
 
 async function analyzeBusinessLogic(task: SecurityTask): Promise<Finding[]> {
-  const src = task.source;
-  const findings: Finding[] = [];
-  const bodies = functionBodies(src);
-  for (const b of bodies) {
-    // Amount handling without zero/limit checks (donation/refund style bugs).
-    if (/(msg\.value|amount|_amount|value)/.test(b.body) && !/require\s*\([^)]*>\s*0/.test(b.body) && !/require\s*\([^)]*<=/.test(b.body)) {
-      // Only flag if it also moves funds or mutates balances based on input.
-      if (/balance|balances|total|refund|claim/.test(b.body)) {
-        findings.push(
-          makeFinding(
-            "business-logic-agent",
-            findings.length,
-            "business-logic",
-            "medium",
-            `function ${b.name}`,
-            `function ${b.name}() handles value/amount input without a zero-or-limit validation`,
-          ),
-        );
-      }
-    }
-    if (/assert\s*\(/.test(b.body)) {
-      findings.push(
-        makeFinding(
-          "business-logic-agent",
-          findings.length,
-          "business-logic",
-          "low",
-          `function ${b.name}`,
-          `assert() used in ${b.name}() — panic consumes all gas; prefer require()`,
-        ),
-      );
-    }
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  return runBusinessLogicHarness(task, parsed);
 }
 
 /* ------------------------------------------------------------------ */
@@ -236,45 +147,8 @@ async function analyzeBusinessLogic(task: SecurityTask): Promise<Finding[]> {
 /* ------------------------------------------------------------------ */
 
 async function analyzeEconomic(task: SecurityTask): Promise<Finding[]> {
-  const src = task.source;
-  const findings: Finding[] = [];
-  if (/block\.timestamp|now\b/.test(src) && /require|if\s*\(.*block/.test(src)) {
-    findings.push(
-      makeFinding(
-        "economic-agent",
-        0,
-        "economic",
-        "low",
-        "contract",
-        "block.timestamp used in decision logic — miners can influence timestamps by small amounts",
-      ),
-    );
-  }
-  if (/getReserves|price0Cumulative|slot0|Chainlink|AggregatorV3Interface|latestRoundData|oracle|spotPrice|getPrice/i.test(src)) {
-    findings.push(
-      makeFinding(
-        "economic-agent",
-        findings.length,
-        "economic",
-        "high",
-        "contract",
-        "external price/oracle dependency detected — check for price manipulation, stale reads, or flash-loan attacks",
-      ),
-    );
-  }
-  if (/flash|donate\(|skim|sync\s*\(/.test(src)) {
-    findings.push(
-      makeFinding(
-        "economic-agent",
-        findings.length,
-        "economic",
-        "medium",
-        "contract",
-        "flash-loan / AMM-manipulation surface detected (donate/skim/sync patterns)",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  return runEconomicHarness(task, parsed);
 }
 
 /* ------------------------------------------------------------------ */
@@ -282,43 +156,18 @@ async function analyzeEconomic(task: SecurityTask): Promise<Finding[]> {
 /* ------------------------------------------------------------------ */
 
 async function analyzeStatic(task: SecurityTask): Promise<Finding[]> {
-  const src = task.source;
-  const findings: Finding[] = [];
-  const checks: Array<{ re: RegExp; cat: string; sev: Severity; hint: string }> = [
-    { re: /delegatecall/i, cat: "delegatecall", sev: "high", hint: "delegatecall used" },
-    { re: /selfdestruct|suicide\s*\(/i, cat: "selfdestruct", sev: "high", hint: "selfdestruct present" },
-    { re: /unchecked\s*\{/i, cat: "unchecked-arithmetic", sev: "medium", hint: "unchecked arithmetic block" },
-    { re: /abi\.encodePacked/i, cat: "signature-collision", sev: "medium", hint: "abi.encodePacked used (signature/hash collision risk)" },
-    { re: /\.call\{(?!value)/i, cat: "low-level-call", sev: "low", hint: "low-level .call without value" },
-    { re: /assembly\s*\{/i, cat: "assembly", sev: "info", hint: "inline assembly (must be reviewed)" },
-  ];
-  for (const c of checks) {
-    if (c.re.test(src)) {
-      findings.push(
-        makeFinding("static-agent", findings.length, c.cat, c.sev, "contract", c.hint),
-      );
-    }
-  }
-  // Cross-signal: like Slither, the static agent independently flags classic
-  // call-before-write reentrancy — giving consensus a second, independent voice.
-  if (!hasNonReentrantGuard(src) && !findings.some((f) => f.category === "reentrancy")) {
-    const bodies = functionBodies(src);
-    for (const c of valueTransferCalls(src)) {
-      const owner = bodies.find((b) => b.body.includes(c.pattern));
-      if (owner && STATE_WRITE.test(owner.body)) {
-        findings.push(
-          makeFinding(
-            "static-agent",
-            findings.length,
-            "reentrancy",
-            "critical",
-            c.loc,
-            `static cross-signal: external ${c.pattern} before state update in ${owner.name}(), no guard`,
-          ),
-        );
-        break;
-      }
-    }
+  const parsed = parseSoliditySource(task.source);
+  const findings = runStaticAnalysisHarness(task, parsed);
+  // Cross-signal: like Slither, static agent also flags classic call-before-write reentrancy
+  // so consensus forms a strong multi-agent quorum on severe vulnerabilities.
+  const reentrancy = runReentrancyHarness(task, parsed);
+  const firstReentrancy = reentrancy[0];
+  if (firstReentrancy && !findings.some((f) => f.category === "reentrancy")) {
+    findings.push({
+      ...firstReentrancy,
+      id: `static-agent-reentrancy-${findings.length}`,
+      title: `Static Cross-Signal: ${firstReentrancy.title.replace(/\s*\([^)]*\)$/, "")} (static-agent)`,
+    });
   }
   return findings;
 }
@@ -328,91 +177,53 @@ async function analyzeStatic(task: SecurityTask): Promise<Finding[]> {
 /* ------------------------------------------------------------------ */
 
 async function analyzeReentrancySentinel(task: SecurityTask): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  const calls = valueTransferCalls(task.source);
-  if (calls.length === 0 || hasNonReentrantGuard(task.source)) return findings;
-
-  for (const call of calls) {
-    findings.push(
-      makeFinding(
-        "reentrancy-sentinel",
-        findings.length,
-        "reentrancy",
-        "critical",
-        call.loc,
-        `Reentrancy Sentinel: External callback invocation without ReentrancyGuard: ${call.pattern}. Recursive callback state drift detected.`,
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  const findings = runReentrancyHarness(task, parsed);
+  return findings.map((f, i) => ({
+    ...f,
+    id: `reentrancy-sentinel-reentrancy-${i}`,
+    title: `Reentrancy Sentinel: ${f.title.replace(/\s*\([^)]*\)$/, "")} (reentrancy-sentinel)`,
+  }));
 }
 
 async function analyzeAccessSentinel(task: SecurityTask): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  if (/\btx\.origin\b/.test(task.source)) {
-    findings.push(
-      makeFinding(
-        "access-sentinel",
-        findings.length,
-        "access-control",
-        "high",
-        "contract",
-        "Access Sentinel: Authentication relies on tx.origin instead of msg.sender, vulnerable to phishing and proxy bypass.",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  const findings = runAccessControlHarness(task, parsed);
+  return findings.map((f, i) => ({
+    ...f,
+    id: `access-sentinel-access-control-${i}`,
+    title: `Access Sentinel: ${f.title.replace(/\s*\([^)]*\)$/, "")} (access-sentinel)`,
+  }));
 }
 
 async function analyzeInvariant(task: SecurityTask): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  if (/\/\s*[A-Za-z0-9_]+\s*\*/.test(task.source) || /mulDiv|precision/i.test(task.source)) {
-    findings.push(
-      makeFinding(
-        "invariant-agent",
-        findings.length,
-        "business-logic",
-        "high",
-        "division/precision site",
-        "Invariant Agent: Detected potential division before multiplication causing precision loss and accounting drift.",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  const findings = runBusinessLogicHarness(task, parsed);
+  return findings.map((f, i) => ({
+    ...f,
+    id: `invariant-agent-business-logic-${i}`,
+    title: `Invariant Agent: ${f.title.replace(/\s*\([^)]*\)$/, "")} (invariant-agent)`,
+  }));
 }
 
 async function analyzeMevSentinel(task: SecurityTask): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  if (/flashloan|flashBorrower|borrow\s*\(|swap\s*\(|getReserves|latestRoundData/i.test(task.source)) {
-    findings.push(
-      makeFinding(
-        "mev-sentinel",
-        findings.length,
-        "economic",
-        "high",
-        "pool interaction",
-        "MEV Sentinel: Atomic flash loan or AMM pool interaction detected without adequate slippage bounds or TWAP safeguards.",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  const findings = runEconomicHarness(task, parsed);
+  return findings.map((f, i) => ({
+    ...f,
+    id: `mev-sentinel-economic-${i}`,
+    title: `MEV Sentinel: ${f.title.replace(/\s*\([^)]*\)$/, "")} (mev-sentinel)`,
+  }));
 }
 
 async function analyzeBytecodeVerifier(task: SecurityTask): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  if (/\.delegatecall\s*\(/.test(task.source)) {
-    findings.push(
-      makeFinding(
-        "bytecode-verifier",
-        findings.length,
-        "static-analysis",
-        "critical",
-        "delegatecall",
-        "Bytecode Verifier: Low-level delegatecall preserves msg.sender and storage context; execution target must be strictly immutable.",
-      ),
-    );
-  }
-  return findings;
+  const parsed = parseSoliditySource(task.source);
+  const findings = runStaticAnalysisHarness(task, parsed);
+  return findings.map((f, i) => ({
+    ...f,
+    id: `bytecode-verifier-static-${i}`,
+    title: `Bytecode Verifier: ${f.title.replace(/\s*\([^)]*\)$/, "")} (bytecode-verifier)`,
+  }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -443,9 +254,24 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no reentrancy vulnerabilities are detected, return {"findings": []}.`,
 
-  "reentrancy-sentinel": `You are the Reentrancy Sentinel (Challenger Agent) in SwarmProof.
-Your focus is deep cross-contract callback validation, ERC receiver hooks, and transient state reentrancy.
-Return strictly {"findings": [...]} or {"findings": []}.`,
+  "reentrancy-sentinel": `You are the Reentrancy Sentinel (Challenger Agent) in SwarmProof, an adversarial multi-agent security swarm.
+Your SOLE responsibility is deep cross-contract callback validation, ERC recipient hooks (ERC-777, ERC-721, ERC-1155), and transient state reentrancy.
+Confirm or contest potential reentrancy attack vectors. Verify if functions are protected by mutexes or nonReentrant modifiers.
+
+IMPORTANT: Return ONLY a valid JSON object with the following schema, and no other text:
+{
+  "findings": [
+    {
+      "title": "Short descriptive title",
+      "category": "reentrancy",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "location": "line X or functionName()",
+      "evidence": ["Exact code snippet or hook invocation", "Callback analysis"],
+      "reasoning": "Step-by-step cross-contract reentrancy exploit scenario"
+    }
+  ]
+}
+If no reentrancy vulnerabilities are detected, return {"findings": []}.`,
 
   "access-control-agent": `You are the Access Control Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting authorization and privilege vulnerabilities in Solidity contracts:
@@ -470,9 +296,23 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no access control vulnerabilities are detected, return {"findings": []}.`,
 
-  "access-sentinel": `You are the Access Sentinel (Challenger Agent) in SwarmProof.
-Your focus is privilege escalation vectors, proxy implementation slots, and authentication bypasses.
-Return strictly {"findings": [...]} or {"findings": []}.`,
+  "access-sentinel": `You are the Access Sentinel (Challenger Agent) in SwarmProof, an adversarial multi-agent security swarm.
+Your SOLE responsibility is detecting privilege escalation vectors, proxy implementation slots, and authentication bypasses (such as tx.origin usage or missing authorization modifiers).
+
+IMPORTANT: Return ONLY a valid JSON object with the following schema, and no other text:
+{
+  "findings": [
+    {
+      "title": "Short descriptive title",
+      "category": "access-control",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "location": "line X or functionName()",
+      "evidence": ["Exact code snippet", "Why privilege bypass is possible"],
+      "reasoning": "Step-by-step privilege escalation exploit scenario"
+    }
+  ]
+}
+If no access control vulnerabilities are detected, return {"findings": []}.`,
 
   "business-logic-agent": `You are the Business Logic Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting contract-specific accounting and business logic flaws in Solidity:
@@ -497,9 +337,24 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no business logic vulnerabilities are detected, return {"findings": []}.`,
 
-  "invariant-agent": `You are the Invariant Challenger Agent in SwarmProof.
-Your focus is strict accounting equality, precision preservation, and balance tracking invariants.
-Return strictly {"findings": [...]} or {"findings": []}.`,
+  "invariant-agent": `You are the Invariant Challenger Agent in SwarmProof, an adversarial multi-agent security swarm.
+Your SOLE responsibility is auditing strict accounting equality, precision preservation, and balance tracking invariants.
+Check for division before multiplication, rounding-to-zero in share math (e.g. ERC-4626 first-depositor inflation), and missing boundary validations.
+
+IMPORTANT: Return ONLY a valid JSON object with the following schema, and no other text:
+{
+  "findings": [
+    {
+      "title": "Short descriptive title",
+      "category": "business-logic" | "input-validation",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "location": "line X or functionName()",
+      "evidence": ["Exact code snippet", "Mathematical or invariant violation"],
+      "reasoning": "Detailed explanation of accounting drift, inflation attack, or precision truncation"
+    }
+  ]
+}
+If no invariant vulnerabilities are detected, return {"findings": []}.`,
 
   "economic-agent": `You are the Economic Security Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting economic, market, and financial attack vectors in Solidity:
@@ -524,9 +379,24 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no economic vulnerabilities are detected, return {"findings": []}.`,
 
-  "mev-sentinel": `You are the MEV & Flash Loan Sentinel in SwarmProof.
-Your focus is atomic arbitrage, sandwich vulnerability, liquidity manipulation, and oracle frontrunning.
-Return strictly {"findings": [...]} or {"findings": []}.`,
+  "mev-sentinel": `You are the MEV & Flash Loan Sentinel in SwarmProof, an adversarial multi-agent security swarm.
+Your SOLE responsibility is detecting atomic arbitrage, sandwich vulnerabilities, liquidity pool manipulation, and spot price oracle frontrunning.
+Focus on missing slippage bounds, instantaneous getReserves() reads, and single-block insolvency vectors.
+
+IMPORTANT: Return ONLY a valid JSON object with the following schema, and no other text:
+{
+  "findings": [
+    {
+      "title": "Short descriptive title",
+      "category": "economic" | "oracle-manipulation" | "flash-loan",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "location": "line X or functionName()",
+      "evidence": ["Exact code snippet", "MEV / oracle risk mechanism"],
+      "reasoning": "Step-by-step flash loan or sandwich exploit scenario"
+    }
+  ]
+}
+If no MEV/economic vulnerabilities are detected, return {"findings": []}.`,
 
   "static-agent": `You are the Static Analysis Specialist Agent in SwarmProof, an adversarial multi-agent smart contract security swarm.
 Your SOLE responsibility is detecting code safety, low-level call hazards, and compiler-level issues in Solidity:
@@ -551,9 +421,23 @@ IMPORTANT: Return ONLY a valid JSON object with the following schema, and no oth
 }
 If no code safety/static analysis vulnerabilities are detected, return {"findings": []}.`,
 
-  "bytecode-verifier": `You are the Bytecode & Opcode Verifier in SwarmProof.
-Your focus is low-level assembly safety, arbitrary delegatecall patterns, and return value validation.
-Return strictly {"findings": [...]} or {"findings": []}.`,
+  "bytecode-verifier": `You are the Bytecode & Opcode Verifier in SwarmProof, an adversarial multi-agent security swarm.
+Your SOLE responsibility is detecting low-level assembly safety hazards, arbitrary delegatecall patterns, dirty memory, and unchecked call return values.
+
+IMPORTANT: Return ONLY a valid JSON object with the following schema, and no other text:
+{
+  "findings": [
+    {
+      "title": "Short descriptive title",
+      "category": "delegatecall" | "static-analysis" | "unchecked-call",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "location": "line X or functionName()",
+      "evidence": ["Exact code snippet", "Low-level hazard explanation"],
+      "reasoning": "EVM bytecode execution trace explaining storage corruption or execution hijack"
+    }
+  ]
+}
+If no bytecode/static vulnerabilities are detected, return {"findings": []}.`,
 };
 
 /* ------------------------------------------------------------------ */
@@ -657,11 +541,16 @@ export function createSpecialistAgents(
       try {
         console.log(`🤖 [Swarm Agent: ${agentId}] Running LLM inference on ${task.contractName}...`);
         const systemPrompt = SPECIALIST_SYSTEM_PROMPTS[agentId];
+        const precomputed = await heuristicFn(task);
+        const cluesText = precomputed.length > 0
+          ? `\nPre-computed Static Analysis AST Clues:\n${precomputed.map((f) => `- [${f.category}] ${f.title} at ${f.location}: ${f.evidence.join("; ")}`).join("\n")}\nVerify, contest, or deepen these clues with concrete exploit analysis.\n`
+          : "";
+
         const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${agentId}):
 
 Contract Name: ${task.contractName}
 ${task.network ? `Target Network: ${task.network}` : ""}
-
+${cluesText}
 \`\`\`solidity
 ${task.source}
 \`\`\`
@@ -674,6 +563,9 @@ Analyze the code carefully and return your findings strictly in the specified JS
 
         const findings = parseLLMFindings(response, agentId);
         console.log(`✓ [Swarm Agent: ${agentId}] Inference completed: ${findings.length} finding(s) detected [${findings.map((f) => f.severity).join(", ") || "clean"}].`);
+        if (findings.length === 0 && precomputed.some((f) => f.severity === "critical" || f.severity === "high")) {
+          return precomputed;
+        }
         return findings;
       } catch (err) {
         console.warn(

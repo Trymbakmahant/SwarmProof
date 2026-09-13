@@ -92,3 +92,4 @@ export * from "./specialists.js";
 export * from "./agentKeypairs.js";
 export * from "./llm.js";
 export * from "./benchmarks/index.js";
+export * from "./harness.js";
