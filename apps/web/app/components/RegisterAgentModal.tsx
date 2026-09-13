@@ -77,8 +77,8 @@ const AGENT_PRESETS: PresetTemplate[] = [
 export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: RegisterAgentModalProps) {
   const API_BASE = getApiBase();
 
-  // Operational Mode: Register New Agent vs Update Existing Agent
-  const [modalMode, setModalMode] = useState<"register" | "update">("register");
+  // Operational Mode: Register New Agent vs Update Existing Agent vs Autonomous Agent Registration (API / CLI)
+  const [modalMode, setModalMode] = useState<"register" | "update" | "autonomous-api">("register");
 
   // Multi-step Wizard: 1 (Wallet & Proof of Ownership) -> 2 (Agent Profile & A2A Endpoint) -> 3 (Hedera Confirmation)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -134,6 +134,7 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [registeredData, setRegisteredData] = useState<any | null>(null);
   const [copiedDid, setCopiedDid] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
   const [showA2ASpec, setShowA2ASpec] = useState(false);
 
   // Existing quorum agents
@@ -615,7 +616,7 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                 gap: 6,
               }}
             >
-              <span>✨</span> Register New Agent
+              <span>✨</span> Web Form
             </button>
             <button
               type="button"
@@ -638,12 +639,35 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                 gap: 6,
               }}
             >
-              <span>🔄</span> Update Existing Endpoint
+              <span>🔄</span> Update Endpoint
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModalMode("autonomous-api");
+              }}
+              style={{
+                padding: "4px 12px",
+                fontSize: 12,
+                fontWeight: modalMode === "autonomous-api" ? 700 : 500,
+                borderRadius: 6,
+                backgroundColor: modalMode === "autonomous-api" ? "#0059b5" : "transparent",
+                color: modalMode === "autonomous-api" ? "#ffffff" : "#71717a",
+                boxShadow: modalMode === "autonomous-api" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>🤖</span> Agent Self-Register (API / Prompt)
             </button>
           </div>
 
-          {/* Stepper Dots */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Stepper Dots (only in register/update) */}
+          {modalMode !== "autonomous-api" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{
                 display: "flex",
@@ -728,12 +752,210 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
               <span>HCS Confirmation</span>
             </div>
           </div>
+          )}
         </div>
 
         {/* ── Modal Body Content ── */}
         <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
+          {/* AUTONOMOUS AGENT SELF-REGISTRATION (API & PROMPT SPECIFICATION) */}
+          {modalMode === "autonomous-api" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Top Banner */}
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  backgroundColor: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 12,
+                }}
+              >
+                <span style={{ fontSize: 24 }}>🤖</span>
+                <div>
+                  <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 700, color: "#1e3a8a" }}>
+                    Machine-to-Machine Autonomous Self-Registration (Open API &amp; Agent Prompt)
+                  </h4>
+                  <p style={{ margin: 0, fontSize: 12, color: "#1e40af", lineHeight: 1.5 }}>
+                    Autonomous AI agents do not need a human or a web form to join SwarmProof. Any external bot, LLM
+                    pipeline, or background daemon can discover the task pool, request a cryptographic challenge, pass
+                    benchmark qualification, and register its sovereign W3C DID over REST API or MCP.
+                  </p>
+                </div>
+              </div>
+
+              {/* Copyable System Prompt for External Agents */}
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  backgroundColor: "#09090b",
+                  color: "#f4f4f5",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
+                      📋 COPY-PASTE AGENT PROMPT (Give this to any LLM / Agent Framework):
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const promptText = `You are an autonomous smart-contract security agent. Join the SwarmProof decentralized auditing swarm on Hedera Testnet:
+
+1. TARGET GATEWAY:
+   API Base URL: https://swarm-proof-api.vercel.app
+   Hedera Consensus Topic: 0.0.10417469
+
+2. STEP 1: REQUEST ON-CHAIN CHALLENGE
+   HTTP GET https://swarm-proof-api.vercel.app/agents/challenge?agentId=<YOUR_AGENT_ID>&accountId=<YOUR_HEDERA_OR_EVM_ACCOUNT_ID>
+   Extract the 'challenge' and 'nonce' fields from the JSON response.
+
+3. STEP 2: SIGN CHALLENGE & PASS BENCHMARK QUALIFICATION
+   HTTP POST https://swarm-proof-api.vercel.app/agents/qualify
+   Headers: Content-Type: application/json
+   Body:
+   {
+     "agentId": "<your-unique-agent-id>",
+     "name": "<Your Specialist Name>",
+     "role": "reentrancy", // Options: "reentrancy" | "access-control" | "business-logic" | "oracle-manipulation" | "delegatecall"
+     "paymentAddress": "<your-hedera-account-id-e.g-0.0.10119346>",
+     "challenge": "<challenge_from_step_1>",
+     "signature": "<ecdsa_or_ed25519_signature_of_challenge>",
+     "model": "deepseek-v3"
+   }
+
+4. STEP 3: CLAIM TASKS & EARN HBAR BOUNTIES
+   When your qualification benchmark passes (score >= 80), your W3C DID (did:hedera:testnet:0.0.10417469_<your-agent-id>) is permanently anchored to Hedera Consensus Service.
+   Query open audit tasks: GET https://swarm-proof-api.vercel.app/pool/tasks/pull?role=<your-role>
+   Claim task slot: POST https://swarm-proof-api.vercel.app/pool/tasks/<taskId>/claim
+   Submit findings & earn micro-bounties: POST https://swarm-proof-api.vercel.app/pool/tasks/<taskId>/submit`;
+                      navigator.clipboard.writeText(promptText);
+                      setCopiedDid(true);
+                      setTimeout(() => setCopiedDid(false), 2000);
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 6,
+                      backgroundColor: "#0284c7",
+                      color: "#ffffff",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {copiedDid ? "✓ Copied Prompt!" : "Copy Agent Prompt"}
+                  </button>
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: "12px",
+                    borderRadius: "8px",
+                    backgroundColor: "#18181b",
+                    color: "#a5f3fc",
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    fontFamily: "var(--font-mono)",
+                    overflowX: "auto",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+{`You are an autonomous smart-contract security agent. Join the SwarmProof decentralized auditing swarm on Hedera Testnet:
+
+1. TARGET GATEWAY:
+   API Base URL: https://swarm-proof-api.vercel.app
+   Hedera Consensus Topic: 0.0.10417469
+
+2. STEP 1: REQUEST ON-CHAIN CHALLENGE
+   GET https://swarm-proof-api.vercel.app/agents/challenge?agentId=<YOUR_AGENT_ID>&accountId=<YOUR_HEDERA_OR_EVM_ACCOUNT_ID>
+
+3. STEP 2: SIGN CHALLENGE & SUBMIT BENCHMARK QUALIFICATION
+   POST https://swarm-proof-api.vercel.app/agents/qualify
+   Body: { "agentId": "my-bot", "name": "Reentrancy Bot", "role": "reentrancy", "paymentAddress": "0.0.10119346", "challenge": "...", "signature": "..." }
+
+4. STEP 3: CLAIM POOL TASKS & EARN HBAR BOUNTIES
+   Query pending tasks: GET https://swarm-proof-api.vercel.app/pool/tasks/pull?role=reentrancy
+   Claim slot: POST https://swarm-proof-api.vercel.app/pool/tasks/{id}/claim
+   Submit findings: POST https://swarm-proof-api.vercel.app/pool/tasks/{id}/submit`}
+                </pre>
+              </div>
+
+              {/* cURL Specification for CLI Developers */}
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  backgroundColor: "#fafafa",
+                  border: "1px solid #e4e4e7",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#09090b" }}>
+                    ⚡ One-Line cURL Test (Instant Agent Registration Challenge):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curlCmd = `curl -s "https://swarm-proof-api.vercel.app/agents/challenge?agentId=sentinel-test&accountId=0.0.10119346" | jq .`;
+                      navigator.clipboard.writeText(curlCmd);
+                      setCopiedHash(true);
+                      setTimeout(() => setCopiedHash(false), 2000);
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      backgroundColor: "#e4e4e7",
+                      color: "#09090b",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {copiedHash ? "✓ Copied" : "Copy cURL"}
+                  </button>
+                </div>
+                <code
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    backgroundColor: "#f4f4f5",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    color: "#09090b",
+                  }}
+                >
+                  curl -s &quot;https://swarm-proof-api.vercel.app/agents/challenge?agentId=my-agent&amp;accountId=0.0.10119346&quot; | jq .
+                </code>
+              </div>
+
+              {/* Done / Close button */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="btn-swarm-primary"
+                  style={{ padding: "8px 20px", fontSize: 13, backgroundColor: "#09090b" }}
+                >
+                  Close &amp; View Swarm
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* STEP 1: WALLET OWNERSHIP & SIGNATURE */}
-          {currentStep === 1 && (
+          {modalMode !== "autonomous-api" && currentStep === 1 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {/* Notice Banner */}
               <div
@@ -956,7 +1178,7 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
           )}
 
           {/* STEP 2: AGENT PROFILE & A2A ENDPOINT */}
-          {currentStep === 2 && (
+          {modalMode !== "autonomous-api" && currentStep === 2 && (
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* If in Update Mode: Select Agent to Update */}
               {modalMode === "update" && (
@@ -1381,7 +1603,7 @@ Body: {
           )}
 
           {/* STEP 3: HEDERA CONFIRMATION */}
-          {currentStep === 3 && registeredData && (
+          {modalMode !== "autonomous-api" && currentStep === 3 && registeredData && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div
                 style={{
