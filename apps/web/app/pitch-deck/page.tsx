@@ -3,20 +3,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { RegisterAgentModal } from "../components/RegisterAgentModal";
-import { AuditPoolModal } from "../components/AuditPoolModal";
 
 export default function PitchDeckPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(1);
-  const totalSlides = 7;
+  const totalSlides = 5;
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
 
   // ─── Slide Navigation ─────────────────────────────────────────────
   const scrollStepRef = useRef<number | null>(null);
   const currentIndexRef = useRef(currentSlideIndex);
   currentIndexRef.current = currentSlideIndex;
 
-  const animateScrollTo = useCallback((targetY: number, duration = 400) => {
+  const animateScrollTo = useCallback((targetY: number, duration = 350) => {
     if (typeof window === "undefined") return;
     if (scrollStepRef.current !== null) {
       cancelAnimationFrame(scrollStepRef.current);
@@ -46,7 +44,7 @@ export default function PitchDeckPage() {
 
       const el = document.getElementById(`slide-${targetIdx}`);
       if (!el) return;
-      const navOffset = 130;
+      const navOffset = 120;
       const top = el.getBoundingClientRect().top + window.scrollY - navOffset;
       animateScrollTo(Math.max(0, top));
     },
@@ -60,7 +58,6 @@ export default function PitchDeckPage() {
     [scrollToSlide]
   );
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -107,18 +104,10 @@ export default function PitchDeckPage() {
     return () => observer.disconnect();
   }, [totalSlides]);
 
-  const toggleDeckFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    }
-  };
-
   return (
     <div className="min-h-screen bg-surface text-on-surface selection:bg-secondary-container selection:text-on-secondary-container">
-      {/* ── Fixed Minimal App Header ──────────────────────────────────── */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-black/[0.06] shadow-xs">
+      {/* ── Fixed Header ────────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-black/[0.06]">
         <div className="max-w-[1240px] mx-auto px-4 md:px-8 flex items-center justify-between py-3">
           <div className="flex items-center gap-3">
             <Link className="flex items-center gap-2 hover:opacity-90 transition-opacity" href="/">
@@ -127,9 +116,8 @@ export default function PitchDeckPage() {
                 SwarmProof
               </span>
             </Link>
-            <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface-container text-tertiary">
-              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
-              0.0.10417469
+            <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface-container text-tertiary">
+              Hedera Topic: 0.0.10417469
             </span>
           </div>
 
@@ -158,13 +146,13 @@ export default function PitchDeckPage() {
         </div>
       </header>
 
-      {/* ── Sticky Presenter Controls Dock ────────────────────────────── */}
+      {/* ── Sticky Presenter Dock (5 Parts Matching Demo Script) ──────── */}
       <div className="sticky top-14 z-40 w-full bg-background/85 backdrop-blur-md border-b border-black/[0.05] py-2">
         <div className="max-w-[1240px] mx-auto px-4 md:px-8 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
             <span className="text-[11px] font-bold text-on-surface uppercase tracking-wider">
-              Visual Pitch Deck
+              Presentation Slides (5 Acts)
             </span>
           </div>
 
@@ -180,7 +168,7 @@ export default function PitchDeckPage() {
                 <span className="material-symbols-outlined text-[16px]">chevron_left</span>
               </button>
               <span className="font-mono text-[11px] font-bold text-on-surface px-1.5 min-w-[48px] text-center">
-                0{currentSlideIndex} / 0{totalSlides}
+                Act 0{currentSlideIndex} / 0{totalSlides}
               </span>
               <button
                 aria-label="Next Slide"
@@ -194,45 +182,43 @@ export default function PitchDeckPage() {
             </div>
 
             <div className="hidden sm:flex items-center gap-1 bg-surface-container-lowest p-0.5 rounded-full border border-black/[0.06] shadow-xs">
-              {[1, 2, 3, 4, 5, 6, 7].map((num) => (
+              {[
+                { num: 1, label: "What is SwarmProof" },
+                { num: 2, label: "Agent Registration" },
+                { num: 3, label: "NPM Package" },
+                { num: 4, label: "Live IDE Audit" },
+                { num: 5, label: "Knowledge Graph" },
+              ].map((s) => (
                 <button
-                  key={num}
+                  key={s.num}
                   type="button"
-                  onClick={() => scrollToSlide(num)}
-                  className={`w-5 h-5 text-[10px] font-mono rounded-full transition-all cursor-pointer flex items-center justify-center ${
-                    currentSlideIndex === num
+                  onClick={() => scrollToSlide(s.num)}
+                  className={`px-2.5 py-0.5 text-[11px] font-mono rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                    currentSlideIndex === s.num
                       ? "bg-primary text-white font-bold shadow-xs"
                       : "hover:bg-surface-container text-tertiary"
                   }`}
                 >
-                  {num}
+                  <span>0{s.num}</span>
+                  <span className="hidden md:inline">{s.label}</span>
                 </button>
               ))}
             </div>
-
-            <button
-              type="button"
-              onClick={toggleDeckFullscreen}
-              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container text-on-surface text-[11px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[14px]">fullscreen</span>
-              <span>Full</span>
-            </button>
           </div>
         </div>
       </div>
 
       {/* ── Slides Canvas ────────────────────────────────────────────── */}
       <main className="max-w-[1240px] mx-auto px-4 md:px-8 py-8 flex flex-col gap-12">
-        {/* ==================== SLIDE 01: HERO / THE THESIS ==================== */}
+        {/* ==================== ACT 1: WHAT IS SWARMPROOF? ==================== */}
         <section
           className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-1"
         >
           <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
             <div className="flex items-center gap-2 font-mono text-[11px] text-tertiary">
-              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">01 / 07</span>
-              <span>ETHGlobal 2026</span>
+              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">ACT 01</span>
+              <span>Overview &amp; The Problem</span>
             </div>
             <span className="font-mono text-[11px] text-secondary font-bold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
@@ -244,10 +230,10 @@ export default function PitchDeckPage() {
             <div className="lg:col-span-7 flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-primary text-white text-[11px] font-bold tracking-wider uppercase">
-                  Open Multi-Agent Protocol
+                  Multi-Agent Security Swarm
                 </span>
                 <span className="px-3 py-1 rounded-full bg-secondary/15 text-secondary text-[11px] font-bold uppercase">
-                  x402 Micropayments
+                  Hedera Consensus Service
                 </span>
               </div>
               <h1 className="text-3xl md:text-5xl font-extrabold text-on-surface tracking-tight leading-[1.15]">
@@ -255,55 +241,48 @@ export default function PitchDeckPage() {
                 <span className="text-primary">Anchored on Hedera.</span>
               </h1>
               <p className="text-base md:text-lg text-on-surface-variant font-medium max-w-xl">
-                Anyone can register an autonomous AI agent, pass on-chain benchmarks, and earn micro-bounties in HBAR by verifying smart contract security.
+                Audits take weeks and cost thousands of dollars. Single AI models hallucinate and lack cryptographic proof. SwarmProof dispatches specialized AI agents that reach consensus, verify exploits in a sandbox, and anchor proofs to Hedera in seconds.
               </p>
 
-              <div className="pt-2 flex flex-wrap items-center gap-3">
-                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
-                  <span className="text-2xl">⚡</span>
-                  <div>
-                    <div className="text-[11px] uppercase text-tertiary font-bold">Turnaround Time</div>
-                    <div className="text-lg font-bold text-secondary">3 Seconds</div>
-                  </div>
+              <div className="grid grid-cols-3 gap-3 pt-2">
+                <div className="p-3.5 rounded-2xl bg-surface-container-low border border-black/[0.05] text-center">
+                  <div className="text-2xl mb-1">⏳</div>
+                  <div className="text-[11px] text-tertiary uppercase font-bold">Legacy Audits</div>
+                  <div className="text-sm font-bold text-error">3–4 Weeks / $50k</div>
                 </div>
-                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
-                  <span className="text-2xl">🛡️</span>
-                  <div>
-                    <div className="text-[11px] uppercase text-tertiary font-bold">Consensus Model</div>
-                    <div className="text-lg font-bold text-primary">Byzantine Quorum (4/5)</div>
-                  </div>
+                <div className="p-3.5 rounded-2xl bg-surface-container-low border border-black/[0.05] text-center">
+                  <div className="text-2xl mb-1">⚡</div>
+                  <div className="text-[11px] text-tertiary uppercase font-bold">SwarmProof</div>
+                  <div className="text-sm font-bold text-secondary">3 Seconds / Automated</div>
                 </div>
-                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
-                  <span className="text-2xl">ℏ</span>
-                  <div>
-                    <div className="text-[11px] uppercase text-tertiary font-bold">Micro-Settlement</div>
-                    <div className="text-lg font-bold text-on-surface">Blocky402 / x402</div>
-                  </div>
+                <div className="p-3.5 rounded-2xl bg-surface-container-low border border-black/[0.05] text-center">
+                  <div className="text-2xl mb-1">🔒</div>
+                  <div className="text-[11px] text-tertiary uppercase font-bold">Proof of Audit</div>
+                  <div className="text-sm font-bold text-primary">HCS 0.0.10417469</div>
                 </div>
               </div>
             </div>
 
-            {/* Visual Diagram Box */}
-            <div className="lg:col-span-5 bg-gradient-to-br from-[#0f172a] to-[#020617] rounded-3xl p-6 text-white flex flex-col gap-4 shadow-md border border-slate-800">
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                <span>SWARM ARCHITECTURE</span>
-                <span className="text-emerald-400 font-bold">● LIVE TESTNET</span>
+            <div className="lg:col-span-5 bg-gradient-to-br from-[#0f172a] to-[#020617] rounded-3xl p-6 text-white flex flex-col gap-3.5 border border-slate-800 shadow-md">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-mono pb-2 border-b border-slate-800">
+                <span>SWARM WORKFLOW</span>
+                <span className="text-emerald-400 font-bold">● TESTNET ACTIVE</span>
               </div>
               <div className="space-y-2.5 font-mono text-xs">
                 <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
-                  <span>1. Developer Code Drop</span>
-                  <span className="text-sky-400">AST Deconstructed</span>
+                  <span>1. Solidity Contract Drop</span>
+                  <span className="text-sky-400">AST Parsed</span>
                 </div>
                 <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
-                  <span>2. Parallel AI Specialists</span>
-                  <span className="text-purple-400">10+ Agents Swarm</span>
+                  <span>2. 10+ AI Specialists Swarm</span>
+                  <span className="text-purple-400">Parallel Audit</span>
                 </div>
                 <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
                   <span>3. Sandbox PoC Exploiter</span>
-                  <span className="text-amber-400">Virtual Verification</span>
+                  <span className="text-amber-400">Zero Hallucinations</span>
                 </div>
-                <div className="p-3 bg-emerald-950/70 rounded-xl border border-emerald-500/50 flex items-center justify-between font-bold text-emerald-300">
-                  <span>4. Hedera HCS Anchor</span>
+                <div className="p-3 bg-emerald-950/70 rounded-xl border border-emerald-500/50 flex items-center justify-between text-emerald-300 font-bold">
+                  <span>4. Hedera Proof &amp; x402 Payout</span>
                   <span>Topic 0.0.10417469</span>
                 </div>
               </div>
@@ -311,315 +290,230 @@ export default function PitchDeckPage() {
           </div>
 
           <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>SwarmProof Protocol</span>
-            <span>Decentralized Autonomous Verification</span>
+            <span>Act 01 • Introduction</span>
+            <span>Spoken Script: 0:00 – 0:35</span>
           </div>
         </section>
 
-        {/* ==================== SLIDE 02: THE PROBLEM ==================== */}
+        {/* ==================== ACT 2: AGENT REGISTRATION ==================== */}
         <section
           className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-2"
         >
           <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
-            <span className="px-2 py-0.5 rounded-full bg-error/10 text-error font-mono text-[11px] font-bold">
-              02 / 07 • MARKET FAILURE
-            </span>
-            <span className="text-xs font-semibold text-error">Current Security Bottleneck</span>
-          </div>
-
-          <div className="my-auto py-4">
-            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
-              Why smart contract auditing is broken today:
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-error/15 text-error flex items-center justify-center text-2xl mb-4 font-bold">
-                    ⏳
-                  </div>
-                  <h3 className="text-lg font-bold text-on-surface">3-4 Week Waitlists</h3>
-                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
-                    Legacy auditing firms charge $50,000+ for slow manual reviews, halting deploy velocity.
-                  </p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-error font-bold">
-                  99% of early teams ship unaudited
-                </div>
-              </div>
-
-              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 flex items-center justify-center text-2xl mb-4 font-bold">
-                    🤖
-                  </div>
-                  <h3 className="text-lg font-bold text-on-surface">Single LLM Hallucinations</h3>
-                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
-                    Copy-pasting code into ChatGPT yields 40%+ false positives and completely misses deep multi-hop reentrancy.
-                  </p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-amber-600 font-bold">
-                  Zero deterministic verification
-                </div>
-              </div>
-
-              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-slate-500/15 text-slate-700 flex items-center justify-center text-2xl mb-4 font-bold">
-                    📄
-                  </div>
-                  <h3 className="text-lg font-bold text-on-surface">Unverifiable PDFs</h3>
-                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
-                    Audit badges are static PDFs hosted on web2 servers. No cryptographic ledger proof of what code was checked.
-                  </p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-slate-600 font-bold">
-                  No on-chain accountability
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>Market Analysis</span>
-            <span>$1.8B+ Lost in DeFi Exploits</span>
-          </div>
-        </section>
-
-        {/* ==================== SLIDE 03: THE SOLUTION ==================== */}
-        <section
-          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
-          id="slide-3"
-        >
-          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
             <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
-              03 / 07 • THE SOLUTION
+              ACT 02 • OPEN AGENT ECONOMY
             </span>
-            <span className="text-xs font-semibold text-secondary">Decentralized Multi-Agent Swarm</span>
-          </div>
-
-          <div className="my-auto py-4">
-            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
-              5 Specialist Roles. 1 On-Chain Quorum.
-            </h2>
-            <p className="text-base text-on-surface-variant mt-2 max-w-2xl">
-              An open network of specialist AI agents independently audit targeted AST domains in parallel:
-            </p>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
-              <div className="p-4 rounded-2xl bg-cyan-50 border border-cyan-200/60 flex flex-col justify-between text-center">
-                <div className="text-2xl">🔄</div>
-                <div className="font-bold text-cyan-900 text-sm mt-2">Reentrancy</div>
-                <div className="text-[11px] text-cyan-700 mt-1">CEI Flow &amp; Callbacks</div>
-                <div className="mt-2 text-[10px] font-mono text-cyan-800 font-bold">Active Specialist</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200/60 flex flex-col justify-between text-center">
-                <div className="text-2xl">🔑</div>
-                <div className="font-bold text-blue-900 text-sm mt-2">Access Control</div>
-                <div className="text-[11px] text-blue-700 mt-1">Privilege &amp; tx.origin</div>
-                <div className="mt-2 text-[10px] font-mono text-blue-800 font-bold">Active Specialist</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200/60 flex flex-col justify-between text-center">
-                <div className="text-2xl">📐</div>
-                <div className="font-bold text-purple-900 text-sm mt-2">Business Logic</div>
-                <div className="text-[11px] text-purple-700 mt-1">Invariants &amp; Precision</div>
-                <div className="mt-2 text-[10px] font-mono text-purple-800 font-bold">Active Specialist</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/60 flex flex-col justify-between text-center">
-                <div className="text-2xl">📈</div>
-                <div className="font-bold text-amber-900 text-sm mt-2">Economic / MEV</div>
-                <div className="text-[11px] text-amber-700 mt-1">Flash Loans &amp; Oracles</div>
-                <div className="mt-2 text-[10px] font-mono text-amber-800 font-bold">Active Specialist</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/60 flex flex-col justify-between text-center">
-                <div className="text-2xl">🧪</div>
-                <div className="font-bold text-emerald-900 text-sm mt-2">Sandbox Oracle</div>
-                <div className="text-[11px] text-emerald-700 mt-1">Deterministic PoC</div>
-                <div className="mt-2 text-[10px] font-mono text-emerald-800 font-bold">PoC Verifier</div>
-              </div>
-            </div>
-
-            <div className="mt-6 p-4 rounded-2xl bg-surface-container flex items-center justify-between border border-black/[0.04]">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">⚖️</span>
-                <div>
-                  <div className="text-sm font-bold text-on-surface">Byzantine Quorum Engine (80% Consensus Threshold)</div>
-                  <div className="text-xs text-on-surface-variant">At least 4 out of 5 specialist categories must reach cross-attestation before a finding is accepted.</div>
-                </div>
-              </div>
-              <span className="px-3 py-1 bg-secondary text-white font-mono text-xs font-bold rounded-full">
-                Zero Hallucinations
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>Consensus Engine</span>
-            <span>Concurrent AST Deconstruction</span>
-          </div>
-        </section>
-
-        {/* ==================== SLIDE 04: HEDERA HCS ANCHORING ==================== */}
-        <section
-          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
-          id="slide-4"
-        >
-          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
-            <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary font-mono text-[11px] font-bold">
-              04 / 07 • HEDERA CONSENSUS SERVICE
-            </span>
-            <span className="text-xs font-mono font-bold text-secondary">Topic 0.0.10417469</span>
-          </div>
-
-          <div className="my-auto py-4 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-6 flex flex-col gap-4">
-              <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
-                Cryptographic Proofs. <br />
-                <span className="text-secondary">Anchored On-Chain Forever.</span>
-              </h2>
-              <p className="text-base text-on-surface-variant">
-                Instead of trust-me PDFs, SwarmProof hashes the contract bytecode, agent attestations, and sandbox results into an immutable certificate submitted to Hedera Consensus Service.
-              </p>
-
-              <div className="space-y-2.5 pt-2">
-                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
-                  <span className="text-xl">🔒</span>
-                  <div>
-                    <div className="text-sm font-bold text-on-surface">EIP-191 &amp; SHA-256 Signatures</div>
-                    <div className="text-xs text-on-surface-variant">Every specialist cryptographically signs its own finding.</div>
-                  </div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
-                  <span className="text-xl">🌐</span>
-                  <div>
-                    <div className="text-sm font-bold text-on-surface">Hedera Mirror Node Verifiable</div>
-                    <div className="text-xs text-on-surface-variant">Anyone can query testnet.mirrornode.hedera.com in under 100ms.</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Visual JSON Proof Terminal */}
-            <div className="lg:col-span-6 bg-[#0f172a] rounded-2xl p-5 text-emerald-400 font-mono text-xs border border-slate-800 shadow-inner">
-              <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
-                <span>HCS Consensus Proof Receipt</span>
-                <span className="text-emerald-400 font-bold">● VERIFIED</span>
-              </div>
-              <pre className="mt-3 text-slate-200 overflow-x-auto">
-{`{
-  "hederaTopicId": "0.0.10417469",
-  "consensusTimestamp": "1789293194.612455202",
-  "contractHash": "0x7a3f89e1...TestContract",
-  "specialistsAttested": 10,
-  "quorumVerdict": "ACCEPTED_CONSENSUS",
-  "sandboxPoCVerified": true,
-  "bountyDisbursedHBAR": "1.00000000 ℏ",
-  "mirrorNodeStatus": "SUCCESS_200"
-}`}
-              </pre>
-              <div className="mt-3 pt-2 border-t border-slate-800 flex justify-between items-center text-slate-400">
-                <span>Topic: 0.0.10417469</span>
-                <a
-                  href="https://hashscan.io/testnet/topic/0.0.10417469"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-emerald-400 hover:underline flex items-center gap-1 font-bold"
-                >
-                  View on HashScan ↗
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>Hedera Ledger Anchoring</span>
-            <span>Sub-Second Finality • Micro-Cent Fees</span>
-          </div>
-        </section>
-
-        {/* ==================== SLIDE 05: OPEN ECONOMY & x402 ==================== */}
-        <section
-          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
-          id="slide-5"
-        >
-          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
-            <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
-              05 / 07 • AGENT ECONOMY &amp; x402
-            </span>
-            <span className="text-xs font-bold text-secondary">Blocky402 Settlement</span>
+            <span className="text-xs font-semibold text-secondary">Web Form vs. Agent Self-Register API</span>
           </div>
 
           <div className="my-auto py-4">
             <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
               Anyone Can Build an Agent. <br />
-              <span className="text-primary">Anyone Can Earn on Hedera.</span>
+              <span className="text-primary">Humans Use the Form — AI Uses the API.</span>
             </h2>
             <p className="text-base text-on-surface-variant mt-2 max-w-2xl">
-              An open, permissionless protocol where external developers connect custom AI agents and earn micro-bounties for real security work:
+              An open permissionless protocol where autonomous bots register, prove competence, and earn HBAR micro-bounties:
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+              {/* Step 1 */}
               <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-mono text-primary font-bold">STEP 01</div>
-                  <h3 className="font-bold text-on-surface text-base mt-1">Register Agent</h3>
-                  <p className="text-xs text-on-surface-variant mt-1.5">
-                    Connect via CLI or Web. Request an ECDSA cryptographic challenge.
+                  <h3 className="text-base font-bold text-on-surface mt-1">Request Challenge</h3>
+                  <code className="text-[11px] font-mono block bg-surface-container p-2 rounded-lg mt-2 text-primary">
+                    GET /agents/challenge
+                  </code>
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Agent asks SwarmProof for an on-chain nonce to prove control of its cryptographic identity.
                   </p>
                 </div>
-                <div className="mt-3 font-mono text-[11px] text-tertiary">EIP-191 Auth</div>
+                <div className="mt-3 text-[11px] font-mono text-tertiary">Cryptographic Nonce Issued</div>
               </div>
 
+              {/* Step 2 */}
               <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-mono text-secondary font-bold">STEP 02</div>
-                  <h3 className="font-bold text-on-surface text-base mt-1">Pass Qualification</h3>
-                  <p className="text-xs text-on-surface-variant mt-1.5">
-                    Pass automated benchmark challenge on real exploit contracts to receive a W3C DID.
+                  <h3 className="text-base font-bold text-on-surface mt-1">Sign &amp; Qualify</h3>
+                  <code className="text-[11px] font-mono block bg-surface-container p-2 rounded-lg mt-2 text-secondary">
+                    POST /agents/qualify
+                  </code>
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Agent signs challenge with private key and passes benchmark audit traps with 80%+ accuracy score.
                   </p>
                 </div>
-                <div className="mt-3 font-mono text-[11px] text-secondary font-bold">did:hedera</div>
+                <div className="mt-3 text-[11px] font-mono text-secondary font-bold">W3C DID (did:hedera) Minted</div>
               </div>
 
+              {/* Step 3 */}
               <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-mono text-primary font-bold">STEP 03</div>
-                  <h3 className="font-bold text-on-surface text-base mt-1">x402 Escrow</h3>
-                  <p className="text-xs text-on-surface-variant mt-1.5">
-                    Client deposits bounty via HTTP 402 Payment Required without browser popups.
+                  <h3 className="text-base font-bold text-on-surface mt-1">Earn x402 Bounties</h3>
+                  <code className="text-[11px] font-mono block bg-surface-container p-2 rounded-lg mt-2 text-primary">
+                    GET /pool/tasks/pull
+                  </code>
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Agent pulls pending tasks, submits verified findings, and gets paid in HBAR tinybars straight to its wallet.
                   </p>
                 </div>
-                <div className="mt-3 font-mono text-[11px] text-tertiary">Blocky402 / ℏ</div>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <div className="text-xs font-mono text-secondary font-bold">STEP 04</div>
-                  <h3 className="font-bold text-on-surface text-base mt-1">Instant Payouts</h3>
-                  <p className="text-xs text-on-surface-variant mt-1.5">
-                    Bounty splits programmatically to each participating agent wallet upon HCS consensus.
-                  </p>
-                </div>
-                <div className="mt-3 font-mono text-[11px] text-secondary font-bold">Direct to 0.0.x</div>
+                <div className="mt-3 text-[11px] font-mono text-primary font-bold">Autonomous On-Chain Income</div>
               </div>
             </div>
           </div>
 
           <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>Machine-to-Machine Payments</span>
-            <span>Zero Human Intermediaries</span>
+            <span>Act 02 • Agent Registration</span>
+            <span>Spoken Script: 0:35 – 1:25</span>
           </div>
         </section>
 
-        {/* ==================== SLIDE 06: THE GRAPH & DEVELOPER TOOLING ==================== */}
+        {/* ==================== ACT 3: NPM PACKAGE & MCP ==================== */}
         <section
           className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
-          id="slide-6"
+          id="slide-3"
+        >
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary font-mono text-[11px] font-bold">
+              ACT 03 • PRODUCTION NPM PACKAGE
+            </span>
+            <span className="text-xs font-mono font-bold text-primary">npx -y swarmproof-mcp@0.2.2</span>
+          </div>
+
+          <div className="my-auto py-4 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-6 flex flex-col gap-4">
+              <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+                Model Context Protocol (MCP). <br />
+                <span className="text-primary">Native In Any AI Coding Assistant.</span>
+              </h2>
+              <p className="text-base text-on-surface-variant">
+                We packaged SwarmProof into a published npm package (`swarmproof-mcp`). Developers using Antigravity, Cursor, or Claude Desktop can invoke the entire swarm directly inside their IDE.
+              </p>
+
+              <div className="space-y-2.5 pt-2">
+                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
+                  <span className="text-xl">🛠️</span>
+                  <div>
+                    <div className="text-sm font-bold text-on-surface">5 Native MCP Tools</div>
+                    <div className="text-xs text-on-surface-variant">`audit_contract`, `run_swarm_audit`, `verify_finding`, `get_audit_proof`, `pay_bounty`.</div>
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
+                  <span className="text-xl">💳</span>
+                  <div>
+                    <div className="text-sm font-bold text-on-surface">x402 (HTTP 402 Payment Required)</div>
+                    <div className="text-xs text-on-surface-variant">Autonomous machine-to-machine HBAR micro-escrow without browser wallet popups.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Terminal Preview */}
+            <div className="lg:col-span-6 bg-[#0f172a] rounded-2xl p-5 text-sky-400 font-mono text-xs border border-slate-800 shadow-inner">
+              <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+                <span>NPM &amp; MCP Integration</span>
+                <span className="text-emerald-400 font-bold">● PUBLISHED</span>
+              </div>
+              <pre className="mt-3 text-slate-200 overflow-x-auto">
+{`// Add to your IDE MCP Config (mcp_config.json):
+{
+  "mcpServers": {
+    "swarmproof": {
+      "command": "npx",
+      "args": ["-y", "swarmproof-mcp@0.2.2"],
+      "env": {
+        "HEDERA_ACCOUNT_ID": "0.0.10119346",
+        "HEDERA_PRIVATE_KEY": "<your-private-key>"
+      }
+    }
+  }
+}`}
+              </pre>
+              <div className="mt-3 pt-2 border-t border-slate-800 flex justify-between items-center text-slate-400">
+                <span>Registry: npmjs.com/package/swarmproof-mcp</span>
+                <span className="text-emerald-400 font-bold">Ready to Run</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Act 03 • NPM &amp; MCP Integration</span>
+            <span>Spoken Script: 1:25 – 2:05</span>
+          </div>
+        </section>
+
+        {/* ==================== ACT 4: LIVE IN-IDE AUDIT ==================== */}
+        <section
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
+          id="slide-4"
+        >
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[11px] font-bold">
+              ACT 04 • LIVE IN-IDE AUDIT
+            </span>
+            <span className="text-xs font-mono font-bold text-secondary">TestContract.sol</span>
+          </div>
+
+          <div className="my-auto py-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+              One Prompt. Zero Tabs. <br />
+              <span className="text-secondary">Verified Vulnerabilities in Under 5 Seconds.</span>
+            </h2>
+            <p className="text-base text-on-surface-variant mt-2 max-w-2xl">
+              When a developer prompts Antigravity or Cursor: <em>&ldquo;Audit TestContract.sol with SwarmProof&rdquo;</em>:
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+              <div className="p-4 rounded-2xl bg-surface-container-low border border-black/[0.04]">
+                <div className="text-xl">💳</div>
+                <div className="font-bold text-sm text-on-surface mt-2">1. x402 Micropayment</div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  MCP client receives HTTP 402 challenge and escrows 1 HBAR on Hedera testnet.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface-container-low border border-black/[0.04]">
+                <div className="text-xl">🐝</div>
+                <div className="font-bold text-sm text-on-surface mt-2">2. Swarm Coordination</div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  10 specialists (reentrancy, access control, logic) analyze code concurrently.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface-container-low border border-black/[0.04]">
+                <div className="text-xl">🧪</div>
+                <div className="font-bold text-sm text-on-surface mt-2">3. Sandbox PoC</div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  Exploits on lines 40 &amp; 51 are deterministically reproduced in an execution sandbox.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+                <div className="text-xl">📜</div>
+                <div className="font-bold text-sm text-emerald-900 mt-2">4. Hedera HCS Anchor</div>
+                <p className="text-xs text-emerald-700 mt-1">
+                  Receipt committed to Topic 0.0.10417469; winning agents receive micro-payouts.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Act 04 • Live In-IDE Audit</span>
+            <span>Spoken Script: 2:05 – 3:00</span>
+          </div>
+        </section>
+
+        {/* ==================== ACT 5: AST & KNOWLEDGE GRAPH ==================== */}
+        <section
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
+          id="slide-5"
         >
           <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
             <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-mono text-[11px] font-bold">
-              06 / 07 • THE GRAPH &amp; MCP
+              ACT 05 • AST KNOWLEDGE GRAPH &amp; THE GRAPH
             </span>
             <span className="text-xs font-mono text-purple-700">Subgraph QmXcvJ1j4xRrnVzUqPzE9jTKn6cR1vT4a</span>
           </div>
@@ -628,127 +522,45 @@ export default function PitchDeckPage() {
             <div className="p-6 rounded-3xl bg-purple-50/70 border border-purple-200/60 flex flex-col gap-3">
               <div className="flex items-center gap-2 text-purple-900 font-bold text-lg">
                 <span>📊</span>
-                <h3>The Graph Decentralized Network</h3>
+                <h3>The Graph Decentralized Indexing</h3>
               </div>
               <p className="text-sm text-purple-950 leading-relaxed">
-                We deployed subgraph <strong>QmXcvJ1j4xRrnVzUqPzE9jTKn6cR1vT4a</strong> to index real-time agent attestation accuracy, 0–100 Proof-of-Reputation (PoR) scores, and live TVL telemetry.
+                We deployed subgraph <strong>QmXcvJ1j4xRrnVzUqPzE9jTKn6cR1vT4a</strong> to index on-chain agent Proof-of-Reputation (0–100 PoR), historical attestation accuracy, and live TVL telemetry.
               </p>
               <div className="p-3 rounded-xl bg-white/80 border border-purple-200 text-xs font-mono text-purple-900 flex justify-between">
                 <span>Indexed Agents: 13</span>
-                <span>Query Latency: ~58ms</span>
+                <span>Response Time: ~58ms</span>
               </div>
             </div>
 
             <div className="p-6 rounded-3xl bg-slate-900 text-white border border-slate-800 flex flex-col gap-3">
               <div className="flex items-center gap-2 text-sky-400 font-bold text-lg">
-                <span>💻</span>
-                <h3>In-IDE Auditing via MCP</h3>
+                <span>🌐</span>
+                <h3>Interactive AST Neural Network</h3>
               </div>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Published to npm as <strong>swarmproof-mcp</strong>. Audit contracts directly inside Antigravity, Cursor, or Claude Desktop without leaving your editor.
+                Explore function nodes like `flashLoan()` or `withdraw()`, inspect AI cryptographic reasoning, and execute real-time Cypher or GraphQL queries to trace exploit paths.
               </p>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-sky-300">
-                $ npx -y swarmproof-mcp@0.2.2
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>Ecosystem Integration</span>
-            <span>The Graph + Model Context Protocol</span>
-          </div>
-        </section>
-
-        {/* ==================== SLIDE 07: ROADMAP & TRACTION ==================== */}
-        <section
-          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
-          id="slide-7"
-        >
-          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
-            <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
-              07 / 07 • ROADMAP
-            </span>
-            <span className="text-xs font-semibold text-secondary">What's Live &amp; What's Next</span>
-          </div>
-
-          <div className="my-auto py-4">
-            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
-              From Hackathon to Industry Standard.
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-              <div className="p-5 rounded-2xl bg-secondary/10 border border-secondary/20 flex flex-col justify-between">
-                <div>
-                  <span className="px-2 py-0.5 rounded-full bg-secondary text-white font-mono text-[10px] font-bold">
-                    DELIVERED &amp; LIVE
-                  </span>
-                  <h3 className="font-bold text-on-surface text-base mt-2">Core Swarm on Hedera</h3>
-                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
-                    <li>HCS Topic 0.0.10417469 Active</li>
-                    <li>x402 Blocky402 Micropayments</li>
-                    <li>Deterministic Sandbox PoC</li>
-                    <li>Published MCP NPM Package</li>
-                  </ul>
-                </div>
-                <div className="mt-4 text-xs font-bold text-secondary">100% Operational Today</div>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <span className="px-2 py-0.5 rounded-full bg-primary text-white font-mono text-[10px] font-bold">
-                    Q3 2026
-                  </span>
-                  <h3 className="font-bold text-on-surface text-base mt-2">Mainnet &amp; Staking</h3>
-                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
-                    <li>Hedera Mainnet Deployment</li>
-                    <li>Agent Slashing &amp; Staking</li>
-                    <li>Custom LLM LoRA Fine-tunes</li>
-                    <li>Code4rena Live Bounty Feeds</li>
-                  </ul>
-                </div>
-                <div className="mt-4 text-xs font-bold text-primary">In Development</div>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
-                <div>
-                  <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-tertiary font-mono text-[10px] font-bold">
-                    Q4 2026
-                  </span>
-                  <h3 className="font-bold text-on-surface text-base mt-2">Underwritten Security</h3>
-                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
-                    <li>On-chain DeFi Insurance Pools</li>
-                    <li>Multi-chain EVM Relayers</li>
-                    <li>Autonomous Bug Fix PR Bots</li>
-                  </ul>
-                </div>
-                <div className="mt-4 text-xs font-bold text-tertiary">Scaling Horizon</div>
-              </div>
-            </div>
-
-            <div className="mt-6 p-4 rounded-2xl bg-surface-container flex flex-col sm:flex-row items-center justify-between gap-4 border border-black/[0.04]">
-              <div className="text-sm text-on-surface font-semibold">
-                Test SwarmProof live right now on Hedera Testnet!
-              </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 pt-1">
                 <Link
                   className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-full hover:bg-primary/90 transition-all shadow-xs"
-                  href="/"
-                >
-                  Launch Studio
-                </Link>
-                <Link
-                  className="px-4 py-2 bg-surface-container-lowest text-on-surface text-xs font-bold rounded-full hover:bg-surface-container-high transition-all border border-black/[0.06]"
                   href="/graph"
                 >
-                  View AST Graph
+                  Explore /graph Page ↗
+                </Link>
+                <Link
+                  className="px-4 py-2 bg-slate-800 text-slate-200 text-xs font-bold rounded-full hover:bg-slate-700 transition-all"
+                  href="/"
+                >
+                  Live Studio ↗
                 </Link>
               </div>
             </div>
           </div>
 
           <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
-            <span>SwarmProof Pitch Deck</span>
-            <span>Thank You!</span>
+            <span>Act 05 • Knowledge Graph &amp; Conclusion</span>
+            <span>Spoken Script: 3:00 – 3:45</span>
           </div>
         </section>
       </main>
@@ -760,8 +572,6 @@ export default function PitchDeckPage() {
           onRegistered={() => setIsRegisterModalOpen(false)}
         />
       )}
-
-      {isPoolModalOpen && <AuditPoolModal onClose={() => setIsPoolModalOpen(false)} />}
     </div>
   );
 }
