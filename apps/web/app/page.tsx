@@ -557,18 +557,6 @@ export default function Page() {
 
           {/* Desktop Navigation Links (Clean, Uncluttered, Perfectly Spaced) */}
           <nav className="hidden lg:flex items-center gap-7">
-            <a
-              href="#how-it-works"
-              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
-            >
-              How it Works
-            </a>
-            <a
-              href="#specialists"
-              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
-            >
-              Join &amp; Earn
-            </a>
             <button
               type="button"
               onClick={() => setIsPoolModalOpen(true)}
@@ -692,22 +680,6 @@ export default function Page() {
         {/* Mobile Navigation Drawer */}
         {isMobileMenuOpen && (
           <div className="lg:hidden bg-surface-container-lowest border-b border-black/[0.08] px-margin-mobile py-4 space-y-2 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <a
-              href="#how-it-works"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
-            >
-              <span className="material-symbols-outlined text-[20px] text-tertiary">alt_route</span>
-              <span>How it Works</span>
-            </a>
-            <a
-              href="#specialists"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface hover:bg-surface-container font-label-md transition-colors"
-            >
-              <span className="material-symbols-outlined text-[20px] text-primary">groups</span>
-              <span>Join &amp; Earn</span>
-            </a>
             <button
               type="button"
               onClick={() => {

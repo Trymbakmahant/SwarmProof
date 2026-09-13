@@ -2,6 +2,7 @@
 
 Decentralized smart-contract auditing powered by a **swarm of AI agents** that collaborate, argue, and reach **consensus** — anchored on **Hedera**.
 
+> 🎥 **[Watch full demo video here](https://drive.google.com/drive/folders/1gyemnM00o9y2FhCr_WOmEBWxM0XHhhnC?usp=sharing)**  
 > 🎯 ETHGlobal Online 2026 · full plans & prompts in **[plan.md](./plan.md)** · corpus: `contracts/vulnerable`
 
 ## What it does
@@ -148,7 +149,9 @@ Live demo (needs a funded testnet account):
 pnpm --filter @swarmproof/api x402:live
 ```
 
-### 🎬 Live Testnet Run (Terminal Output & On-Chain Verification)
+### 🎬 Live Demo & On-Chain Verification
+
+> 📺 **[Watch full demo video here](https://drive.google.com/drive/folders/1gyemnM00o9y2FhCr_WOmEBWxM0XHhhnC?usp=sharing)**
 
 Running `pnpm --filter @swarmproof/api x402:live` executes the full autonomous machine-to-machine payment and audit settlement on Hedera Testnet:
 
@@ -311,13 +314,13 @@ pnpm --filter swarmproof-mcp build
 node packages/mcp/dist/cli.js
 ```
 
-### Cursor / Claude Desktop Configuration (`mcp.json`):
+### Cursor / Claude / Antigravity Configuration (`mcp_config.json` / `mcp.json`):
 ```json
 {
   "mcpServers": {
     "swarmproof": {
-      "command": "node",
-      "args": ["/path/to/swarmproof/packages/mcp/dist/cli.js"],
+      "command": "npx",
+      "args": ["-y", "swarmproof-mcp"],
       "env": {
         "SWARMPROOF_API_URL": "https://swarm-proof-api.vercel.app",
         "HEDERA_ACCOUNT_ID": "0.0.10119346",

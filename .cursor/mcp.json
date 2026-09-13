@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "swarmproof": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/mcp/dist/cli.js"
+        "-y",
+        "swarmproof-mcp"
       ],
       "env": {
         "SWARMPROOF_API_URL": "http://localhost:3001",
