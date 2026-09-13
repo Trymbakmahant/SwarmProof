@@ -1,0 +1,24 @@
+{
+  "name": "@swarmproof/deployable-agent",
+  "version": "0.1.0",
+  "description": "Deployable autonomous sovereign security agent node for SwarmProof with dedicated Hedera wallet and A2A protocol",
+  "type": "module",
+  "main": "dist/agent.js",
+  "bin": {
+    "swarmproof-agent": "dist/agent.js"
+  },
+  "scripts": {
+    "start": "tsx src/agent.ts",
+    "dev": "tsx watch src/agent.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.56.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
