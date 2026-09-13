@@ -246,13 +246,19 @@ export class AuditTaskPool {
   }
 
   /**
-   * List all tasks in the pool, optionally filtered by status
+   * List all tasks in the pool, optionally filtered by status (newest first)
    */
   listTasks(filter?: { status?: TaskPoolStatus }): PoolTask[] {
     const all = Array.from(this.tasks.values());
     for (const t of all) {
       this.checkAutoExpiry(t);
     }
+    // Sort latest tasks on top (newest first)
+    all.sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
     if (filter?.status) {
       return all.filter((t) => t.status === filter.status);
     }

@@ -323,11 +323,17 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? tasks[0];
 
-  const filteredTasks = tasks.filter((t) => {
-    if (filter === "OPEN") return t.status === "OPEN_FOR_SUBMISSIONS";
-    if (filter === "SETTLED") return t.status === "SETTLED";
-    return true;
-  });
+  const filteredTasks = tasks
+    .filter((t) => {
+      if (filter === "OPEN") return t.status === "OPEN_FOR_SUBMISSIONS";
+      if (filter === "SETTLED") return t.status === "SETTLED";
+      return true;
+    })
+    .sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
 
   return (
     <div className="swarm-modal-backdrop" onClick={onClose}>
