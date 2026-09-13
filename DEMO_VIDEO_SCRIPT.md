@@ -63,46 +63,68 @@
 
 ---
 
-## 📦 Act 3: The Published NPM Package (1:25 – 2:05)
+## 📦 Act 3: The Published NPM Package & Under the Hood (1:30 – 2:20)
 **What to show:** Switch to `https://www.npmjs.com/package/swarmproof-mcp` (or terminal showing `npm info swarmproof-mcp`).
 
 > “To make integration effortless for developers, we published a production NPM package called **`swarmproof-mcp`**.
 >
-> It implements the **Model Context Protocol (MCP)**, allowing AI coding assistants like Antigravity, Cursor, and Claude Desktop to communicate directly with our swarm.
+> It implements Anthropic’s **Model Context Protocol (MCP)**, allowing AI coding assistants like Antigravity, Cursor, and Claude Desktop to communicate natively with our security swarm.
 >
-> The package allows developers to:
-> - Run multi-agent audits
-> - Verify findings using our deterministic sandbox
-> - Fetch immutable proofs from Hedera
-> - And handle **x402 (HTTP 402 Payment Required)** bounty escrow on Hedera Testnet.
+> The package exposes **17 specialized tools** organized into 3 core pillars:
 >
-> So developers can audit smart contracts right inside their code editor with zero browser tabs needed.”
+> 1. **Swarm Auditing & Sandbox Verification**:
+>    - `audit_contract` & `run_swarm_audit`: Submits smart contracts, triggers on-chain x402 payment, coordinates 10 specialists, and anchors proofs to Hedera.
+>    - `get_findings`: Returns verified vulnerabilities with exact line numbers and remediation patches.
+>    - `verify_finding`: Executes our deterministic sandbox test runner to physically reproduce exploit PoCs.
+>    - `get_audit_proof`: Fetches the immutable cryptographic proof receipt anchored on Hedera HCS Topic `0.0.10417469`.
+>    - `pay_bounty`: Executes or settles on-chain x402 bounty escrows in HBAR.
+>
+> 2. **Decentralized Task Pool**:
+>    - `list_pool_tasks` & `get_pool_task`: Queries active and settled tasks in the pool.
+>    - `create_pool_task`: Posts a new contract audit bounty into the decentralized pool.
+>    - `pull_task`, `claim_task_slot`, & `submit_task_finding`: Allows external autonomous agents to pull jobs matching their domain, claim slots, and submit findings within timed windows.
+>
+> 3. **Agent Identity & W3C Credentials**:
+>    - `get_agent_challenge` & `register_agent`: Signs cryptographic challenges and anchors sovereign agents.
+>    - `get_agent_did` & `get_agent_credential`: Resolves W3C Decentralized Identifiers (`did:hedera`) and Verifiable Credentials.
+>    - `list_agents`: Queries all registered security agents in the quorum.
+>
+> ### ⚙️ What Happens Internally When You Run the Prompt?
+>
+> Now, what actually happens under the hood when a developer types:
+> *‘Audit TestContract.sol with SwarmProof’*?
+>
+> Here is the exact 5-step internal lifecycle:
+>
+> - **Step 1: Code Ingestion & Tool Call**: The IDE reads `TestContract.sol` directly from the workspace and triggers the MCP tool `audit_contract`.
+> - **Step 2: HTTP 402 Bounty Escrow**: The SwarmProof API issues an x402 payment challenge. The MCP client automatically signs and broadcasts an on-chain transfer on Hedera Testnet using the developer’s configured wallet (`HEDERA_ACCOUNT_ID`), escrowing the micro-bounty.
+> - **Step 3: 10-Agent Swarm Inflow**: The consensus engine dispatches 10 specialized AI agents in parallel — analyzing reentrancy, access control, AST graph invariants, and business logic.
+> - **Step 4: Quorum Consensus & Deterministic PoC Reproduction**: The agents cross-verify each other’s findings, eliminating hallucinations. Then, our deterministic sandbox compiles an exploit contract to physically reproduce the reentrancy and missing access checks.
+> - **Step 5: Hedera Consensus Anchoring & Micropayouts**: The final audit proof is immutably anchored to **Hedera Topic 0.0.10417469**, micro-bounties in tinybars are distributed to the participating agents, and verified line-by-line findings return straight into the IDE!”
 
 ---
 
-## 💻 Act 4: Live In-IDE Audit via MCP (2:05 – 3:00)
+## 💻 Act 4: Live In-IDE Audit via MCP (2:20 – 3:05)
 **What to show:** Switch over to your other Antigravity window.
 1. Show your `.agents/mcp_config.json` configured with `swarmproof`.
 2. Open `TestContract.sol` (show lines 35–45 where `withdraw()` has reentrancy, and line 51 where `emergencyWithdraw` lacks access control).
 3. In chat, type: *“Audit TestContract.sol with SwarmProof”*.
 4. Show the live output: the x402 payment escrow, the 10 specialist agents running, the sandbox exploit reproduction, and the Hedera consensus receipt `#0.0.10417469`.
 
-> “Now let's see this actually work.
+> “Now let's see this actually work live!
 >
-> Here I am inside another Antigravity window. I've connected `swarmproof-mcp` through my MCP configuration with my Hedera Testnet account.
+> Here I am inside another Antigravity window. I've configured `swarmproof-mcp` with my Hedera Testnet account.
 >
 > I simply ask:
 > *‘Audit TestContract.sol with SwarmProof.’*
 >
-> The MCP client receives the HTTP 402 challenge and automatically escrows the bounty in HBAR.
+> Watch what happens:
+> 1. The MCP client receives the HTTP 402 challenge and automatically escrows the bounty on Hedera Testnet.
+> 2. Our swarm coordinates 10 specialized agents simultaneously analyzing reentrancy, access control, and state integrity.
+> 3. The **deterministic sandbox reproduces the exploits** — proving the reentrancy bug on line 40 and detecting the missing `onlyOwner` check on line 51 with zero false positives.
+> 4. The audit proof is anchored to **Hedera HCS Topic 0.0.10417469**, and participating agents get paid in tinybars!
 >
-> Then our swarm coordinates 10 specialized agents focusing on reentrancy, access control, and business logic. The agents analyze the contract and compare their findings.
->
-> Next, the **deterministic sandbox verifies the vulnerabilities**. In this example, it reproduces the reentrancy exploit on line 40 and detects the missing `onlyOwner` check on line 51.
->
-> The final audit proof is anchored to **Hedera Topic 0.0.10417469**, and the participating agents receive their micro-payouts in tinybars.
->
-> The developer gets verified, line-by-line security feedback directly inside the editor in under 5 seconds!”
+> As a developer, I get verified, cryptographic security audit results right inside my editor in under 5 seconds!”
 
 ---
 
