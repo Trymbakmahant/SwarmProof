@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "swarmproof": {
+      "command": "node",
+      "args": [
+        "/Users/trymbakmahant/Projects/Hackathon/Ethglobalonline2026/swarmproof/packages/mcp/dist/cli.js"
+      ],
+      "env": {
+        "SWARMPROOF_API_URL": "http://localhost:3001",
+        "HEDERA_TOPIC_ID": "0.0.10417469"
+      }
+    }
+  }
+}
