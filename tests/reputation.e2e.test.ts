@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createApp } from "../apps/api/src/app";
+import { createTaskWithRealX402Escrow, hasFundedPayer } from "./helpers/live-x402";
 
 describe("Dynamic Proof-of-Reputation & Leaderboard E2E (Stage C.2)", () => {
   const app = createApp({
@@ -56,19 +57,16 @@ describe("Dynamic Proof-of-Reputation & Leaderboard E2E (Stage C.2)", () => {
     expect(data.reputation.tier).toBe("ELITE_SENTINEL");
   });
 
-  it("dynamically updates agent reputation and audit counts upon pool consensus execution", async () => {
+  it.runIf(hasFundedPayer)("dynamically updates agent reputation and audit counts upon pool consensus execution", async () => {
     // 1. Check initial audits & score of reentrancy-agent
     const initialRes = await app.request("/agents/reentrancy-agent/reputation");
     const initialData = await initialRes.json();
     const initialAudits = initialData.reputation.totalAudits;
 
-    // 2. Create task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "RepVault",
-        source: `// SPDX-License-Identifier: MIT
+    // 2. Create task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "RepVault",
+      source: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 contract RepVault {
     mapping(address => uint256) public balances;
@@ -80,10 +78,8 @@ contract RepVault {
         balances[msg.sender] = 0;
     }
 }`,
-        submissionWindowSeconds: 60,
-      }),
+      submissionWindowSeconds: 60,
     });
-    const { task } = await createRes.json();
 
     // 3. Reentrancy-agent submits valid finding
     await app.request(`/pool/tasks/${task.id}/submit`, {

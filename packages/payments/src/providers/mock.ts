@@ -1,8 +1,8 @@
 import { MOCK_FEE_PAYER, usdToTinybars, type X402PaymentPayload, type X402PaymentRequirements } from "@swarmproof/x402";
 import type { PaymentProvider, PaymentRequirement, PaymentVerification, PaymentRecipient } from "../types.js";
 
-/** Mock settlement rate: 1 USD -> 1,000,000 tinybars (0.01 HBAR). */
-const MOCK_TINYBARS_PER_USD = "1000000";
+/** Mock settlement rate: 1 USD -> 100,000,000 tinybars (1.00 HBAR). */
+const MOCK_TINYBARS_PER_USD = "100000000";
 
 function pickPayee(recipients: PaymentRecipient[]): PaymentRecipient {
   return recipients.find((r) => r.agentId === "swarmproof-gateway") ?? recipients[0]!;

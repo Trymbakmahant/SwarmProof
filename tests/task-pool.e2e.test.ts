@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createApp } from "../apps/api/src/app";
+import { createTaskWithRealX402Escrow, hasFundedPayer, payerAccountId, payerPrivateKey } from "./helpers/live-x402";
 
 describe("Audit Task Pool Endpoints E2E (Stage B.2 & B.3)", () => {
   const app = createApp({
@@ -43,41 +44,31 @@ describe("Audit Task Pool Endpoints E2E (Stage B.2 & B.3)", () => {
     expect(data.tasks[0]).toHaveProperty("isWindowOpen");
   });
 
-  it("POST /pool/tasks creates a new open audit task in the pool", async () => {
-    const res = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "StakingPool",
-        source: "contract StakingPool { function stake() external {} }",
-        submissionWindowSeconds: 45,
-        bountyTotal: "2.50",
-        currency: "USD",
-      }),
+  it.runIf(hasFundedPayer)("POST /pool/tasks creates a new open audit task in the pool", async () => {
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "StakingPool",
+      source: "contract StakingPool { function stake() external {} }",
+      submissionWindowSeconds: 45,
+      bountyTotal: "2.50",
+      currency: "USD",
     });
 
-    expect(res.status).toBe(201);
-    const data = await res.json();
-    expect(data.ok).toBe(true);
-    expect(data.task.contractName).toBe("StakingPool");
-    expect(data.task.status).toBe("OPEN_FOR_SUBMISSIONS");
-    expect(data.task.submissionWindowSeconds).toBe(45);
-    expect(data.task.remainingSeconds).toBeGreaterThan(0);
-    expect(data.task.isWindowOpen).toBe(true);
+    expect(task.contractName).toBe("StakingPool");
+    expect(task.status).toBe("OPEN_FOR_SUBMISSIONS");
+    expect(task.submissionWindowSeconds).toBe(45);
+    expect(task.remainingSeconds).toBeGreaterThan(0);
+    expect(task.isWindowOpen).toBe(true);
+    expect(task.escrowReceipt.transactionId).toBeTruthy();
+    expect(task.escrowReceipt.hashscanUrl).toContain(task.escrowReceipt.transactionId);
   });
 
-  it("POST /pool/tasks/:id/claim allows agent to claim a qualified role slot", async () => {
-    // 1. Create task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "LendingVault",
-        source: "contract LendingVault { function borrow() external {} }",
-        submissionWindowSeconds: 100,
-      }),
+  it.runIf(hasFundedPayer)("POST /pool/tasks/:id/claim allows agent to claim a qualified role slot", async () => {
+    // 1. Create task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "LendingVault",
+      source: "contract LendingVault { function borrow() external {} }",
+      submissionWindowSeconds: 100,
     });
-    const { task } = await createRes.json();
 
     // 2. Claim role slot
     const claimRes = await app.request(`/pool/tasks/${task.id}/claim`, {
@@ -97,18 +88,13 @@ describe("Audit Task Pool Endpoints E2E (Stage B.2 & B.3)", () => {
     expect(claimData.task.claims[0].agentId).toBe("reentrancy-specialist-01");
   });
 
-  it("POST /pool/tasks/:id/submit accepts findings from agent within active window", async () => {
-    // 1. Create task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "GovTimelock",
-        source: "contract GovTimelock { function execute() external {} }",
-        submissionWindowSeconds: 100,
-      }),
+  it.runIf(hasFundedPayer)("POST /pool/tasks/:id/submit accepts findings from agent within active window", async () => {
+    // 1. Create task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "GovTimelock",
+      source: "contract GovTimelock { function execute() external {} }",
+      submissionWindowSeconds: 100,
     });
-    const { task } = await createRes.json();
 
     // 2. Submit findings
     const subRes = await app.request(`/pool/tasks/${task.id}/submit`, {
@@ -138,14 +124,11 @@ describe("Audit Task Pool Endpoints E2E (Stage B.2 & B.3)", () => {
     expect(subData.task.submissions[0].agentId).toBe("access-sentinel-01");
   });
 
-  it("POST /pool/tasks/:id/simulate-submissions swarms remaining slots and settles consensus", async () => {
-    // 1. Create task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "DeFiVault",
-        source: `// SPDX-License-Identifier: MIT
+  it.runIf(hasFundedPayer)("POST /pool/tasks/:id/simulate-submissions swarms remaining slots and settles consensus", async () => {
+    // 1. Create task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "DeFiVault",
+      source: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 contract DeFiVault {
     mapping(address => uint256) public balances;
@@ -157,10 +140,8 @@ contract DeFiVault {
         balances[msg.sender] = 0;
     }
 }`,
-        submissionWindowSeconds: 120,
-      }),
+      submissionWindowSeconds: 120,
     });
-    const { task } = await createRes.json();
 
     // 2. Simulate autonomous specialist swarm
     const simRes = await app.request(`/pool/tasks/${task.id}/simulate-submissions`, {
@@ -181,19 +162,13 @@ contract DeFiVault {
     expect(simData.task.score).toBeLessThanOrEqual(100);
   });
 
-  it("GET /pool/tasks/pull allows agents to query pending open tasks", async () => {
-    // 1. Create task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "PullTestContract",
-        source: "contract PullTestContract {}",
-        submissionWindowSeconds: 120,
-      }),
+  it.runIf(hasFundedPayer)("GET /pool/tasks/pull allows agents to query pending open tasks", async () => {
+    // 1. Create task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "PullTestContract",
+      source: "contract PullTestContract {}",
+      submissionWindowSeconds: 120,
     });
-    expect(createRes.status).toBe(201);
-    const { task } = await createRes.json();
 
     // 2. Pull with role filter
     const pullRes = await app.request(`/pool/tasks/pull?agentId=reentrancy-agent&role=reentrancy`);
@@ -205,14 +180,11 @@ contract DeFiVault {
     expect(pullData.tasks.some((t: any) => t.id === task.id)).toBe(true);
   });
 
-  it("POST /pool/tasks/:id/run-swarm coordinates dual agents across all 5 specialties (10 agents) from start to end", async () => {
-    // 1. Create open task
-    const createRes = await app.request("/pool/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contractName: "MultiAgentVault",
-        source: `// SPDX-License-Identifier: MIT
+  it.runIf(hasFundedPayer)("POST /pool/tasks/:id/run-swarm coordinates dual agents across all 5 specialties (10 agents) from start to end", async () => {
+    // 1. Create open task with real on-chain x402 escrow
+    const task = await createTaskWithRealX402Escrow(app, {
+      contractName: "MultiAgentVault",
+      source: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 contract MultiAgentVault {
     mapping(address => uint256) public balances;
@@ -224,11 +196,9 @@ contract MultiAgentVault {
         balances[msg.sender] = 0;
     }
 }`,
-        submissionWindowSeconds: 120,
-        bountyTotal: "1.00",
-      }),
+      submissionWindowSeconds: 120,
+      bountyTotal: "1.00",
     });
-    const { task } = await createRes.json();
 
     // 2. Run dual-swarm autonomous pull & audit
     const runRes = await app.request(`/pool/tasks/${task.id}/run-swarm`, {
@@ -263,7 +233,7 @@ contract MultiAgentVault {
     expect(runData.task.payouts.length).toBeGreaterThan(0);
   });
 
-  it("POST /pool/run-swarm-audit creates task and completes full dual-swarm audit in one request", async () => {
+  it.runIf(hasFundedPayer)("POST /pool/run-swarm-audit creates task and completes full dual-swarm audit in one request", async () => {
     const res = await app.request("/pool/run-swarm-audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -273,6 +243,8 @@ contract MultiAgentVault {
           function test() external {}
         }`,
         bountyTotal: "1.00",
+        payerAccountId,
+        payerPrivateKey,
       }),
     });
 
@@ -282,5 +254,6 @@ contract MultiAgentVault {
     expect(data.agentsParticipated).toBe(10);
     expect(data.task.status).toBe("SETTLED");
     expect(data.task.proofReceipt).toBeDefined();
+    expect(data.task.escrowReceipt.transactionId).toBeTruthy();
   });
 });

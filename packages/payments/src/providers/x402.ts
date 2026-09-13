@@ -67,7 +67,7 @@ export class X402PaymentProvider implements PaymentProvider {
     this.facilitator = createFacilitator({ baseUrl: config.facilitatorUrl, apiKey: config.apiToken });
     this.maxTimeoutSeconds = config.maxTimeoutSeconds ?? 300;
     this.asset = config.asset ?? "0.0.0";
-    this.tinybarsPerUSD = config.tinybarsPerUSD ?? "1000000";
+    this.tinybarsPerUSD = config.tinybarsPerUSD ?? "100000000";
     this.verifyOnChain = config.verifyOnChain;
   }
 

@@ -137,6 +137,7 @@ export interface AuditTaskPoolOptions {
   proofClient?: AuditProofClient;
   reputationEngine?: ReputationEngine;
   payerClient?: X402Client;
+  tinybarsPerUSD?: string | number;
 }
 
 export class AuditTaskPool {
@@ -145,12 +146,14 @@ export class AuditTaskPool {
   private proofClient?: AuditProofClient;
   private reputationEngine?: ReputationEngine;
   private payerClient?: X402Client;
+  private tinybarsPerUSD?: string | number;
 
   constructor(opts?: AuditTaskPoolOptions) {
     this.defaultWindowSeconds = opts?.defaultWindowSeconds ?? 60;
     this.proofClient = opts?.proofClient;
     this.reputationEngine = opts?.reputationEngine;
     this.payerClient = opts?.payerClient;
+    this.tinybarsPerUSD = opts?.tinybarsPerUSD;
   }
 
   /**
@@ -624,7 +627,8 @@ export class AuditTaskPool {
 
     // Stage D.2: Calculate Consensus-Weighted Multi-Agent Payout Distribution
     const totalBountyUSD = parseFloat(task.bountyTotal) > 0 ? parseFloat(task.bountyTotal) : 1.0;
-    const totalTinybars = Math.round(totalBountyUSD * 1_000_000);
+    const rateTinybars = Number(this.tinybarsPerUSD ?? process.env.X402_TINYBARS_PER_USD) || 100_000_000;
+    const totalTinybars = Math.round(totalBountyUSD * rateTinybars);
     const gatewayFeeUSD = (totalBountyUSD * 0.10).toFixed(2);
     const agentPoolUSD = totalBountyUSD * 0.90;
 

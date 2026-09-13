@@ -153,7 +153,11 @@ describe("mcp tools (thin client over API)", () => {
   it("audit_contract: create → pay → poll → proof, returning the full summary", async () => {
     const tools = createToolRegistry(new SwarmProofApiClient({ apiBaseUrl: baseUrl }));
     const audit = tools.find((t) => t.name === "audit_contract")!;
-    const out = (await audit.run({ source: "contract V {}", contractName: "V" })) as {
+    const out = (await audit.run({
+      source: "contract V {}",
+      contractName: "V",
+      paymentTransactionId: "0.0.10119346@1789228801.123456789",
+    })) as {
       auditId: string;
       findingCount: number;
       proof: { hcsTopicId: string };

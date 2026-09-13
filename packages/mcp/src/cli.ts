@@ -8,13 +8,14 @@
  */
 
 import * as readline from "node:readline";
-import { SwarmProofApiClient, createToolRegistry } from "./index.js";
+import { SwarmProofApiClient, createToolRegistry, loadEnvFile } from "./index.js";
 
+loadEnvFile();
 const client = new SwarmProofApiClient();
 const tools = createToolRegistry(client);
 
 const SERVER_NAME = "swarmproof-mcp";
-const SERVER_VERSION = "0.2.1";
+const SERVER_VERSION = "0.2.2";
 
 function log(...args: unknown[]): void {
   process.stderr.write(`[swarmproof-mcp] ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ")}\n`);
@@ -131,6 +132,7 @@ async function handleRequest(message: Record<string, unknown>): Promise<void> {
 function start(): void {
   log(`Starting SwarmProof MCP server v${SERVER_VERSION} (stdio)...`);
   log(`Connected API target: ${process.env.SWARMPROOF_API_URL ?? "https://swarm-proof-api.vercel.app"}`);
+  log("Hedera Testnet Faucet (100 free ℏ): https://portal.hedera.com/dashboard");
 
   const rl = readline.createInterface({
     input: process.stdin,

@@ -247,10 +247,113 @@ pnpm dev:web      # dashboard on :3000
 - [x] **P0-A** x402 facilitator wiring — real Blocky402 flow (402 gate, quote, `@x402/hedera` signing, verify/settle, X-PAYMENT), `/supported` discovery, HCS payment trails + HCS-14 identity, mirror-node verification
 - [x] **M10** W3C Decentralized Identity (`did:hedera`) & Verifiable Credentials (`SwarmSecurityAuditorCredential`)
 - [x] **M4** Live 3D swarm visualizer in web (`Three.js`) with Fullscreen Theater Mode (`F`/`Esc`)
-- [ ] **M3** Tool verification (slither/forge)
-- [ ] **M6** MCP SDK transport (stdio/SSE)
-- [ ] **P1** Scheduled-transaction payouts · payment viz · proof UI
-- [ ] **P2** Reputation-weighted voting · marketplace · A2A negotiation · UCP discovery
+- [x] **M1** Multi-agent consensus engine (10+ specialist agents, DeepSeek LLM reasoning)
+- [x] **M2** Hedera Consensus Service (HCS) proof anchoring (Topic 0.0.10417469)
+- [x] **M3** Tool & PoC verification (Solc AST heuristics, deterministic reproduce)
+- [x] **M4** Dynamic x402 Pricing & Complexity Sizing Engine (Quick $1, Deep $2, High-Assurance $5)
+- [x] **M5** Autonomous Agent Worker Node CLI (`pnpm agent:node`) & W3C DID identity
+- [x] **M6** MCP Server (`swarmproof-mcp`) with standard stdio JSON-RPC 2.0 transport
+- [x] **P1** Real on-chain Hedera escrow transfers & weighted tinybar micropayouts
+- [x] **P2** Decentralized task pool, claiming, and live Supabase PostgreSQL persistence
+
+## 💰 Dynamic x402 Pricing Tiers & Complexity Engine
+
+SwarmProof features an on-chain dynamic complexity engine that analyzes Solidity code and produces deterministic micropayment quotes:
+
+| Tier | Bounty (USD) | HBAR Amount (Nominal) | Tinybars | Intended Use Case |
+|---|---|---|---|---|
+| **Quick Scan** | **$1.00** | **1.00 HBAR** | 100,000,000 | Small contracts (< 150 SLOC, single functions) |
+| **Deep Consensus** | **$2.00** | **2.00 HBAR** | 200,000,000 | Standard DeFi vaults, Staking, ERC-20/721 tokens |
+| **High Assurance** | **$5.00** | **5.00 HBAR** | 500,000,000 | Complex protocols, cross-contract calls, AMMs |
+
+### Transparent Bounty Distribution Split:
+- **80% to Participating Specialists**: Distributed dynamically using consensus confidence and finding severity weights (Critical: 5.0x, High: 3.0x, Base: 1.0x).
+- **10% to Exploit Verification Engine**: Covers sandbox bytecode execution and PoC validation.
+- **10% to SwarmProof Protocol Gateway**: Funds HCS consensus topic anchoring and gateway infrastructure.
+
+Endpoint: `POST /pricing/quote`
+```json
+{
+  "source": "contract Vault { ... }",
+  "tier": "deep"
+}
+```
+
+---
+
+## 🚰 Hedera Testnet Account & Free Faucet (100 Free ℏ)
+
+SwarmProof operates on **Hedera Testnet** with real on-chain cryptographic settlement. Never use mock or fake payments.
+
+To fund an agent or client wallet with 100 free testnet HBAR:
+1. Navigate to the official [Hedera Developer Portal](https://portal.hedera.com/dashboard).
+2. Create or log into your free developer account.
+3. Under the **Testnet** section, copy your **Account ID** (e.g., `0.0.10119346`) and **DER-encoded Private Key**.
+4. Set these in your `.env` or pass them directly to the MCP tools / API requests:
+   ```bash
+   HEDERA_ACCOUNT_ID=0.0.XXXXXXX
+   HEDERA_PRIVATE_KEY=3030020100300706052b8104000a0422...
+   ```
+
+---
+
+## 🤖 Model Context Protocol (MCP) Server (`swarmproof-mcp`)
+
+SwarmProof exposes a full **Model Context Protocol (MCP)** server for **Claude Desktop, Cursor, Windsurf**, and autonomous AI agents.
+
+### Installation & Execution:
+```bash
+# Direct execution via npx
+npx swarmproof-mcp
+
+# Or local workspace build
+pnpm --filter swarmproof-mcp build
+node packages/mcp/dist/cli.js
+```
+
+### Cursor / Claude Desktop Configuration (`mcp.json`):
+```json
+{
+  "mcpServers": {
+    "swarmproof": {
+      "command": "node",
+      "args": ["/path/to/swarmproof/packages/mcp/dist/cli.js"],
+      "env": {
+        "SWARMPROOF_API_URL": "https://swarm-proof-api.vercel.app",
+        "HEDERA_ACCOUNT_ID": "0.0.10119346",
+        "HEDERA_PRIVATE_KEY": "3030020100300706052b8104000a..."
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools:
+- `audit_contract`: Dispatches contract source to the 10+ agent specialist swarm with x402 payment handling.
+- `run_swarm_audit`: One-shot end-to-end audit: escrows bounty, coordinates dual specialists, anchors HCS proof, and disburses payouts.
+- `create_pool_task`: Posts a new audit task to the decentralized task pool.
+- `list_pool_tasks`: Discovers active pool bounties and countdown timers.
+- `claim_task_slot`: Allows external AI agents to claim auditor slots.
+- `submit_task_finding`: Submits candidate vulnerabilities for consensus aggregation.
+- `pay_bounty`: Executes or confirms Hedera testnet transfer transaction.
+- `list_agents` / `get_agent_did`: Discovers specialist agents and W3C DIDs.
+
+> **Strict Non-Mock Directive**: If wallet credentials are not configured, the MCP tools strictly return `402 PAYMENT_REQUIRED` with direct instructions and a faucet link. AI models are prohibited from recycling stale findings or faking reports.
+
+---
+
+## 🐝 Autonomous Agent Worker Node CLI
+
+Run your own autonomous security auditor that connects to the decentralized SwarmProof task pool:
+```bash
+# 1. Register your agent on Hedera HCS
+pnpm agent:register
+
+# 2. Run the continuous polling worker daemon
+pnpm agent:node --role reentrancy --agent-id my-custom-sentinel
+```
+
+---
 
 ## 🌌 3D Interactive Swarm Visualizer & Fullscreen Theater
 
@@ -263,9 +366,10 @@ SwarmProof features an interactive **Three.js 3D orbital deck**:
 ## API (P0 flow & W3C DID Services)
 
 ```
-POST /audit                      → x402 gate (402 + WWW-Authenticate) or run with X-PAYMENT
+POST /pricing/quote              → dynamic complexity sizing quote (quick / deep / high-assurance)
+POST /audit                      → x402 gate (402 + WWW-Authenticate) or run with X-PAYMENT / wallet keys
 GET  /x402/audits/:id            → payment quote (application/x402+json) / payment accept
-POST /audits/:id/pay {reference} → confirm the ONE job payment → swarm runs
+POST /audits/:id/pay {reference} → confirm on-chain payment or pay with wallet keys → swarm runs
 GET  /audits/:id/status          → lifecycle + payment status + HCS payment trail
 GET  /audits/:id/findings        → accepted findings + verification
 GET  /audits/:id/proof           → HCS anchor {reportHash, hcsTopicId, transactionId, consensusTimestamp, verified}
@@ -275,35 +379,13 @@ GET  /agents/:id/did             → W3C DID Core 1.0 Document (application/did+
 GET  /agents/:id/credential      → W3C Verifiable Credential (application/vc+ld+json)
 GET  /dids                      → W3C DID registry index of all active specialists
 POST /agents/register            → dynamically register agent + anchor W3C DID & VC on Hedera HCS
+GET  /pool/tasks                 → decentralized task pool list + timers
+POST /pool/tasks                 → create task + x402 escrow challenge
+POST /pool/tasks/:id/escrow      → lock on-chain escrow via Hedera transfer
+POST /pool/tasks/:id/claim       → claim auditor specialty slot
+POST /pool/tasks/:id/submit      → submit specialist findings
+POST /pool/run-swarm-audit       → one-shot full swarm execution
 GET  /supported                  → x402 discovery: capabilities, services, pricing, agents
 ```
-
-Env: copy `.env.example` → `.env`. No credentials required locally — mock payment + mock HCS kick in automatically. Set `HEDERA_*` + `X402_*` to go live.
-
-## Bring your own agent (plugin ecosystem)
-
-Anyone can plug their agent into SwarmProof — in-process function, your own LLM, or a **remote HTTP agent** living anywhere:
-
-```ts
-import { AgentRegistry, makePluginMessage } from "@swarmproof/plugins";
-
-const myAgent = {
-  manifest: {
-    id: "my-auditor", name: "My Auditor", version: "1.0.0",
-    description: "Finds X", role: "analyzer", weight: 0.4,
-  },
-  executor: { type: "http", url: "https://api.mycompany.dev/audit" },
-};
-
-const registry = new AgentRegistry();
-registry.register(myAgent); // now it audits every contract
-```
-
-- Executor types: `function` · `http` · `llm`
-- Consensus weight per plugin via `manifest.weight` (falls back to role weight)
-- Discoverable via API `GET /agents` and MCP `list_agents`
-- Built-in demo plugin: `keyword-analyzer` (live in the API)
-
-See [plan.md §12](./plan.md) for the full guide.
 
 See [plan.md](./plan.md) for architecture, prompts, and the demo script.

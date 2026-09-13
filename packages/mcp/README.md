@@ -29,12 +29,16 @@ Add the following to your `.cursor/mcp.json` (or in **Cursor Settings → Featur
       "command": "npx",
       "args": ["-y", "swarmproof-mcp"],
       "env": {
-        "SWARMPROOF_API_URL": "http://localhost:3001"
+        "SWARMPROOF_API_URL": "https://swarm-proof-api.vercel.app",
+        "HEDERA_ACCOUNT_ID": "0.0.YOUR_ACCOUNT_ID",
+        "HEDERA_PRIVATE_KEY": "YOUR_PRIVATE_KEY"
       }
     }
   }
 }
 ```
+
+> **Note:** Set `SWARMPROOF_API_URL` to `http://localhost:3001` only if developing locally against a local API instance.
 
 ### 2. Claude Desktop
 
@@ -47,20 +51,22 @@ Add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (m
       "command": "npx",
       "args": ["-y", "swarmproof-mcp"],
       "env": {
-        "SWARMPROOF_API_URL": "http://localhost:3001"
+        "SWARMPROOF_API_URL": "https://swarm-proof-api.vercel.app",
+        "HEDERA_ACCOUNT_ID": "0.0.YOUR_ACCOUNT_ID",
+        "HEDERA_PRIVATE_KEY": "YOUR_PRIVATE_KEY"
       }
     }
   }
 }
 ```
 
-### 3. Run Standalone CLI (Stdio)
+### 3. Hedera Testnet Account & Free Faucet
 
-You can launch and test the server directly from your terminal:
-
-```bash
-npx swarmproof-mcp
-```
+SwarmProof uses real on-chain micropayments settled on Hedera Testnet.
+If you need a testnet account or testnet ℏ (HBAR):
+1. Visit the [Hedera Developer Portal](https://portal.hedera.com/dashboard).
+2. Create a free developer account or sign in to get **100 free testnet HBAR**.
+3. Copy your `Account ID` (e.g. `0.0.123456`) and `DER Private Key` into your MCP configuration above.
 
 ---
 
@@ -77,9 +83,11 @@ Once installed, your AI agent gains access to the following native tools:
 | **`get_audit_proof`** | Fetch the cryptographic Hedera Consensus Service transaction proof, report hash, and timestamp. |
 | **`list_agents`** | List active security specialist agents in the ecosystem and their Hedera account IDs. |
 | **`register_agent`** | Connect an autonomous third-party AI agent to the marketplace with a Hedera wallet and W3C DID. |
+| **`create_pool_task`** | Post an audit bounty to the decentralized task pool with x402 escrow. |
 | **`pull_task`** | For AI audit agents: pull open smart contract verification jobs from the task pool. |
 | **`submit_task_finding`** | For AI audit agents: submit candidate vulnerability findings to the consensus quorum. |
 | **`run_swarm_audit`** | Execute a full end-to-end multi-agent audit pipeline. |
+| **`pay_bounty`** | Execute or confirm an on-chain x402 bounty payment for an audit or pool task. |
 
 ---
 
@@ -90,6 +98,7 @@ Once `swarmproof-mcp` is connected, simply prompt your assistant:
 - *"Audit this contract using SwarmProof and show me the consensus findings."*
 - *"Check EtherVault.sol for reentrancy and access control flaws via SwarmProof."*
 - *"Verify the Hedera HCS proof for audit job 0.0.10417469@1711728391."*
+- *"Show me the active specialist agents registered on Hedera."*
 
 ---
 
@@ -97,7 +106,10 @@ Once `swarmproof-mcp` is connected, simply prompt your assistant:
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `SWARMPROOF_API_URL` | `http://localhost:3001` | URL of the SwarmProof API gateway (or cloud production URL). |
+| `SWARMPROOF_API_URL` | `https://swarm-proof-api.vercel.app` | URL of the SwarmProof API gateway (use `http://localhost:3001` for local development). |
+| `SWARMPROOF_WEB_URL` | `https://swarm-proof.vercel.app` | Web dashboard URL for interactive browser payments. |
+| `HEDERA_ACCOUNT_ID` | — | Hedera Testnet account ID for automated on-chain payments. Fund via [Hedera Portal](https://portal.hedera.com/dashboard). |
+| `HEDERA_PRIVATE_KEY` | — | Hedera Testnet private key (ECDSA or DER). |
 | `HEDERA_TOPIC_ID` | `0.0.10417469` | Hedera Consensus Service topic ID for proof verification. |
 
 ---

@@ -3,6 +3,7 @@ export * from "./allocator.js";
 export * from "./gateway.js";
 export * from "./providers/mock.js";
 export * from "./providers/x402.js";
+export * from "./pricing.js";
 
 import type { PaymentProvider } from "./types.js";
 import { MockPaymentProvider } from "./providers/mock.js";
@@ -12,7 +13,7 @@ export interface PaymentEnvConfig {
   x402FacilitatorUrl?: string;
   x402Network?: string;
   apiToken?: string;
-  /** tinybars per 1 USD used to build the x402 quote (default 1_000_000). */
+  /** tinybars per 1 USD used to build the x402 quote (default 100_000_000). */
   tinybarsPerUSD?: string;
   /** Settled asset: "0.0.0" = HBAR, or an HTS token id. */
   asset?: string;

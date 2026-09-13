@@ -332,7 +332,9 @@ export function buildDIDDocument(
       {
         id: `${did}#security-audit-agent`,
         type: "SecurityAuditAgent",
-        serviceEndpoint: options?.serviceEndpoint ?? `http://localhost:3001/agents/${identity.agentId}`,
+        serviceEndpoint:
+          options?.serviceEndpoint ??
+          `${(typeof process !== "undefined" && process.env?.SWARMPROOF_API_URL ? process.env.SWARMPROOF_API_URL.replace(/\/$/, "") : "https://swarm-proof-api.vercel.app")}/agents/${identity.agentId}`,
         description: options?.role ?? "Autonomous Smart Contract Security Specialist Agent",
         paymentAddress: identity.paymentAddress,
         capabilities: identity.capabilities ?? [],
