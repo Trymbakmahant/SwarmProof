@@ -546,9 +546,11 @@ export default function Page() {
         <div className="h-16 max-w-[1200px] mx-auto px-margin-mobile lg:px-margin flex items-center justify-between gap-space-md">
           {/* Brand Logo */}
           <Link className="flex items-center gap-2.5 group" href="/">
-            <div className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
-              <span className="material-symbols-outlined text-[19px]">shield</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="SwarmProof"
+              className="w-8 h-8 rounded-lg object-contain shadow-xs transition-transform group-hover:scale-105"
+            />
             <span className="font-title-md text-title-md text-on-surface tracking-tight font-bold">
               SwarmProof
             </span>
@@ -1676,7 +1678,12 @@ export default function Page() {
       {/* ── Footer ─────────────────────────────────────────────────── */}
       <footer className="w-full bg-surface-container-lowest border-t border-black/[0.06] py-space-xl">
         <div className="max-w-[1200px] mx-auto px-margin-mobile lg:px-margin flex flex-col md:flex-row items-center justify-between gap-space-lg">
-          <div className="flex items-center gap-space-sm">
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/logo.png"
+              alt="SwarmProof"
+              className="w-6 h-6 rounded-md object-contain"
+            />
             <span className="font-title-md text-title-md text-on-surface tracking-tight font-semibold">SwarmProof</span>
             <span className="text-outline font-body-sm text-body-sm">© 2026 SwarmProof Inc. Consensus guaranteed.</span>
           </div>

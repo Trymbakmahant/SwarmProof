@@ -172,9 +172,11 @@ export default function LeaderboardPage() {
           {/* Brand */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: "#09090b", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13 }}>
-                SP
-              </div>
+              <img
+                src="/logo.png"
+                alt="SwarmProof"
+                style={{ width: 32, height: 32, borderRadius: 6, objectFit: "contain", display: "block" }}
+              />
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#09090b" }}>SwarmProof</span>

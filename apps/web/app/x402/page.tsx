@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { getApiBase } from "../lib/api";
 
 const API_BASE = getApiBase();
@@ -223,10 +224,14 @@ export default function X402Lab() {
           {/* Brand & Metadata */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* Monochromatic Geometric Brand Mark */}
-              <div style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: "#09090b", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, letterSpacing: -0.5 }}>
-                SP
-              </div>
+              {/* Brand Logo */}
+              <Link href="/">
+                <img
+                  src="/logo.png"
+                  alt="SwarmProof"
+                  style={{ width: 32, height: 32, borderRadius: 6, objectFit: "contain", display: "block" }}
+                />
+              </Link>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#09090b", letterSpacing: -0.2 }}>SwarmProof</span>

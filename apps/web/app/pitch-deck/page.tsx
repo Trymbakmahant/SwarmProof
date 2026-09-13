@@ -104,9 +104,11 @@ export default function PitchDeckPage() {
         <div className="h-16 max-w-[1440px] mx-auto px-margin-mobile md:px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-sm">
             <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
-                <span className="material-symbols-outlined text-[19px]">shield</span>
-              </div>
+              <img
+                src="/logo.png"
+                alt="SwarmProof"
+                className="w-8 h-8 rounded-lg object-contain shadow-xs transition-transform group-hover:scale-105"
+              />
               <span className="font-title-md text-title-md text-on-surface tracking-tight font-bold">
                 SwarmProof
               </span>
@@ -1073,7 +1075,12 @@ export default function PitchDeckPage() {
       {/* ── Editorial Footer ─────────────────────────────────────────── */}
       <footer className="w-full bg-surface-container-lowest mt-16 border-t border-black/[0.06] py-10">
         <div className="max-w-[1240px] mx-auto px-margin-mobile md:px-margin flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/logo.png"
+              alt="SwarmProof"
+              className="w-6 h-6 rounded-md object-contain"
+            />
             <span className="font-title-md text-title-md text-on-surface font-bold">SwarmProof</span>
             <span className="text-outline font-body-sm text-body-sm">© 2026 SwarmProof Inc. Anchored on Hedera Consensus Service.</span>
           </div>

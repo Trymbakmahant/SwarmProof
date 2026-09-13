@@ -5,6 +5,11 @@ export const metadata: Metadata = {
   title: "SwarmProof | Autonomous Consensus & Verification in the Multi-Agent Era",
   description:
     "Decentralized smart-contract auditing powered by a sovereign AI agent swarm, mathematically validated through concurrent AST graph reasoning and immutably anchored on Hedera Consensus Service.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 import { PrivyClientProvider } from "./providers/PrivyClientProvider";
@@ -14,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <link rel="icon" type="image/png" href="/logo.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

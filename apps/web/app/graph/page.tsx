@@ -354,8 +354,8 @@ export default function GraphExplorerPage() {
         <div className="h-28 max-w-[1440px] mx-auto px-margin-mobile md:px-margin flex flex-col justify-between pt-3 pb-2">
           <div className="flex items-center justify-between gap-gutter">
             <div className="flex items-center gap-space-md">
-              <Link href="/" className="w-9 h-9 bg-primary flex items-center justify-center rounded hover:opacity-90 transition-opacity">
-                <span className="font-code-md text-code-md font-semibold text-on-primary tracking-tight">SP</span>
+              <Link href="/" className="w-9 h-9 flex items-center justify-center rounded-lg hover:opacity-90 transition-opacity">
+                <img src="/logo.png" alt="SwarmProof" className="w-9 h-9 object-contain rounded-lg shadow-xs" />
               </Link>
               <div className="flex flex-col">
                 <div className="flex items-center gap-space-xs">
@@ -1341,7 +1341,8 @@ export default function GraphExplorerPage() {
           </div>
 
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-space-md pt-space-lg border-t border-surface-container-high/60">
-            <div className="flex items-center gap-space-md">
+            <div className="flex items-center gap-space-sm">
+              <img src="/logo.png" alt="SwarmProof" className="w-7 h-7 object-contain rounded-md" />
               <span className="font-display-lg text-display-lg text-on-surface font-normal tracking-tight">SwarmProof</span>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-space-md text-on-surface-variant">

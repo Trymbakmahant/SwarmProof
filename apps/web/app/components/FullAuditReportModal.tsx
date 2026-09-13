@@ -185,23 +185,11 @@ export function FullAuditReportModal({ auditResult, onClose }: FullAuditReportMo
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                backgroundColor: "#09090b",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "var(--font-mono)",
-                fontWeight: 800,
-                fontSize: 14,
-              }}
-            >
-              SP
-            </div>
+            <img
+              src="/logo.png"
+              alt="SwarmProof"
+              style={{ width: 36, height: 36, borderRadius: 8, objectFit: "contain", display: "block" }}
+            />
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#09090b" }}>
