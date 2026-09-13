@@ -615,18 +615,19 @@ export default function GraphExplorerPage() {
                 return (
                   <button
                     key={key}
+                    type="button"
                     onClick={() => handleSelectContract(key)}
-                    className={`px-3.5 py-2 rounded-lg font-code-sm text-code-sm transition-all whitespace-nowrap flex items-center gap-2 border ${
+                    className={`px-4 py-2 rounded-lg font-code-sm text-code-sm transition-all whitespace-nowrap flex items-center gap-2 border cursor-pointer ${
                       isActive
-                        ? "bg-on-surface text-surface border-on-surface font-bold shadow-xs"
-                        : "bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border-black/[0.06]"
+                        ? "bg-[#09090b] text-[#ffffff] border-[#09090b] font-extrabold shadow-sm ring-2 ring-primary/40"
+                        : "bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border-black/[0.08]"
                     }`}
                   >
                     <span>{key === "ethervault" ? "⚠️" : key === "flashlender" ? "⚡" : key === "multisig" ? "🛡️" : "⚖️"}</span>
                     <span>{item.name}</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                        isActive ? "bg-white/20 text-white" : "bg-black/[0.05] text-on-surface-variant"
+                        isActive ? "bg-white/20 text-white" : "bg-black/[0.06] text-on-surface-variant"
                       }`}
                     >
                       {item.nodes.length} nodes
@@ -1252,15 +1253,31 @@ export default function GraphExplorerPage() {
                         <th className="pb-2 font-bold">AGENTS</th>
                         <th className="pb-2 font-bold">LATENCY</th>
                         <th className="pb-2 font-bold">CONSENSUS STATE</th>
+                        <th className="pb-2 font-bold text-right">ACTION</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-container-low font-code-sm text-code-sm" id="activity-query-rows">
                       {activityRows.map((row) => (
                         <tr
                           key={row.id}
-                          className={`hover:bg-surface-container-low/50 transition-colors ${
+                          onClick={() => {
+                            setQueryInput(row.queryExpression);
+                            const q = row.queryExpression.toLowerCase();
+                            if (q.includes("reentrancy") || q.includes("cei") || q.includes("withdraw")) {
+                              handleSelectContract("ethervault");
+                            } else if (q.includes("tx.origin") || q.includes("modifier") || q.includes("only")) {
+                              handleSelectContract("multisig");
+                            } else if (q.includes("div") || q.includes("mul") || q.includes("precision")) {
+                              handleSelectContract("redeemescrow");
+                            } else if (q.includes("flash") || q.includes("pool") || q.includes("constant")) {
+                              handleSelectContract("flashlender");
+                            }
+                            handleRunQuery(row.queryExpression);
+                          }}
+                          className={`hover:bg-surface-container-high/60 cursor-pointer transition-colors group ${
                             row.isNew ? "bg-secondary-container/20" : ""
                           }`}
+                          title="Click to replay this query & inspect AST nodes"
                         >
                           <td className="py-3 text-on-surface font-medium max-w-[240px] truncate" title={row.queryExpression}>
                             {row.queryExpression}
@@ -1275,6 +1292,12 @@ export default function GraphExplorerPage() {
                             <span className="inline-flex items-center gap-1 text-secondary font-bold">
                               <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
                               {row.consensusState}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            <span className="font-code-sm text-[11px] font-bold text-primary group-hover:underline inline-flex items-center gap-1">
+                              <span>Replay</span>
+                              <span>→</span>
                             </span>
                           </td>
                         </tr>
