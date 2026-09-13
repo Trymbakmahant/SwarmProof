@@ -1,4 +1,4 @@
-import type { Finding } from "@swarmproof/agents";
+import { SPECIALIST_PAYMENT_ADDRESSES, type Finding } from "@swarmproof/agents";
 import {
   clusterFindings,
   toConsensusCandidates,
@@ -727,8 +727,12 @@ export class AuditTaskPool {
 
       // Direct on-chain Hedera testnet transfer if payer credentials exist
       if (!payoutTx && process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY) {
-        const targetPayee = (claim?.paymentAddress && /^\d+\.\d+\.\d+$/.test(claim.paymentAddress))
+        const agentPayAddress = (claim?.paymentAddress && /^\d+\.\d+\.\d+$/.test(claim.paymentAddress))
           ? claim.paymentAddress
+          : (SPECIALIST_PAYMENT_ADDRESSES as Record<string, string>)[item.sub.agentId];
+
+        const targetPayee = (agentPayAddress && /^\d+\.\d+\.\d+$/.test(agentPayAddress))
+          ? agentPayAddress
           : undefined;
 
         if (targetPayee && targetPayee !== process.env.HEDERA_ACCOUNT_ID) {
@@ -742,7 +746,7 @@ export class AuditTaskPool {
             const client = Client.forTestnet();
             client.setOperator(AccountId.fromString(opId), opKey);
 
-            const tinybars = Math.max(10_000_000, amountTinybars);
+            const tinybars = Math.max(1_000_000, amountTinybars);
             const hbarAmount = Hbar.fromTinybars(tinybars);
 
             const xfer = await new TransferTransaction()
@@ -754,7 +758,7 @@ export class AuditTaskPool {
             const rec = await xfer.getReceipt(client);
             if (rec.status.toString() === "SUCCESS") {
               payoutTx = xfer.transactionId.toString();
-              console.log(`[AuditTaskPool] ✅ Real Hedera on-chain payout transferred to ${targetPayee}: ${payoutTx} (${hbarAmount.toString()})`);
+              console.log(`[AuditTaskPool] ✅ Real Hedera on-chain payout transferred to ${targetPayee} (${item.sub.agentId}): ${payoutTx} (${hbarAmount.toString()})`);
             }
           } catch (xferErr) {
             console.warn(`[AuditTaskPool] Direct Hedera payout notice for ${item.sub.agentId}: ${(xferErr as Error).message}`);
@@ -770,7 +774,7 @@ export class AuditTaskPool {
       payouts.push({
         agentId: item.sub.agentId,
         role: item.sub.role,
-        address: claim?.paymentAddress || "0.0.10417474",
+        address: claim?.paymentAddress || (SPECIALIST_PAYMENT_ADDRESSES as Record<string, string>)[item.sub.agentId] || "0.0.10417474",
         sharePercent,
         amountUSD,
         amountTinybars,

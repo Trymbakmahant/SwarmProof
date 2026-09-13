@@ -45,6 +45,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.59.1"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0"
   }

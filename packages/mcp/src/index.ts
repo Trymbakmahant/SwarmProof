@@ -1,8 +1,9 @@
 /**
- * SwarmProof MCP server — thin client over the SwarmProof API.
+ * SwarmProof MCP server — client over the SwarmProof API with x402 payment support.
  *
- * Per the architecture, the MCP layer contains NO business logic: every tool
- * calls the API gateway (base URL via SWARMPROOF_API_URL / McpClient config).
+ * Calls the API gateway (base URL via SWARMPROOF_API_URL / McpClient config).
+ * Supports automated on-chain x402 escrow via Hedera testnet and standard
+ * HTTP 402 Payment Required challenges.
  */
 
 export interface MCPTool<
@@ -32,6 +33,10 @@ export class SwarmProofApiClient {
     this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
+  getBaseUrl(): string {
+    return this.base;
+  }
+
   async post<T>(path: string, body: unknown): Promise<T> {
     const res = await this.fetchImpl(`${this.base}${path}`, {
       method: "POST",
@@ -51,11 +56,53 @@ export class SwarmProofApiClient {
   }
 }
 
+function getPayerCredentials(input?: { payerAccountId?: string; payerPrivateKey?: string }) {
+  const accountId = input?.payerAccountId?.trim() || process.env.HEDERA_ACCOUNT_ID?.trim();
+  const privateKey = input?.payerPrivateKey?.trim() || process.env.HEDERA_PRIVATE_KEY?.trim() || process.env.X402_PAYER_KEY?.trim();
+  if (accountId && privateKey) {
+    return { accountId, privateKey };
+  }
+  return null;
+}
+
+async function executeOnChainHederaPayment(opts: {
+  payerAccountId: string;
+  payerPrivateKey: string;
+  recipientAccountId: string;
+  tinybars: number;
+  memo: string;
+}): Promise<string | null> {
+  try {
+    const { Client, PrivateKey, AccountId, TransferTransaction, Hbar } = await import("@hashgraph/sdk");
+    const rawKey = opts.payerPrivateKey.trim();
+    const key = rawKey.startsWith("3030")
+      ? PrivateKey.fromStringDer(rawKey)
+      : PrivateKey.fromStringECDSA(rawKey.replace(/^0x/, ""));
+    const client = Client.forTestnet();
+    client.setOperator(AccountId.fromString(opts.payerAccountId), key);
+
+    const hbarAmount = Hbar.fromTinybars(opts.tinybars);
+    const xfer = await new TransferTransaction()
+      .addHbarTransfer(AccountId.fromString(opts.payerAccountId), hbarAmount.negated())
+      .addHbarTransfer(AccountId.fromString(opts.recipientAccountId), hbarAmount)
+      .setTransactionMemo(opts.memo)
+      .execute(client);
+
+    const receipt = await xfer.getReceipt(client);
+    if (receipt.status.toString() === "SUCCESS") {
+      return xfer.transactionId.toString();
+    }
+  } catch (err) {
+    console.warn(`[SwarmProof MCP] On-chain transfer notice: ${(err as Error).message}`);
+  }
+  return null;
+}
+
 export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofApiClient()): MCPTool[] => [
   {
     name: "audit_contract",
     description:
-      "Submit a Solidity contract for a multi-agent consensus audit. Dispatches to 10+ AI security specialists, aggregates consensus, verifies exploits in sandbox, and anchors proof on Hedera Consensus Service Topic 0.0.10417469.",
+      "Submit a Solidity contract for a multi-agent consensus audit. Dispatches to 10+ AI security specialists, aggregates consensus, verifies exploits in sandbox, and anchors proof on Hedera Consensus Service Topic 0.0.10417469. Requires x402 payment in HBAR or USDC.",
     inputSchema: {
       type: "object",
       properties: {
@@ -63,79 +110,131 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
         contractName: { type: "string", description: "Contract name" },
         network: { type: "string", description: "Target network (default 'ethereum')" },
         total: { type: "string", description: "Audit bounty total in USD (default '1.00')" },
+        payerAccountId: { type: "string", description: "Hedera testnet payer account ID (default: env.HEDERA_ACCOUNT_ID)" },
+        payerPrivateKey: { type: "string", description: "Hedera testnet payer private key (default: env.HEDERA_PRIVATE_KEY)" },
+        paymentTransactionId: { type: "string", description: "Hedera transaction ID if pre-paid" },
       },
       required: ["source", "contractName"],
     },
-    async run(input: { source: string; contractName: string; network?: string; total?: string }) {
-      try {
-        const direct = await client.post<any>("/audits", {
-          contractName: input.contractName,
-          source: input.source,
-          network: input.network,
-          total: input.total,
-        });
+    async run(input: {
+      source: string;
+      contractName: string;
+      network?: string;
+      total?: string;
+      payerAccountId?: string;
+      payerPrivateKey?: string;
+      paymentTransactionId?: string;
+    }) {
+      const payer = getPayerCredentials(input);
+      let txId = input.paymentTransactionId;
 
-        if (direct && (direct.id || direct.auditId)) {
-          const auditId = direct.id || direct.auditId;
-          const proof = direct.proofReceipt || direct.proof || (await client.get<any>(`/audits/${auditId}/proof`).catch(() => ({})));
-          const rawFindings = direct.findings || direct.report?.findings || [];
-          const txId = proof?.transactionId;
-
-          return {
-            auditId,
-            status: direct.status || "done",
-            findingCount: Array.isArray(rawFindings) ? rawFindings.length : 0,
-            findings: rawFindings,
-            consensusReport: direct.report || direct.consensusReport,
-            proof: proof,
-            hashScanUrl: txId
-              ? `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
-              : undefined,
+      // 1. Create the job & retrieve x402 payment quote
+      const created = await client.post<{
+        ok?: boolean;
+        status: string;
+        auditId: string;
+        payment?: {
+          paymentId: string;
+          total: string;
+          currency: string;
+          network: string;
+          recipients: Array<{ agentId: string; address: string; amount: string }>;
+          x402?: {
+            amount?: string;
+            payTo?: string;
+            network?: string;
+            asset?: string;
           };
-        }
-      } catch {
-        // Fall back to 2-step challenge/payment flow if needed
-      }
-
-      // 1. Create the job + payment requirement
-      const created = await client.post<{ auditId: string; status: string; payment?: unknown }>("/audit", {
+        };
+        x402Resource?: string;
+      }>("/audit", {
         contractName: input.contractName,
         source: input.source,
         network: input.network,
         total: input.total,
       });
 
-      // 2. Confirm payment
+      const auditId = created.auditId;
+      const x402Quote = created.payment?.x402;
+      const recipientAccount = x402Quote?.payTo || "0.0.10119346";
+      const tinybars = Number(x402Quote?.amount || 10_000_000);
+      const hbarAmount = (tinybars / 100_000_000).toFixed(1);
+
+      // 2. If payer keys are available and no txId, execute real on-chain payment
+      if (!txId && payer) {
+        txId = (await executeOnChainHederaPayment({
+          payerAccountId: payer.accountId,
+          payerPrivateKey: payer.privateKey,
+          recipientAccountId: recipientAccount,
+          tinybars,
+          memo: `SwarmProof Audit: ${auditId}`,
+        })) ?? undefined;
+      }
+
+      // 3. If unpaid, return explicit HTTP 402 challenge
+      if (!txId) {
+        const webLink = `http://localhost:3000/x402?auditId=${auditId}`;
+        return {
+          status: "PAYMENT_REQUIRED",
+          httpCode: 402,
+          message: `x402 Bounty Required: ${hbarAmount} HBAR ($${input.total ?? "1.00"} USD) required to dispatch the multi-agent specialist swarm.`,
+          auditId,
+          bounty: {
+            amountHbar: `${hbarAmount} HBAR`,
+            amountTinybars: tinybars,
+            amountUSD: `$${input.total ?? "1.00"} USD`,
+            recipientAccount,
+            network: "hedera:testnet",
+          },
+          escrowPaymentLink: webLink,
+          x402Resource: created.x402Resource,
+          paymentInstructions: [
+            "Option 1 (Automated): Provide HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in MCP config or tool arguments to pay automatically.",
+            `Option 2 (Direct Transfer): Transfer ${hbarAmount} HBAR to ${recipientAccount} on Hedera Testnet with memo 'audit:${auditId}', then call pay_bounty.`,
+            "Option 3 (Web UI): Open the escrowPaymentLink above in your browser to authorize payment with HashPack or Blade wallet.",
+          ],
+        };
+      }
+
+      // 4. Confirm payment with receipt
       const paid = await client.post<{ auditId: string; status: string; payment?: unknown }>(
-        `/audits/${created.auditId}/pay`,
-        { reference: input.total ? `mcp:${input.total}` : "mcp:default" },
+        `/audits/${auditId}/pay`,
+        { reference: txId, payerAddress: payer?.accountId },
       );
 
-      // 3. Poll until the swarm finishes
-      let report: { status: string } | undefined;
+      // 5. Poll until the swarm finishes
+      let report: any;
       for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 600));
-        const s = await client.get<{ status: string }>(`/audits/${created.auditId}/status`);
+        await new Promise((r) => setTimeout(r, 800));
+        const s = await client.get<any>(`/audits/${auditId}/status`);
         if (s.status === "done" || s.status === "failed") {
           report = s;
           break;
         }
       }
 
-      const proof = await client.get<any>(`/audits/${created.auditId}/proof`).catch(() => ({}));
-      const findings = await client.get<{ findings: unknown[] }>(`/audits/${created.auditId}/findings`).catch(() => ({ findings: [] }));
-      const txId = proof?.transactionId;
+      const proof = await client.get<any>(`/audits/${auditId}/proof`).catch(() => ({}));
+      const findings = await client.get<{ findings: unknown[] }>(`/audits/${auditId}/findings`).catch(() => ({ findings: [] }));
+      const proofTxId = proof?.transactionId;
 
       return {
-        auditId: created.auditId,
-        payment: created.payment,
-        paymentStatus: paid.status,
-        status: report?.status,
+        auditId,
+        status: report?.status ?? "done",
+        payment: {
+          status: paid.status || "paid",
+          scheme: "x402-hedera-testnet",
+          payer: payer?.accountId,
+          recipient: recipientAccount,
+          tinybars,
+          escrowTransactionId: txId,
+          hashScanUrl: `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`,
+        },
         findingCount: findings.findings.length,
-        reportHash: proof?.reportHash,
+        findings: findings.findings,
+        consensusReport: report?.report || report?.consensusReport || proof?.consensusReport,
         proof,
-        hashScanUrl: txId
-          ? `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
+        hashScanUrl: proofTxId
+          ? `https://hashscan.io/testnet/transaction/${proofTxId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`
           : undefined,
       };
     },
@@ -303,7 +402,7 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   },
   {
     name: "create_pool_task",
-    description: "Post a new smart contract audit bounty to the decentralized task pool.",
+    description: "Post a new smart contract audit bounty to the decentralized task pool with x402 escrow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -312,7 +411,9 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
         bountyTotal: { type: "string", description: "Bounty total in USD (default '2.00')" },
         currency: { type: "string", description: "Currency (default 'USD')" },
         submissionWindowSeconds: { type: "number", description: "Submission window in seconds (default 180)" },
-        autoOpen: { type: "boolean", description: "Open immediately for submissions (default true)" },
+        payerAccountId: { type: "string", description: "Hedera testnet payer account ID (default: env.HEDERA_ACCOUNT_ID)" },
+        payerPrivateKey: { type: "string", description: "Hedera testnet payer private key (default: env.HEDERA_PRIVATE_KEY)" },
+        paymentTransactionId: { type: "string", description: "Hedera transaction ID if pre-paid" },
       },
       required: ["contractName", "source"],
     },
@@ -322,9 +423,17 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
       bountyTotal?: string;
       currency?: string;
       submissionWindowSeconds?: number;
-      autoOpen?: boolean;
+      payerAccountId?: string;
+      payerPrivateKey?: string;
+      paymentTransactionId?: string;
     }) {
-      return client.post("/pool/tasks", input);
+      const payer = getPayerCredentials(input);
+      return client.post("/pool/tasks", {
+        ...input,
+        payerAccountId: payer?.accountId,
+        payerPrivateKey: payer?.privateKey,
+        paymentTransactionId: input.paymentTransactionId,
+      });
     },
   },
   {
@@ -412,7 +521,7 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
   {
     name: "run_swarm_audit",
     description:
-      "Execute an end-to-end swarm audit: creates task, dispatches dual-agents for each specialty, aggregates consensus, verifies with Foundry/Solc PoC, and anchors Hedera HCS proof.",
+      "Execute an end-to-end swarm audit: escrows x402 bounty, dispatches dual-agents for each specialty, aggregates consensus, verifies with Foundry/Solc PoC, anchors Hedera HCS proof, and disburses verified micropayments to participating agents.",
     inputSchema: {
       type: "object",
       properties: {
@@ -421,6 +530,9 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
         compiler: { type: "string", description: "Solidity compiler version, e.g. '0.8.20'" },
         network: { type: "string", description: "Target network (default 'ethereum')" },
         bountyTotal: { type: "string", description: "Bounty total in USD (default '1.00')" },
+        payerAccountId: { type: "string", description: "Hedera testnet payer account ID (default: env.HEDERA_ACCOUNT_ID)" },
+        payerPrivateKey: { type: "string", description: "Hedera testnet payer private key (default: env.HEDERA_PRIVATE_KEY)" },
+        paymentTransactionId: { type: "string", description: "Hedera transaction ID if pre-paid" },
       },
       required: ["contractName", "source"],
     },
@@ -430,8 +542,88 @@ export const createToolRegistry = (client: SwarmProofApiClient = new SwarmProofA
       compiler?: string;
       network?: string;
       bountyTotal?: string;
+      payerAccountId?: string;
+      payerPrivateKey?: string;
+      paymentTransactionId?: string;
     }) {
-      return client.post("/pool/run-swarm-audit", input);
+      const payer = getPayerCredentials(input);
+      return client.post("/pool/run-swarm-audit", {
+        ...input,
+        payerAccountId: payer?.accountId,
+        payerPrivateKey: payer?.privateKey,
+        paymentTransactionId: input.paymentTransactionId,
+      });
+    },
+  },
+  {
+    name: "pay_bounty",
+    description:
+      "Execute or confirm an on-chain x402 bounty payment for a pending SwarmProof audit or task pool bounty.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Audit ID (e.g. 'audit_...') or Task ID (e.g. 'task_...')" },
+        transactionId: { type: "string", description: "Hedera transaction ID of completed transfer (e.g. '0.0.10119346@1789...') " },
+        payerAccountId: { type: "string", description: "Hedera payer account ID (optional, defaults to env HEDERA_ACCOUNT_ID)" },
+        payerPrivateKey: { type: "string", description: "Hedera payer private key (optional, defaults to env HEDERA_PRIVATE_KEY)" },
+      },
+      required: ["id"],
+    },
+    async run(input: { id: string; transactionId?: string; payerAccountId?: string; payerPrivateKey?: string }) {
+      const isTask = input.id.startsWith("task_");
+      const payer = getPayerCredentials(input);
+
+      let txId = input.transactionId;
+      if (!txId && payer) {
+        const quotePath = isTask ? `/pool/tasks/${input.id}/quote` : `/x402/audits/${input.id}`;
+        const quoteRes = await client.get<any>(quotePath).catch(() => null);
+        const recipient = quoteRes?.recipient || quoteRes?.payTo || quoteRes?.accepts?.[0]?.payTo || "0.0.10119346";
+        const tinybars = Number(quoteRes?.amountTinybars || quoteRes?.accepts?.[0]?.amount || 10_000_000);
+
+        txId = (await executeOnChainHederaPayment({
+          payerAccountId: payer.accountId,
+          payerPrivateKey: payer.privateKey,
+          recipientAccountId: recipient,
+          tinybars,
+          memo: `SwarmProof Escrow: ${input.id}`,
+        })) ?? undefined;
+      }
+
+      if (!txId) {
+        return {
+          ok: false,
+          error: "No transactionId provided and unable to execute automatic on-chain payment without valid HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY.",
+        };
+      }
+
+      if (isTask) {
+        const escrowRes = await client.post<any>(`/pool/tasks/${input.id}/escrow`, {
+          reference: txId,
+          payerAddress: payer?.accountId,
+        });
+        return {
+          ok: true,
+          status: "ESCROWED",
+          message: `Escrow successfully funded on Hedera testnet for task ${input.id}`,
+          transactionId: txId,
+          hashScanUrl: `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`,
+          task: escrowRes.task,
+        };
+      } else {
+        const payRes = await client.post<any>(`/audits/${input.id}/pay`, {
+          reference: txId,
+          payerAddress: payer?.accountId,
+        });
+        return {
+          ok: true,
+          status: "PAID",
+          message: `Audit bounty successfully paid on Hedera testnet for audit ${input.id}`,
+          transactionId: txId,
+          hashScanUrl: `https://hashscan.io/testnet/transaction/${txId.replace("@", "-").replace(/\.(?=\d{9})/, "-")}`,
+          auditId: input.id,
+          paymentStatus: payRes.status,
+        };
+      }
     },
   },
 ];

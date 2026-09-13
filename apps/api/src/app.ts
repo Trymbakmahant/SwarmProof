@@ -2111,32 +2111,103 @@ contract EtherVault {
     return c.json(r);
   });
 
-  // Web dashboard demo endpoint: creates audit, ensures payment, and runs the swarm immediately!
+  // POST /audits: Create audit and enforce payment unless explicit demo mode is requested
   app.post("/audits", async (c) => {
-    const body = await c.req.json<{ contractName: string; source: string }>();
+    const payload = payloadFromRequest(c);
+    const body = await c.req.json<{
+      contractName: string;
+      source: string;
+      compiler?: string;
+      network?: string;
+      total?: string;
+      currency?: string;
+      reference?: string;
+      paymentTransactionId?: string;
+      payerAccountId?: string;
+      payerPrivateKey?: string;
+      demo?: boolean;
+    }>();
     console.log(`\n📥 [POST /audits] Received audit request for contract: "${body.contractName}"`);
+
+    const isDemo = body.demo === true || c.req.query("demo") === "true";
+    const ref = body.reference || body.paymentTransactionId;
+    const hasKeys = Boolean(body.payerAccountId) && Boolean(body.payerPrivateKey);
+    const hasPayment = Boolean(payload) || Boolean(ref) || hasKeys;
+
     const record = await createAudit(body);
     console.log(`   Created audit record: ${record.id}`);
 
-    if (payment.mode === "mock") {
-      const verification = await confirmPaymentFor(record, `auto-${Date.now()}`);
+    // If unpaid and not demo, return HTTP 402 Payment Required challenge
+    if (!hasPayment && !isDemo && payment.mode !== "mock") {
+      const resource = resourceUrl(c, record.id);
+      return c.json(
+        {
+          ok: false,
+          status: "PAYMENT_REQUIRED",
+          message: "x402 Payment Required: Hedera HBAR or USDC micropayment is required to execute a multi-agent swarm audit.",
+          auditId: record.id,
+          payment: record.payment,
+          x402Resource: resource,
+          instructions: {
+            automated: "Provide HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in your MCP config or tool arguments.",
+            directPayment: `Transfer 10 HBAR to ${constants.gatewayAddress} on Hedera Testnet with memo 'audit:${record.id}', then confirm via POST /audits/${record.id}/pay.`,
+            webPayment: `http://localhost:3000/x402?auditId=${record.id}`,
+          },
+        },
+        402,
+        { "WWW-Authenticate": `X402 resource="${resource}"` },
+      );
+    }
+
+    // Process payment if keys are provided by the client
+    if (hasKeys && record.payment?.x402) {
+      try {
+        const { Client, PrivateKey, AccountId, TransferTransaction, Hbar } = await import("@swarmproof/hedera");
+        const clientKey = body.payerPrivateKey!.startsWith("3030")
+          ? PrivateKey.fromStringDer(body.payerPrivateKey!)
+          : PrivateKey.fromStringECDSA(body.payerPrivateKey!.replace(/^0x/, ""));
+        const client = Client.forTestnet();
+        client.setOperator(AccountId.fromString(body.payerAccountId!), clientKey);
+
+        const tinybars = Math.max(10_000_000, Number(record.payment.x402.amount || 10_000_000));
+        const xfer = await new TransferTransaction()
+          .addHbarTransfer(AccountId.fromString(body.payerAccountId!), Hbar.fromTinybars(tinybars).negated())
+          .addHbarTransfer(AccountId.fromString(constants.gatewayAddress), Hbar.fromTinybars(tinybars))
+          .setTransactionMemo(`SwarmProof Audit: ${record.id}`)
+          .execute(client);
+        const receipt = await xfer.getReceipt(client);
+        if (receipt.status.toString() === "SUCCESS") {
+          const txId = xfer.transactionId.toString();
+          const verification = await confirmPaymentFor(record, txId);
+          record.paymentStatus = verification;
+        }
+      } catch (err) {
+        console.warn(`Client key payment failed: ${(err as Error).message}`);
+      }
+    } else if (ref || payload) {
+      const verification = await confirmPaymentFor(record, ref, payload ?? undefined);
       record.paymentStatus = verification;
-      await runAudit(record);
-    } else {
-      // In live x402 mode: auto-pay and execute the swarm audit
+    } else if (isDemo || payment.mode === "mock") {
+      // Server-sponsored demo fallback
       if (payerAccount && payerKey && record.payment?.x402) {
         try {
           const reqs = record.payment.x402;
-          const payload = await payerClient.signPayment(reqs);
-          const settlement = await payerClient.settlePayment(payload, reqs);
-          const verification = await confirmPaymentFor(record, settlement.transaction ?? `live-${Date.now()}`, payload);
+          const signed = await payerClient.signPayment(reqs);
+          const settlement = await payerClient.settlePayment(signed, reqs);
+          const verification = await confirmPaymentFor(record, settlement.transaction ?? `demo-${Date.now()}`, signed);
           record.paymentStatus = verification;
-        } catch (err) {
-          console.warn(`x402 payment note: ${(err as Error).message}. Proceeding with swarm analysis...`);
+        } catch {
+          const verification = await confirmPaymentFor(record, `demo-${Date.now()}`);
+          record.paymentStatus = verification;
         }
+      } else {
+        const verification = await confirmPaymentFor(record, `demo-${Date.now()}`);
+        record.paymentStatus = verification;
       }
-      await runAudit(record);
     }
+
+    await runAudit(record);
+
     // Also register an open task in task pool for decentralized specialist submissions
     try {
       taskPool.createTask({
@@ -2335,8 +2406,12 @@ contract EtherVault {
       }
 
       const payload = payloadFromRequest(c);
-      const shouldRequireEscrow = body.requireEscrow === true || body.autoOpen === false;
-      const isAutoOpen = !shouldRequireEscrow || Boolean(payload);
+      const ref = (body as any).reference || (body as any).paymentTransactionId;
+      const hasKeys = Boolean((body as any).payerAccountId) && Boolean((body as any).payerPrivateKey);
+      const isDemo = (body as any).demo === true || c.req.query("demo") === "true";
+      const hasPayment = Boolean(payload) || Boolean(ref) || hasKeys;
+      const shouldRequireEscrow = !hasPayment && !isDemo;
+      const isAutoOpen = !shouldRequireEscrow;
 
       const task = taskPool.createTask({
         contractName: body.contractName,
@@ -2351,12 +2426,18 @@ contract EtherVault {
         autoOpen: isAutoOpen,
       });
 
-      if (shouldRequireEscrow && !payload) {
+      if (shouldRequireEscrow) {
         const escrowUrl = new URL(`/pool/tasks/${task.id}/escrow`, c.req.url).toString();
+        const bountyUSD = parseFloat(task.bountyTotal) || 1.0;
+        const tinybars = Math.round(bountyUSD * (Number(env.X402_TINYBARS_PER_USD) || 100_000_000));
+        const hbarAmount = (tinybars / 100_000_000).toFixed(1);
+
         const quote = {
           x402Version: 2,
           scheme: "exact",
           network: constants.network,
+          amountHbar: `${hbarAmount} HBAR`,
+          amountTinybars: tinybars,
           total: task.bountyTotal,
           currency: task.currency,
           recipient: constants.gatewayAddress,
@@ -2367,10 +2448,15 @@ contract EtherVault {
           {
             ok: false,
             status: "PENDING_ESCROW",
-            message: "x402 Payment Required: Advance escrow bounty deposit required before submission window opens.",
+            message: `x402 Payment Required: Advance escrow bounty deposit (${hbarAmount} HBAR) required before submission window opens.`,
             taskId: task.id,
             x402Quote: quote,
             x402Resource: escrowUrl,
+            instructions: {
+              automated: "Provide HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in your MCP config or tool arguments.",
+              directTransfer: `Send ${hbarAmount} HBAR to ${constants.gatewayAddress} on Hedera Testnet with memo 'task:${task.id}', then confirm via pay_bounty tool.`,
+              webEscrow: `http://localhost:3000/pool?task=${task.id}`,
+            },
             task: {
               ...task,
               remainingSeconds: taskPool.getRemainingSeconds(task),
@@ -2380,6 +2466,45 @@ contract EtherVault {
           402,
           { "WWW-Authenticate": `X402 resource="${escrowUrl}"` },
         );
+      }
+
+      if (hasKeys) {
+        try {
+          const { Client, PrivateKey, AccountId, TransferTransaction, Hbar } = await import("@swarmproof/hedera");
+          const clientKey = (body as any).payerPrivateKey!.startsWith("3030")
+            ? PrivateKey.fromStringDer((body as any).payerPrivateKey!)
+            : PrivateKey.fromStringECDSA((body as any).payerPrivateKey!.replace(/^0x/, ""));
+          const client = Client.forTestnet();
+          client.setOperator(AccountId.fromString((body as any).payerAccountId!), clientKey);
+
+          const bountyUSD = parseFloat(task.bountyTotal) || 1.0;
+          const tinybars = Math.round(bountyUSD * (Number(env.X402_TINYBARS_PER_USD) || 100_000_000));
+          const hbarAmount = Hbar.fromTinybars(tinybars);
+
+          const xfer = await new TransferTransaction()
+            .addHbarTransfer(AccountId.fromString((body as any).payerAccountId!), hbarAmount.negated())
+            .addHbarTransfer(AccountId.fromString(constants.gatewayAddress), hbarAmount)
+            .setTransactionMemo(`SwarmProof Task Escrow: ${task.id}`)
+            .execute(client);
+          const receipt = await xfer.getReceipt(client);
+          if (receipt.status.toString() === "SUCCESS") {
+            const txId = xfer.transactionId.toString();
+            taskPool.escrowTask(task.id, txId, {
+              transactionId: txId,
+              payer: (body as any).payerAccountId,
+              amountUSD: task.bountyTotal,
+              amountTinybars: tinybars,
+              hashscanUrl: `https://hashscan.io/testnet/transaction/${txId}`,
+              settledAt: new Date().toISOString(),
+              facilitator: "Blocky402",
+            });
+            console.log(`[TaskPool] Client keys escrowed ${hbarAmount.toString()}: ${txId}`);
+          }
+        } catch (payErr) {
+          console.warn(`[TaskPool] Client keys escrow failed: ${(payErr as Error).message}`);
+        }
+      } else if (ref) {
+        taskPool.escrowTask(task.id, ref);
       }
 
       if (isAutoOpen) {
@@ -2604,6 +2729,7 @@ contract EtherVault {
   // POST /pool/run-swarm-audit — Create new task and run dual-agent swarm from start to end
   app.post("/pool/run-swarm-audit", async (c) => {
     try {
+      const payload = payloadFromRequest(c);
       const body = await c.req.json<{
         contractName: string;
         source: string;
@@ -2612,10 +2738,66 @@ contract EtherVault {
         bountyTotal?: string;
         currency?: string;
         submissionWindowSeconds?: number;
+        reference?: string;
+        paymentTransactionId?: string;
+        payerAccountId?: string;
+        payerPrivateKey?: string;
+        demo?: boolean;
       }>();
 
       if (!body.contractName || !body.source) {
         return c.json({ error: "contractName and source are required" }, 400);
+      }
+
+      const ref = body.reference || body.paymentTransactionId;
+      const hasKeys = Boolean(body.payerAccountId) && Boolean(body.payerPrivateKey);
+      const hasPayment = Boolean(payload) || Boolean(ref) || hasKeys;
+      const isDemo = body.demo === true || c.req.query("demo") === "true";
+
+      if (!hasPayment && !isDemo) {
+        const task = taskPool.createTask({
+          contractName: body.contractName,
+          source: body.source,
+          compiler: body.compiler,
+          network: body.network ?? "ethereum",
+          submissionWindowSeconds: body.submissionWindowSeconds ?? 120,
+          bountyTotal: body.bountyTotal ?? "1.00",
+          currency: body.currency ?? "USD",
+          autoOpen: false,
+        });
+
+        const escrowUrl = new URL(`/pool/tasks/${task.id}/escrow`, c.req.url).toString();
+        const bountyUSD = parseFloat(task.bountyTotal) || 1.0;
+        const tinybars = Math.round(bountyUSD * (Number(env.X402_TINYBARS_PER_USD) || 100_000_000));
+        const hbarAmount = (tinybars / 100_000_000).toFixed(1);
+
+        return c.json(
+          {
+            ok: false,
+            status: "PAYMENT_REQUIRED",
+            message: `x402 Bounty Escrow Required: ${hbarAmount} HBAR ($${task.bountyTotal} ${task.currency}) required before autonomous swarm audit can proceed.`,
+            taskId: task.id,
+            quote: {
+              x402Version: 2,
+              scheme: "exact",
+              network: "hedera:testnet",
+              amountHbar: `${hbarAmount} HBAR`,
+              amountTinybars: tinybars,
+              amountUSD: task.bountyTotal,
+              currency: task.currency,
+              payTo: constants.gatewayAddress,
+              asset: env.X402_ASSET ?? "0.0.0",
+            },
+            x402Resource: escrowUrl,
+            instructions: {
+              automated: "Provide HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in your MCP config or tool arguments.",
+              directTransfer: `Send ${hbarAmount} HBAR to ${constants.gatewayAddress} on Hedera Testnet with memo 'task:${task.id}', then confirm via pay_bounty tool.`,
+              webEscrow: `http://localhost:3000/pool?task=${task.id}`,
+            },
+          },
+          402,
+          { "WWW-Authenticate": `X402 resource="${escrowUrl}"` },
+        );
       }
 
       const task = taskPool.createTask({
@@ -2627,6 +2809,45 @@ contract EtherVault {
         bountyTotal: body.bountyTotal ?? "1.00",
         currency: body.currency ?? "USD",
       });
+
+      if (hasKeys) {
+        try {
+          const { Client, PrivateKey, AccountId, TransferTransaction, Hbar } = await import("@swarmproof/hedera");
+          const clientKey = body.payerPrivateKey!.startsWith("3030")
+            ? PrivateKey.fromStringDer(body.payerPrivateKey!)
+            : PrivateKey.fromStringECDSA(body.payerPrivateKey!.replace(/^0x/, ""));
+          const client = Client.forTestnet();
+          client.setOperator(AccountId.fromString(body.payerAccountId!), clientKey);
+
+          const bountyUSD = parseFloat(task.bountyTotal) || 1.0;
+          const tinybars = Math.round(bountyUSD * (Number(env.X402_TINYBARS_PER_USD) || 100_000_000));
+          const hbarAmount = Hbar.fromTinybars(tinybars);
+
+          const xfer = await new TransferTransaction()
+            .addHbarTransfer(AccountId.fromString(body.payerAccountId!), hbarAmount.negated())
+            .addHbarTransfer(AccountId.fromString(constants.gatewayAddress), hbarAmount)
+            .setTransactionMemo(`SwarmProof Swarm Escrow: ${task.id}`)
+            .execute(client);
+          const receipt = await xfer.getReceipt(client);
+          if (receipt.status.toString() === "SUCCESS") {
+            const txId = xfer.transactionId.toString();
+            taskPool.escrowTask(task.id, txId, {
+              transactionId: txId,
+              payer: body.payerAccountId!,
+              amountUSD: task.bountyTotal,
+              amountTinybars: tinybars,
+              hashscanUrl: `https://hashscan.io/testnet/transaction/${txId}`,
+              settledAt: new Date().toISOString(),
+              facilitator: "Blocky402",
+            });
+            console.log(`[SwarmAudit] Client keys escrowed ${hbarAmount.toString()}: ${txId}`);
+          }
+        } catch (payErr) {
+          console.warn(`[SwarmAudit] Client keys escrow failed: ${(payErr as Error).message}`);
+        }
+      } else if (ref) {
+        taskPool.escrowTask(task.id, ref);
+      }
 
       taskPool.openTaskForSubmissions(task.id);
 
