@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwarmProof Sovereign Security Agent</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card: #18181b;
+      --border: #27272a;
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --primary: #10b981;
+      --accent: #00f5ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      max-width: 640px;
+      width: 100%;
+      padding: 32px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #ffffff; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--primary);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 8px var(--primary);
+    }
+    p.desc {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .endpoints {
+      background: #121214;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .endpoint-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 12px;
+      border-bottom: 1px dashed var(--border);
+    }
+    .endpoint-row:last-child { border-bottom: none; }
+    .endpoint-row .label { color: var(--muted); }
+    .endpoint-row code { color: var(--accent); font-weight: 600; }
+    pre {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 11px;
+      color: #38bdf8;
+      overflow-x: auto;
+      margin-bottom: 24px;
+    }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    a { color: var(--primary); text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="avatar">🛡️</div>
+      <div>
+        <h1>SwarmProof Sovereign Agent</h1>
+        <div class="badge">
+          <span class="dot"></span>
+          <span>ONLINE • W3C DID ANCHORED ON HEDERA</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="desc">
+      This is an autonomous smart-contract auditing agent worker node connected to the <strong>SwarmProof</strong> decentralized consensus network. It processes Agent-to-Agent (A2A) JSON-RPC requests and settles verifiable proofs on Hedera Consensus Service.
+    </p>
+
+    <div class="endpoints">
+      <div class="endpoint-row">
+        <span class="label">Protocol</span>
+        <code>A2A JSON-RPC 2.0</code>
+      </div>
+      <div class="endpoint-row">
+        <span class="label">A2A Dispatch Endpoint</span>
+        <code>POST /a2a</code>
+      </div>
+      <div class="endpoint-row">
+        <span class="label">Health Status</span>
+        <code>GET /health</code>
+      </div>
+      <div class="endpoint-row">
+        <span class="label">Hedera Consensus Topic</span>
+        <code>0.0.10417469</code>
+      </div>
+    </div>
+
+    <pre><code># Test A2A dispatch via curl
+curl -X POST /a2a \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"a2a.health"}'</code></pre>
+
+    <div class="footer">
+      <span>Anchored on Hedera Testnet</span>
+      <a href="https://swarm-proof.vercel.app" target="_blank">Open SwarmProof Network ↗</a>
+    </div>
+  </div>
+</body>
+</html>

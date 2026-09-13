@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { FullAuditReportModal } from "./FullAuditReportModal";
-import { PrivyB2BSpendModal } from "./PrivyB2BSpendModal";
 import { useWallet } from "../context/WalletContext";
 import { getApiBase } from "../lib/api";
 
@@ -100,166 +99,50 @@ const toHashScanUrl = (txId?: string) => {
   return `https://hashscan.io/testnet/transaction/${formatted}`;
 };
 
-const FALLBACK_POOL_TASKS: PoolTask[] = [
-  {
-    id: "task_ether_vault_live",
-    contractName: "EtherVault",
-    source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract EtherVault {\n    mapping(address => uint256) public balances;\n    function deposit() external payable { balances[msg.sender] += msg.value; }\n    function withdraw() external {\n        uint256 bal = balances[msg.sender];\n        require(bal > 0);\n        (bool s, ) = msg.sender.call{value: bal}("");\n        require(s);\n        balances[msg.sender] = 0;\n    }\n}`,
-    status: "OPEN_FOR_SUBMISSIONS",
-    submissionWindowSeconds: 600,
-    openedAt: new Date(Date.now() - 30000).toISOString(),
-    submissionDeadline: new Date(Date.now() + 570000).toISOString(),
-    requiredRoles: ["reentrancy", "access-control", "static-analysis", "business-logic", "economic-oracle"],
-    claims: [
-      { agentId: "reentrancy-agent", role: "reentrancy", claimedAt: new Date(Date.now() - 25000).toISOString() },
-      { agentId: "static-agent", role: "static-analysis", claimedAt: new Date(Date.now() - 20000).toISOString() },
-    ],
-    submissions: [
-      {
-        agentId: "reentrancy-agent",
-        role: "reentrancy",
-        submittedAt: new Date(Date.now() - 15000).toISOString(),
-        status: "accepted",
-        findings: [
-          {
-            title: "Classic Reentrancy in withdraw()",
-            severity: "critical",
-            location: "line 9",
-            evidence: "msg.sender.call{value: bal}(\"\") invoked before state zeroed",
-          },
-        ],
-      },
-    ],
-    bountyTotal: "1.50",
-    currency: "USD",
-    escrowStatus: "escrowed",
-    createdAt: new Date(Date.now() - 30000).toISOString(),
-  },
-  {
-    id: "task_flashloan_lender_live",
-    contractName: "FlashLoanLender",
-    source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract FlashLoanLender {\n    address public oracle;\n    function flashLoan(uint256 amount) external {\n        uint256 price = IOracle(oracle).getPrice();\n        require(price > 0);\n    }\n}`,
-    status: "OPEN_FOR_SUBMISSIONS",
-    submissionWindowSeconds: 480,
-    openedAt: new Date(Date.now() - 60000).toISOString(),
-    submissionDeadline: new Date(Date.now() + 420000).toISOString(),
-    requiredRoles: ["economic-oracle", "business-logic", "static-analysis"],
-    claims: [
-      { agentId: "economic-agent", role: "economic-oracle", claimedAt: new Date(Date.now() - 50000).toISOString() },
-    ],
-    submissions: [],
-    bountyTotal: "2.00",
-    currency: "USD",
-    escrowStatus: "escrowed",
-    createdAt: new Date(Date.now() - 60000).toISOString(),
-  },
-  {
-    id: "task_crosschain_bridge_quorum",
-    contractName: "CrossChainBridge",
-    source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract CrossChainBridge {\n    address public admin;\n    function relayTx(bytes calldata data) external {\n        (bool ok,) = address(this).delegatecall(data);\n        require(ok);\n    }\n}`,
-    status: "CONSENSUS_AGGREGATION",
-    submissionWindowSeconds: 180,
-    openedAt: new Date(Date.now() - 200000).toISOString(),
-    closedAt: new Date(Date.now() - 20000).toISOString(),
-    requiredRoles: ["reentrancy", "access-control", "static-analysis", "business-logic", "economic-oracle"],
-    claims: [
-      { agentId: "access-control-agent", role: "access-control", claimedAt: new Date(Date.now() - 190000).toISOString() },
-      { agentId: "static-agent", role: "static-analysis", claimedAt: new Date(Date.now() - 180000).toISOString() },
-    ],
-    submissions: [
-      {
-        agentId: "access-control-agent",
-        role: "access-control",
-        submittedAt: new Date(Date.now() - 100000).toISOString(),
-        status: "accepted",
-        findings: [{ title: "Arbitrary delegatecall allows contract takeover", severity: "critical", location: "relayTx()" }],
-      },
-    ],
-    bountyTotal: "3.00",
-    currency: "USD",
-    escrowStatus: "escrowed",
-    createdAt: new Date(Date.now() - 200000).toISOString(),
-  },
-  {
-    id: "task_staking_rewards_settled",
-    contractName: "StakingRewardsPool",
-    source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract StakingRewardsPool {\n    mapping(address => uint256) public staked;\n    function claimReward() external {\n        uint256 r = staked[msg.sender] * 10 / 100;\n        payable(msg.sender).transfer(r);\n    }\n}`,
-    status: "SETTLED",
-    submissionWindowSeconds: 120,
-    requiredRoles: ["reentrancy", "access-control", "static-analysis", "business-logic", "economic-oracle"],
-    claims: [],
-    submissions: [
-      {
-        agentId: "verification-agent",
-        role: "verification",
-        submittedAt: new Date(Date.now() - 3600000).toISOString(),
-        status: "accepted",
-        findings: [{ title: "Reward calculation precision loss & reentrancy drain", severity: "high", location: "claimReward()" }],
-      },
-    ],
-    consensusReport: {
-      findings: [
-        {
-          id: "F-01",
-          title: "Precision loss & unchecked external transfer in claimReward",
-          severity: "high",
-          category: "business-logic",
-          confidence: 0.98,
-          votingRecord: { acceptedBy: ["business-logic-agent", "static-agent", "verification-agent"], rejectedBy: [] },
-        },
-      ],
-      disputes: [],
-      summary: "Consensus reached across 10 specialists with 98.4% quorum agreement. Exploit PoC validated in deterministic sandbox.",
-    },
-    proofReceipt: {
-      hcsTopicId: "0.0.10417469",
-      transactionId: "0.0.10119346@1789301142.128491002",
-      consensusTimestamp: "1789301145.892019",
-      hashscanUrl: "https://hashscan.io/testnet/transaction/0.0.10119346-1789301142-128491002",
-    },
-    score: 96,
-    bountyTotal: "2.50",
-    currency: "USD",
-    escrowStatus: "distributed",
-    payouts: [
-      {
-        agentId: "verification-agent",
-        role: "verification",
-        address: "0.0.10119346",
-        sharePercent: 35,
-        amountUSD: "0.875",
-        amountTinybars: 875000,
-        acceptedFindingsCount: 1,
-        status: "settled",
-      },
-      {
-        agentId: "business-logic-agent",
-        role: "business-logic",
-        address: "0.0.10119346",
-        sharePercent: 35,
-        amountUSD: "0.875",
-        amountTinybars: 875000,
-        acceptedFindingsCount: 1,
-        status: "settled",
-      },
-    ],
-    createdAt: new Date(Date.now() - 4000000).toISOString(),
-  },
-  {
-    id: "task_b2b_treasury_escrow",
-    contractName: "B2BTreasuryVault",
-    source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract B2BTreasuryVault {\n    address public multisig;\n    function releaseFunds(address to, uint256 amt) external {\n        require(msg.sender == multisig);\n        payable(to).transfer(amt);\n    }\n}`,
-    status: "PENDING_ESCROW",
-    submissionWindowSeconds: 900,
-    requiredRoles: ["reentrancy", "access-control", "static-analysis", "business-logic", "economic-oracle"],
-    claims: [],
-    submissions: [],
-    bountyTotal: "5.00",
-    currency: "USD",
-    escrowStatus: "unpaid",
-    createdAt: new Date(Date.now() - 500000).toISOString(),
-  },
-];
+const parseTaskDate = (dateStr?: string, id?: string): Date | null => {
+  if (dateStr) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (id && id.startsWith("task_")) {
+    const parts = id.split("_");
+    const rawTs = parts[1];
+    if (rawTs) {
+      const ts = parseInt(rawTs, 10);
+      if (!isNaN(ts) && ts > 1000000000000) {
+        const d = new Date(ts);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+  }
+  return null;
+};
+
+const formatTaskTimestamp = (dateStr?: string, id?: string): string => {
+  const d = parseTaskDate(dateStr, id);
+  if (!d) return "Recently";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
+const formatFullTimestamp = (dateStr?: string, id?: string): string => {
+  const d = parseTaskDate(dateStr, id);
+  if (!d) return "Recently";
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+};
 
 export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const API_BASE = getApiBase();
@@ -272,7 +155,6 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
   const [isSimulating, setIsSimulating] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(Date.now());
   const [showCreateTask, setShowCreateTask] = useState(false);
-  const [showB2BSpendModal, setShowB2BSpendModal] = useState(false);
 
   // New task form state
   const [newContractName, setNewContractName] = useState("FlashLoanVault");
@@ -302,29 +184,19 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
     return () => clearInterval(timer);
   }, []);
 
-  // Poll tasks from API
+  // Poll real tasks from API
   const fetchTasks = async () => {
     try {
       const res = await fetch(`${API_BASE}/pool/tasks`);
       if (res.ok) {
         const data = await res.json();
         if (data.ok && Array.isArray(data.tasks)) {
-          if (data.tasks.length < 3) {
-            const existingIds = new Set(data.tasks.map((t: PoolTask) => t.id));
-            const merged = [...data.tasks, ...FALLBACK_POOL_TASKS.filter((f) => !existingIds.has(f.id))];
-            setTasks(merged);
-            setSelectedTaskId((prev) => (prev && merged.some((t: PoolTask) => t.id === prev) ? prev : merged[0]?.id ?? null));
-          } else {
-            setTasks(data.tasks);
-            setSelectedTaskId((prev) => (prev && data.tasks.some((t: PoolTask) => t.id === prev) ? prev : data.tasks[0]?.id ?? null));
-          }
+          setTasks(data.tasks);
+          setSelectedTaskId((prev) => (prev && data.tasks.some((t: PoolTask) => t.id === prev) ? prev : data.tasks[0]?.id ?? null));
         }
-      } else {
-        if (tasks.length === 0) setTasks(FALLBACK_POOL_TASKS);
       }
     } catch (err) {
       console.warn("Failed to fetch pool tasks:", err);
-      if (tasks.length === 0) setTasks(FALLBACK_POOL_TASKS);
     } finally {
       setLoading(false);
     }
@@ -593,27 +465,6 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
-              onClick={() => setShowB2BSpendModal(true)}
-              style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                borderRadius: 6,
-                backgroundColor: "#ecfdf5",
-                color: "#059669",
-                border: "1px solid #a7f3d0",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>🏢</span>
-              <span>B2B Treasury</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleLoadCode4renaContests}
               style={{
                 padding: "6px 12px",
@@ -665,50 +516,6 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
 
         {/* Modal Body */}
         <div style={{ padding: 22 }}>
-          {/* Privy B2B Organization Treasury Status Banner */}
-          <div
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              backgroundColor: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              marginBottom: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontSize: 12,
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span>🏢</span>
-              <span style={{ fontWeight: 600, color: "#166534" }}>
-                Privy B2B Organization Treasury:
-              </span>
-              <span style={{ color: "#15803d" }}>
-                {wallet.type === "privy"
-                  ? `Connected as ${wallet.privyEmail || wallet.privyGoogle || "Corporate Entity"} (${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)}) • Escrow & Multi-Agent Payroll Active`
-                  : "Self-custodial B2B spend management & automated multi-agent security payroll active"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowB2BSpendModal(true)}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#059669",
-                backgroundColor: "#ffffff",
-                border: "1px solid #a7f3d0",
-                borderRadius: 4,
-                padding: "4px 8px",
-                cursor: "pointer",
-              }}
-            >
-              Manage Treasury & Quorum ↗
-            </button>
-          </div>
-
           {/* Code4rena Contest Puller Drawer */}
           {showCode4renaDrawer && (
             <div
@@ -1032,8 +839,14 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   Loading decentralized task pool...
                 </div>
               ) : filteredTasks.length === 0 ? (
-                <div style={{ padding: 20, textAlign: "center", color: "#71717a", fontSize: 12 }}>
-                  No tasks match current filter.
+                <div style={{ padding: "32px 16px", textAlign: "center", color: "#71717a", fontSize: 12, border: "1px dashed #e4e4e7", borderRadius: 8, backgroundColor: "#fafafa" }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>📭</div>
+                  <div style={{ fontWeight: 600, color: "#09090b", marginBottom: 4 }}>No Tasks Found</div>
+                  <div>
+                    {tasks.length === 0
+                      ? "The task pool has no active tasks yet. Click \"+ Create Pool Task\" to post a new contract bounty."
+                      : "No tasks match the current filter."}
+                  </div>
                 </div>
               ) : (
                 filteredTasks.map((t) => {
@@ -1114,12 +927,22 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                         )}
                       </div>
 
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#71717a" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#71717a", marginBottom: 6 }}>
                         <span style={{ fontFamily: "var(--font-mono)" }}>
                           {t.submissions.length}/{t.requiredRoles.length} Specialists
                         </span>
                         <span style={{ fontWeight: 600, color: "#09090b" }}>
                           ${t.bountyTotal} {t.currency}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#71717a", borderTop: "1px dashed #f4f4f5", paddingTop: 5 }}>
+                        <span style={{ fontFamily: "var(--font-mono)", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          <span>🕒</span>
+                          <span>Created: {formatTaskTimestamp(t.createdAt, t.id)}</span>
+                        </span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.03em", color: "#a1a1aa" }}>
+                          {t.network ?? "ethereum"}
                         </span>
                       </div>
                     </button>
@@ -1175,8 +998,27 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                         {selectedTask.status}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)", marginTop: 2 }}>
-                      Task ID: {selectedTask.id} • Escrow: ${selectedTask.bountyTotal} {selectedTask.currency} (x402)
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", fontSize: 11, color: "#71717a", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+                      <span>Task ID: {selectedTask.id}</span>
+                      <span style={{ color: "#d4d4d8" }}>•</span>
+                      <span style={{ color: "#09090b", fontWeight: 600, backgroundColor: "#f4f4f5", padding: "1px 6px", borderRadius: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span>🕒</span>
+                        <span>Created: {formatFullTimestamp(selectedTask.createdAt, selectedTask.id)}</span>
+                      </span>
+                      {selectedTask.openedAt && (
+                        <>
+                          <span style={{ color: "#d4d4d8" }}>•</span>
+                          <span>Opened: {formatFullTimestamp(selectedTask.openedAt)}</span>
+                        </>
+                      )}
+                      {selectedTask.settlementReceipt?.settledAt && (
+                        <>
+                          <span style={{ color: "#d4d4d8" }}>•</span>
+                          <span style={{ color: "#7e22ce" }}>Settled: {formatFullTimestamp(selectedTask.settlementReceipt.settledAt)}</span>
+                        </>
+                      )}
+                      <span style={{ color: "#d4d4d8" }}>•</span>
+                      <span>Escrow: ${selectedTask.bountyTotal} {selectedTask.currency} (x402)</span>
                     </div>
                   </div>
 
@@ -1943,7 +1785,30 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
                   )}
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div
+                style={{
+                  border: "1px dashed #e4e4e7",
+                  borderRadius: 8,
+                  backgroundColor: "#fafafa",
+                  padding: 32,
+                  textAlign: "center",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 280,
+                }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🛡️</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#09090b", marginBottom: 6 }}>
+                  No Task Selected
+                </div>
+                <div style={{ fontSize: 12, color: "#71717a", maxWidth: 360, lineHeight: 1.5 }}>
+                  Select an audit bounty from the left column to view its consensus progress, live claims, and cryptographic proofs, or post a new contract above.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2010,11 +1875,6 @@ export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
           } as any}
           onClose={() => setViewingFullReport(null)}
         />
-      )}
-
-      {/* Privy B2B Organization Treasury Dashboard Modal */}
-      {showB2BSpendModal && (
-        <PrivyB2BSpendModal onClose={() => setShowB2BSpendModal(false)} />
       )}
     </div>
   );

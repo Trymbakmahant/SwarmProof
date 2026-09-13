@@ -1,8 +1,10 @@
 import http from "node:http";
 import fs from "node:fs";
 import { resolve } from "node:path";
+import dotenv from "dotenv";
 
 try {
+  dotenv.config();
   const envPath = resolve(process.cwd(), ".env");
   if (fs.existsSync(envPath) && typeof (process as any).loadEnvFile === "function") {
     (process as any).loadEnvFile(envPath);
@@ -31,7 +33,7 @@ function getArg(flag: string, fallback: string): string {
 }
 
 const PORT = parseInt(getArg("--port", process.env.PORT || "8200"), 10);
-const API_URL = getArg("--api-url", process.env.SWARMPROOF_API_URL || "http://localhost:3001").replace(/\/+$/, "");
+const API_URL = getArg("--api-url", process.env.SWARMPROOF_API_URL || "https://swarm-proof-api.vercel.app").replace(/\/+$/, "");
 const ROLE = getArg("--role", process.env.AGENT_ROLE || "reentrancy").toLowerCase().trim();
 const AGENT_ID = getArg("--id", process.env.AGENT_ID || `sentinel-node-${Math.random().toString(36).slice(2, 6)}`);
 const AGENT_NAME = getArg("--name", process.env.AGENT_NAME || `Sovereign ${ROLE.toUpperCase()} Sentinel`);
@@ -49,6 +51,8 @@ let agentAccountId: string = "";
 let didDocumentUrl: string = "";
 let auditCount = 0;
 let totalEarningsTinybars = 0;
+let isInitialized = false;
+let initPromise: Promise<void> | null = null;
 
 // ── Security Analysis Engine for Agent ─────────────────────────────────────────
 function analyzeContract(source: string, contractName: string) {
@@ -120,10 +124,231 @@ function analyzeContract(source: string, contractName: string) {
   return findings;
 }
 
-// ── Agent Startup & Lifecycle ─────────────────────────────────────────────────
+// ── Agent Startup & Provisioning ──────────────────────────────────────────────
+export async function initAgent(): Promise<void> {
+  if (isInitialized) return;
+
+  const customKey = process.env.AGENT_PRIVATE_KEY;
+  const customAccount = process.env.AGENT_ACCOUNT_ID;
+
+  if (customKey && customAccount) {
+    agentKey = customKey.startsWith("3030")
+      ? PrivateKey.fromStringDer(customKey)
+      : PrivateKey.fromStringED25519(customKey);
+    agentAccountId = customAccount;
+    console.log(`[Agent] Using configured Hedera testnet wallet: ${agentAccountId}`);
+  } else {
+    console.log("[Agent] Provisioning dedicated Hedera testnet wallet...");
+    agentKey = PrivateKey.generateED25519();
+    const pubKey = agentKey.publicKey;
+
+    try {
+      const createTx = await new AccountCreateTransaction()
+        .setKey(pubKey)
+        .setInitialBalance(new Hbar(2))
+        .execute(hederaClient);
+
+      const receipt = await createTx.getReceipt(hederaClient);
+      agentAccountId = receipt.accountId!.toString();
+      console.log(`[Agent] ✅ Hedera Account Created: ${agentAccountId}`);
+    } catch (err: any) {
+      console.warn(`[Agent] Auto-creation notice: ${err.message}. Using operator account as fallback.`);
+      agentAccountId = OPERATOR_ID;
+      agentKey = PrivateKey.fromStringDer(DER_KEY);
+    }
+  }
+
+  // Register with SwarmProof API
+  try {
+    const challengeRes = await fetch(
+      `${API_URL}/agents/challenge?agentId=${encodeURIComponent(AGENT_ID)}&accountId=${encodeURIComponent(agentAccountId)}`
+    ).catch(() => null);
+
+    if (challengeRes && challengeRes.ok) {
+      const { challenge } = (await challengeRes.json()) as { challenge: string };
+      const sigBytes = agentKey.sign(Buffer.from(challenge, "utf8"));
+      const signatureHex = Buffer.from(sigBytes).toString("hex");
+
+      const registerPayload = {
+        agentId: AGENT_ID,
+        name: AGENT_NAME,
+        role: ROLE,
+        capabilities: [ROLE, "ast-reasoning", "a2a-protocol", "sovereign-agent"],
+        paymentAddress: agentAccountId,
+        publicKey: agentKey.publicKey.toStringRaw(),
+        signature: signatureHex,
+        shape: ROLE === "reentrancy" ? "octahedron" : "dodecahedron",
+        color: ROLE === "reentrancy" ? "#00f5ff" : "#10b981",
+        endpoint: PUBLIC_ENDPOINT,
+        a2aSupported: true,
+        ownerAddress: agentAccountId,
+      };
+
+      const regRes = await fetch(`${API_URL}/agents/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(registerPayload),
+      }).catch(() => null);
+
+      if (regRes && regRes.ok) {
+        const regData = await regRes.json();
+        didDocumentUrl = regData.didDocumentUrl || `/agents/${AGENT_ID}/did`;
+        console.log(`[Agent] ✅ Registered on Hedera HCS. DID: ${regData.did}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[Agent] Registration notice: ${err.message}`);
+  }
+
+  isInitialized = true;
+}
+
+export function ensureReady(): Promise<void> {
+  if (!initPromise) {
+    initPromise = initAgent();
+  }
+  return initPromise;
+}
+
+// ── HTTP / Serverless Request Handler ──────────────────────────────────────────
+export async function handleAgentRequest(req: any, res: any): Promise<void> {
+  await ensureReady();
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead?.(200) || (res.status && res.status(200));
+    res.end();
+    return;
+  }
+
+  const rawUrl = req.url || "/";
+  const url = rawUrl.split("?")[0];
+
+  if (req.method === "GET" && (url === "/health" || url === "/api/health" || url === "/status" || url === "/api/status")) {
+    const payload = {
+      status: "healthy",
+      agentId: AGENT_ID,
+      role: ROLE,
+      hederaAccount: agentAccountId,
+      auditsCompleted: auditCount,
+      earningsTinybars: totalEarningsTinybars,
+      endpoint: PUBLIC_ENDPOINT,
+      a2aSupported: true,
+    };
+    res.writeHead?.(200, { "Content-Type": "application/json" }) || (res.status && res.status(200));
+    res.end(JSON.stringify(payload));
+    return;
+  }
+
+  if (req.method === "POST" && (url === "/a2a" || url === "/api/a2a" || url === "/api" || url === "/api/index" || url === "/")) {
+    const getBody = async (): Promise<string> => {
+      if (req.body) {
+        return typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+      }
+      return new Promise((r) => {
+        let b = "";
+        req.on("data", (chunk: any) => (b += chunk));
+        req.on("end", () => r(b));
+      });
+    };
+
+    try {
+      const raw = await getBody();
+      const json = JSON.parse(raw || "{}");
+      const method = json.method;
+      const id = json.id;
+
+      if (method === "a2a.health") {
+        res.writeHead?.(200, { "Content-Type": "application/json" }) || (res.status && res.status(200));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              status: "healthy",
+              agentId: AGENT_ID,
+              role: ROLE,
+              paymentAddress: agentAccountId,
+              a2aSupported: true,
+            },
+          })
+        );
+        return;
+      }
+
+      if (method === "a2a.audit") {
+        const params = json.params || {};
+        const contractName = params.contractName || "TargetContract";
+        const source = params.source || "";
+
+        const findings = analyzeContract(source, contractName);
+        auditCount += 1;
+
+        res.writeHead?.(200, { "Content-Type": "application/json" }) || (res.status && res.status(200));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              agentId: AGENT_ID,
+              contractName,
+              findings,
+              paymentAddress: agentAccountId,
+              analyzedAt: new Date().toISOString(),
+            },
+          })
+        );
+        return;
+      }
+
+      if (method === "a2a.balance") {
+        let balStr = "2.0";
+        let tinybarsStr = "200000000";
+        try {
+          const bal = await new AccountBalanceQuery().setAccountId(agentAccountId).execute(hederaClient);
+          balStr = bal.hbars.toString();
+          tinybarsStr = bal.hbars.toTinybars().toString();
+        } catch {}
+
+        res.writeHead?.(200, { "Content-Type": "application/json" }) || (res.status && res.status(200));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              accountId: agentAccountId,
+              balanceHbar: balStr,
+              balanceTinybars: tinybarsStr,
+            },
+          })
+        );
+        return;
+      }
+
+      res.writeHead?.(404, { "Content-Type": "application/json" }) || (res.status && res.status(404));
+      res.end(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } }));
+      return;
+    } catch (err: any) {
+      res.writeHead?.(500, { "Content-Type": "application/json" }) || (res.status && res.status(500));
+      res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: err.message } }));
+      return;
+    }
+  }
+
+  // Fallback for static assets or 404
+  res.writeHead?.(404) || (res.status && res.status(404));
+  res.end("Not Found");
+}
+
+export default handleAgentRequest;
+
+// ── Standalone CLI Daemon Execution ───────────────────────────────────────────
 async function main() {
   console.log("================================================================================");
-  console.log("🚀 SwarmProof Autonomous Sovereign Agent — Deployable Worker Node");
+  console.log("🚀 SwarmProof Autonomous Sovereign Agent — Standalone Node");
   console.log("================================================================================");
   console.log(`Agent ID:        ${AGENT_ID}`);
   console.log(`Agent Name:      ${AGENT_NAME}`);
@@ -133,242 +358,35 @@ async function main() {
   console.log(`Swarm API:       ${API_URL}`);
   console.log("--------------------------------------------------------------------------------\n");
 
-  // Step 1: Provision or Load Dedicated Hedera Testnet Wallet
-  const customKey = process.env.AGENT_PRIVATE_KEY;
-  const customAccount = process.env.AGENT_ACCOUNT_ID;
+  await initAgent();
 
-  if (customKey && customAccount) {
-    agentKey = PrivateKey.fromStringED25519(customKey);
-    agentAccountId = customAccount;
-    console.log(`1️⃣  Using configured Hedera testnet wallet: ${agentAccountId}`);
-  } else {
-    console.log("1️⃣  Generating brand-new dedicated Hedera testnet wallet...");
-    agentKey = PrivateKey.generateED25519();
-    const pubKey = agentKey.publicKey;
-    console.log(`   Agent Public Key: ${pubKey.toStringRaw()}`);
-
-    console.log("   Funding new account on-chain with 2 HBAR from operator account...");
-    const createTx = await new AccountCreateTransaction()
-      .setKey(pubKey)
-      .setInitialBalance(new Hbar(2))
-      .execute(hederaClient);
-
-    const receipt = await createTx.getReceipt(hederaClient);
-    agentAccountId = receipt.accountId!.toString();
-    console.log(`   ✅ Hedera Account Created: ${agentAccountId}`);
-    console.log(`   🔗 Explorer:              https://hashscan.io/testnet/account/${agentAccountId}`);
-  }
-
-  // Query on-chain balance
-  try {
-    const bal = await new AccountBalanceQuery().setAccountId(agentAccountId).execute(hederaClient);
-    console.log(`   💰 Current Balance:       ${bal.hbars.toString()} (${bal.hbars.toTinybars().toString()} Tinybars)\n`);
-  } catch {
-    // offline or mirror node sync
-  }
-
-  // Step 2: Start A2A JSON-RPC 2.0 Listener Server
-  console.log(`2️⃣  Starting A2A JSON-RPC 2.0 listener server on port ${PORT}...`);
-  const server = http.createServer(async (req, res) => {
-    // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(200);
-      res.end();
-      return;
-    }
-
-    if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          status: "healthy",
-          agentId: AGENT_ID,
-          role: ROLE,
-          hederaAccount: agentAccountId,
-          auditsCompleted: auditCount,
-          earningsTinybars: totalEarningsTinybars,
-        })
-      );
-      return;
-    }
-
-    if (req.method === "POST" && req.url === "/a2a") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const json = JSON.parse(body);
-          const method = json.method;
-          const id = json.id;
-
-          // A2A Health check
-          if (method === "a2a.health") {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  status: "healthy",
-                  agentId: AGENT_ID,
-                  role: ROLE,
-                  paymentAddress: agentAccountId,
-                  a2aSupported: true,
-                },
-              })
-            );
-            return;
-          }
-
-          // A2A Audit invocation
-          if (method === "a2a.audit") {
-            const params = json.params || {};
-            const contractName = params.contractName || "TargetContract";
-            const source = params.source || "";
-
-            console.log(`\n🔔 [A2A TASK DISPATCH RECEIVED]`);
-            console.log(`   Target Contract: "${contractName}"`);
-            console.log(`   Specialty Role:  ${ROLE}`);
-
-            const findings = analyzeContract(source, contractName);
-            auditCount += 1;
-            console.log(`   ✅ Analysis Complete: ${findings.length} candidate finding(s) generated.`);
-
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  agentId: AGENT_ID,
-                  contractName,
-                  findings,
-                  paymentAddress: agentAccountId,
-                  analyzedAt: new Date().toISOString(),
-                },
-              })
-            );
-            return;
-          }
-
-          // A2A Balance check
-          if (method === "a2a.balance") {
-            const bal = await new AccountBalanceQuery().setAccountId(agentAccountId).execute(hederaClient);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  accountId: agentAccountId,
-                  balanceHbar: bal.hbars.toString(),
-                  balanceTinybars: bal.hbars.toTinybars().toString(),
-                },
-              })
-            );
-            return;
-          }
-
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } }));
-        } catch (err: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: err.message } }));
-        }
-      });
-      return;
-    }
-
-    res.writeHead(404);
-    res.end();
-  });
-
+  const server = http.createServer(handleAgentRequest);
   server.listen(PORT, () => {
-    console.log(`   ✅ A2A Daemon Listening at: ${PUBLIC_ENDPOINT}\n`);
+    console.log(`   ✅ A2A Daemon Listening at: ${PUBLIC_ENDPOINT}`);
+    console.log(`   • Ready to accept A2A audit tasks from SwarmProof & MCP.`);
+    console.log(`   • Payouts will stream directly to Hedera account: ${agentAccountId}\n`);
   });
 
-  // Step 3: Register Agent On-Chain with Cryptographic Proof
-  console.log("3️⃣  Registering agent in SwarmProof with cryptographic proof of ownership...");
-  try {
-    // Request challenge nonce
-    const challengeRes = await fetch(
-      `${API_URL}/agents/challenge?agentId=${encodeURIComponent(AGENT_ID)}&accountId=${encodeURIComponent(agentAccountId)}`
-    );
-
-    if (!challengeRes.ok) {
-      throw new Error(`Challenge request returned HTTP ${challengeRes.status}`);
-    }
-
-    const { challenge } = (await challengeRes.json()) as { challenge: string };
-    console.log(`   Challenge Nonce: "${challenge.slice(0, 48)}..."`);
-
-    // Sign challenge with agent's private key
-    const sigBytes = agentKey.sign(Buffer.from(challenge, "utf8"));
-    const signatureHex = Buffer.from(sigBytes).toString("hex");
-
-    // Submit cryptographic enrollment payload
-    const registerPayload = {
-      agentId: AGENT_ID,
-      name: AGENT_NAME,
-      role: ROLE,
-      capabilities: [ROLE, "ast-reasoning", "a2a-protocol", "sovereign-agent"],
-      paymentAddress: agentAccountId,
-      publicKey: agentKey.publicKey.toStringRaw(),
-      signature: signatureHex,
-      shape: ROLE === "reentrancy" ? "octahedron" : "dodecahedron",
-      color: ROLE === "reentrancy" ? "#00f5ff" : "#10b981",
-      endpoint: PUBLIC_ENDPOINT,
-      a2aSupported: true,
-      ownerAddress: agentAccountId,
-    };
-
-    const regRes = await fetch(`${API_URL}/agents/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(registerPayload),
-    });
-
-    if (!regRes.ok) {
-      throw new Error(`Registration failed with HTTP ${regRes.status}`);
-    }
-
-    const regData = await regRes.json();
-    didDocumentUrl = regData.didDocumentUrl || `/agents/${AGENT_ID}/did`;
-
-    console.log(`   ✅ Registration Successful on Hedera Consensus Service!`);
-    console.log(`   🆔 W3C DID:         ${regData.did || `did:hedera:testnet:0.0.10417469_${AGENT_ID}`}`);
-    console.log(`   📜 HCS Topic ID:    ${regData.identityTopicId || "0.0.10417469"}`);
-    console.log(`   🔗 Tx Proof:        ${regData.transactionId || "anchored"}\n`);
-
-    console.log("================================================================================");
-    console.log("🟢 AGENT IS FULLY OPERATIONAL AND LIVE IN THE SWARM!");
-    console.log("================================================================================");
-    console.log(`• Ready to accept A2A audit tasks from SwarmProof & MCP.`);
-    console.log(`• Payouts will stream directly to Hedera account: ${agentAccountId}`);
-    console.log(`• Press Ctrl+C to stop.\n`);
-  } catch (err: any) {
-    console.error(`   ❌ Registration Error: ${err.message}`);
-    process.exit(1);
-  }
-
-  // Graceful shutdown
   const shutdown = () => {
     console.log("\n👋 Shutting down agent node...");
-    server.close(() => {
-      console.log("Server stopped.");
-      process.exit(0);
-    });
+    server.close(() => process.exit(0));
   };
-
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
 
-main().catch((err) => {
-  console.error("Fatal Agent Error:", err);
-  process.exit(1);
-});
+const isDirectRun = Boolean(
+  !process.env.VERCEL &&
+  process.argv[1] &&
+  (process.argv[1].endsWith("/agent.ts") ||
+   process.argv[1].endsWith("/agent.js") ||
+   process.argv[1].endsWith("agent.ts") ||
+   process.argv[1].endsWith("agent.js")) &&
+  !process.argv[1].includes("api/index")
+);
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error("Fatal Agent Error:", err);
+  });
+}
