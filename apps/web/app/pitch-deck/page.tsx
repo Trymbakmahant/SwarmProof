@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { RegisterAgentModal } from "../components/RegisterAgentModal";
 import { AuditPoolModal } from "../components/AuditPoolModal";
@@ -11,28 +11,66 @@ export default function PitchDeckPage() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
 
-  // Precise smooth scroll to slide with header offset compensation
-  const scrollToSlide = (index: number) => {
-    let targetIdx = index;
-    if (targetIdx < 1) targetIdx = 1;
-    if (targetIdx > totalSlides) targetIdx = totalSlides;
-    setCurrentSlideIndex(targetIdx);
+  // ─── Slide Navigation ─────────────────────────────────────────────
+  // Navigation is fully deterministic: the requested slide's absolute
+  // position is read from live DOM geometry at click time, and scrolling
+  // is driven by one rAF animation that restarts cleanly on rapid clicks
+  // (native smooth-scroll would fight itself mid-animation). A ref keeps
+  // the "current" index in sync so state can never go stale.
+  const scrollStepRef = useRef<number | null>(null);
+  const currentIndexRef = useRef(currentSlideIndex);
+  currentIndexRef.current = currentSlideIndex;
 
-    const target = document.getElementById(`slide-${targetIdx}`);
-    if (target) {
-      // Offset for fixed top navbar (64px) + sticky controls dock (54px) + breathing margin (20px) = 138px
-      const navOffset = 138;
-      const elementPosition = target.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - navOffset;
-
-      window.scrollTo({
-        top: Math.max(0, offsetPosition),
-        behavior: "smooth",
-      });
+  const animateScrollTo = useCallback((targetY: number, duration = 500) => {
+    if (typeof window === "undefined") return;
+    if (scrollStepRef.current !== null) {
+      cancelAnimationFrame(scrollStepRef.current);
+      scrollStepRef.current = null;
     }
-  };
+    const startY = window.scrollY;
+    const diff = targetY - startY;
+    if (Math.abs(diff) < 2) {
+      window.scrollTo(0, targetY);
+      return;
+    }
+    const t0 = performance.now();
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration);
+      window.scrollTo(0, startY + diff * easeOut(p));
+      scrollStepRef.current = p < 1 ? requestAnimationFrame(step) : null;
+    };
+    scrollStepRef.current = requestAnimationFrame(step);
+  }, []);
 
-  // Keyboard navigation for presentation mode
+  // Scroll so the requested slide sits just below the fixed header + dock.
+  // Translation-invariant, so it is correct no matter what the observer
+  // currently believes is on screen.
+  const scrollToSlide = useCallback(
+    (index: number) => {
+      const targetIdx = Math.min(Math.max(index, 1), totalSlides);
+      setCurrentSlideIndex(targetIdx);
+      currentIndexRef.current = targetIdx;
+
+      const el = document.getElementById(`slide-${targetIdx}`);
+      if (!el) return;
+      // Fixed header (64px) + sticky dock (~54px) + breathing room (30px)
+      const navOffset = 148;
+      const top = el.getBoundingClientRect().top + window.scrollY - navOffset;
+      animateScrollTo(Math.max(0, top));
+    },
+    [totalSlides, animateScrollTo]
+  );
+
+  // Advance by ±1 from the LATEST index (ref), never a stale closure.
+  const stepSlide = useCallback(
+    (delta: number) => {
+      scrollToSlide(currentIndexRef.current + delta);
+    },
+    [scrollToSlide]
+  );
+
+  // Keyboard navigation (registered once; reads the ref for latest index).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -42,44 +80,38 @@ export default function PitchDeckPage() {
       ) {
         return;
       }
-
       if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
-        if (currentSlideIndex < totalSlides) {
-          e.preventDefault();
-          scrollToSlide(currentSlideIndex + 1);
-        }
+        e.preventDefault();
+        stepSlide(1);
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        if (currentSlideIndex > 1) {
-          e.preventDefault();
-          scrollToSlide(currentSlideIndex - 1);
-        }
+        e.preventDefault();
+        stepSlide(-1);
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentSlideIndex, totalSlides]);
+  }, [stepSlide]);
 
-  // Observer to track which slide is currently centered in view
+  // Observer: only syncs the tracker/dots while the user scrolls manually.
+  // It never blocks navigation — nav targets come from live DOM geometry.
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const id = entry.target.id;
-            const num = parseInt(id.replace("slide-", ""), 10);
-            if (!isNaN(num)) {
-              setCurrentSlideIndex(num);
-            }
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+            const num = parseInt(
+              (entry.target as HTMLElement).id.replace("slide-", ""),
+              10
+            );
+            if (!isNaN(num)) setCurrentSlideIndex(num);
           }
-        });
+        }
       },
-      { threshold: 0.45, rootMargin: "-80px 0px -80px 0px" }
+      { threshold: 0.3, rootMargin: "-118px 0px -30% 0px" }
     );
 
     const slides = document.querySelectorAll(".deck-slide");
     slides.forEach((s) => observer.observe(s));
-
     return () => observer.disconnect();
   }, []);
 
@@ -320,11 +352,11 @@ export default function PitchDeckPage() {
               </div>
 
               <h1 className="font-headline-lg text-headline-lg md:text-[40px] text-on-surface tracking-tight leading-tight font-bold">
-                Anyone can join SwarmProof.<br />Earn by auditing smart contracts.
+                Join the swarm. Audit contracts. Earn on Hedera.
               </h1>
 
               <p className="font-body-lg text-body-lg text-on-surface-variant max-w-xl leading-relaxed">
-                Connect autonomous AI security bots or sovereign worker nodes to an open consensus network. Audit smart contracts, debate in decentralized quorums, and receive instant on-chain bounty payouts in ℏ and USDC settled on Hedera.
+                Autonomous AI bots and sovereign worker nodes audit in parallel, agree on one on-chain verdict, and get instant micro-payouts on Hedera.
               </p>
 
               <div className="pt-3 flex flex-wrap items-center gap-3">
@@ -357,7 +389,7 @@ export default function PitchDeckPage() {
                     <span className="font-label-sm text-secondary font-bold">Anyone Can Join</span>
                   </div>
                   <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    CLI daemon polls the task pool, audits bytecode, and earns on Hedera.
+                    CLI daemon polls the pool, audits, earns.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
@@ -366,7 +398,7 @@ export default function PitchDeckPage() {
                     <span className="font-label-sm text-primary font-bold">80% Quorum Threshold</span>
                   </div>
                   <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    Weighted 4/5 agent agreement eliminates hallucination before sealing HCS receipts.
+                    Weighted 4/5 agreement removes hallucinated findings.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
@@ -406,10 +438,10 @@ export default function PitchDeckPage() {
 
           <div className="py-3">
             <h2 className="font-headline-md text-headline-md text-on-surface max-w-3xl font-bold">
-              Smart contract security is centralized, expensive, and plagued by hallucination.
+              Security today: centralized, slow, unverifiable.
             </h2>
             <p className="font-body-md text-body-md text-on-surface-variant mt-1.5">
-              Modern protocols ship code weekly, but traditional auditing relies on closed cartels and isolated LLMs with zero on-chain cryptographic guarantees.
+              Weekly deploys wait weeks for closed-shop audits with no on-chain guarantees.
             </p>
           </div>
 
@@ -423,7 +455,7 @@ export default function PitchDeckPage() {
                 <span className="font-label-sm text-[10px] text-error uppercase font-bold">Problem 01</span>
                 <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">Single-LLM Hallucinations</h3>
                 <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Standalone models miss cross-contract state interactions, fabricate nonexistent bugs, and lack formal AST parsing logic. A single prompt cannot simulate Byzantine adversaries.
+                  Single models fabricate bugs, miss cross-contract exploits, and can&apos;t read bytecode.
                 </p>
               </div>
               <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
@@ -439,7 +471,7 @@ export default function PitchDeckPage() {
                 <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">Problem 02</span>
                 <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">4–6 Week Audit Delays</h3>
                 <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Legacy audit firms charge $50,000–$250,000 with multi-month waitlists. CI/CD pipelines grind to a halt waiting for static, unverified PDF reports that cannot be verified on-chain.
+                  Firms charge $50k–$250k with multi-month waitlists and ship unverifiable PDFs.
                 </p>
               </div>
               <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
@@ -455,7 +487,7 @@ export default function PitchDeckPage() {
                 <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">Problem 03</span>
                 <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">Closed Auditor Cartels</h3>
                 <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Global security researchers and autonomous AI bots have no open decentralized mechanism to join networks, claim bounties, or earn micro-settlements for verifying contract safety.
+                  Researchers and AI bots have no open way to join, claim bounties, or earn.
                 </p>
               </div>
               <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
@@ -487,10 +519,10 @@ export default function PitchDeckPage() {
 
           <div className="py-2">
             <h2 className="font-headline-md text-headline-md text-on-surface max-w-3xl font-bold">
-              Autonomous Cognitive Agents. One United On-Chain Verdict.
+              Five agents. One on-chain verdict.
             </h2>
             <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-              Anyone can spin up an auditor node. Contracts are evaluated across 5 specialized domains in parallel. A minimum 4/5 Byzantine Quorum must agree before an immutable receipt is stamped on Hedera.
+              Anyone can spin up a node. Five specialized agents audit in parallel; 4/5 must agree to stamp the receipt.
             </p>
           </div>
 
@@ -504,7 +536,7 @@ export default function PitchDeckPage() {
                 </div>
                 <h4 className="font-title-md text-body-md font-semibold text-on-surface">Reentrancy Sentinel</h4>
                 <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Traces external calls vs storage mutations (`Checks-Effects-Interactions`) to stop state drain exploits.
+                  Tracks external calls vs. storage writes.
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
@@ -520,7 +552,7 @@ export default function PitchDeckPage() {
                 </div>
                 <h4 className="font-title-md text-body-md font-semibold text-on-surface">Access Guardian</h4>
                 <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Checks `tx.origin`, uninitialized constructors, and upgradeable proxy storage slot collisions.
+                  Catches `tx.origin` and proxy slot hijacks.
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
@@ -536,7 +568,7 @@ export default function PitchDeckPage() {
                 </div>
                 <h4 className="font-title-md text-body-md font-semibold text-on-surface">Business Logic</h4>
                 <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Detects precision loss in fixed-point math, rounding drifts, and token conservation invariant breaches.
+                  Finds rounding drift and math breakage.
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
@@ -552,7 +584,7 @@ export default function PitchDeckPage() {
                 </div>
                 <h4 className="font-title-md text-body-md font-semibold text-on-surface">Economic &amp; MEV</h4>
                 <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Simulates spot oracle manipulation, sandwiching, slippage bounds, and flash loan liquidation attacks.
+                  Simulates oracle and MEV attacks.
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
@@ -568,7 +600,7 @@ export default function PitchDeckPage() {
                 </div>
                 <h4 className="font-title-md text-body-md font-semibold text-on-surface">Bytecode Invariant</h4>
                 <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Decompiles EVM opcodes directly, validates memory safety against malicious yul, and proves invariants.
+                  Decompiles EVM bytecode, proves invariants.
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-primary font-semibold">
@@ -586,7 +618,7 @@ export default function PitchDeckPage() {
                   Weighted Quorum Engine (Threshold: 80% / 4 of 5 Agents)
                 </span>
                 <p className="font-body-sm text-[12px] text-on-surface-variant">
-                  Discrepancies trigger automated cross-examination debate before signing the Hedera Consensus message.
+                  Disagreement triggers agent debate before signing.
                 </p>
               </div>
             </div>
@@ -626,10 +658,10 @@ export default function PitchDeckPage() {
                 CRYPTOGRAPHIC VERIFIABILITY
               </span>
               <h2 className="font-headline-md text-headline-md text-on-surface font-bold">
-                Audit Reports as Immutable On-Chain State.
+                Audits as immutable on-chain state.
               </h2>
               <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                Traditional PDF audits can be altered or quietly revised post-hack. SwarmProof turns audit conclusions into cryptographic payload receipts submitted directly to Hedera Consensus Service Topic 0.0.10417469.
+                PDFs can be revised after a hack. SwarmProof anchors each verdict to HCS — tamper-proof, forever.
               </p>
               <div className="flex flex-col gap-2.5 mt-1">
                 <div className="flex items-start gap-3 p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
@@ -637,7 +669,7 @@ export default function PitchDeckPage() {
                   <div>
                     <h4 className="font-title-md text-body-md font-semibold text-on-surface">SHA-256 Bytecode &amp; Report Hashing</h4>
                     <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      Deterministic state digest links compiler AST, agent signatures, and test coverage into an unalterable hash.
+                      AST, signatures, coverage — one unalterable hash.
                     </p>
                   </div>
                 </div>
@@ -646,7 +678,7 @@ export default function PitchDeckPage() {
                   <div>
                     <h4 className="font-title-md text-body-md font-semibold text-on-surface">Fair Ordering &amp; Sequence Numbers</h4>
                     <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      Every audit receives an immutable HCS sequence number and consensus timestamp accurate to the nanosecond.
+                      Unique sequence + nanosecond consensus timestamp.
                     </p>
                   </div>
                 </div>
@@ -655,7 +687,7 @@ export default function PitchDeckPage() {
                   <div>
                     <h4 className="font-title-md text-body-md font-semibold text-on-surface">Zero-Trust Mirror Verification</h4>
                     <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      Protocol teams, LPs, and insurers can verify audit validity in &lt;100ms via public Hedera Mirror Nodes.
+                      Anyone verifies validity in &lt;100ms via mirror nodes.
                     </p>
                   </div>
                 </div>
@@ -748,10 +780,10 @@ export default function PitchDeckPage() {
           <div className="py-2 flex flex-col gap-4">
             <div>
               <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl font-bold">
-                Anyone Can Join and Earn. Automatic Machine-to-Machine Commerce.
+                Anyone can join. Anyone can earn.
               </h2>
               <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl mt-1">
-                Protocol creators deposit audit bounties into the shared task pool. Autonomous worker agents listen for tasks, debate findings, and receive automated Hedera payouts in ℏ and USDC upon consensus finality.
+                Creators deposit bounties. Agents claim tasks, debate, and get paid in ℏ &amp; USDC on finality.
               </p>
             </div>
 
@@ -763,7 +795,7 @@ export default function PitchDeckPage() {
                   <span className="material-symbols-outlined text-[24px] text-primary">post_add</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Task Pool Deposit</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Protocols submit contracts with escrowed bounties (e.g. 50 ℏ or $500 USDC) with defined verification windows.
+                    Protocols escrow bounties on contracts.
                   </p>
                 </div>
                 <span className="font-label-sm text-[10px] text-tertiary">Privy B2B Treasury / x402</span>
@@ -775,7 +807,7 @@ export default function PitchDeckPage() {
                   <span className="material-symbols-outlined text-[24px] text-secondary">smart_toy</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Node Claims Task</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Independent worker nodes poll the pool via `$ pnpm agent:node`, download the source, and analyze AST graphs.
+                    Anyone claims via `$ pnpm agent:node`.
                   </p>
                 </div>
                 <span className="font-label-sm text-[10px] text-secondary font-semibold">Active Workers: 66+</span>
@@ -787,7 +819,7 @@ export default function PitchDeckPage() {
                   <span className="material-symbols-outlined text-[24px] text-primary">groups</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Quorum Debate</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Agents cross-examine findings. False reports are weeded out before reaching the 80% consensus threshold.
+                    Agents cross-examine; false reports get rejected.
                   </p>
                 </div>
                 <span className="font-label-sm text-[10px] text-tertiary">Byzantine Agreement</span>
@@ -799,7 +831,7 @@ export default function PitchDeckPage() {
                   <span className="material-symbols-outlined text-[24px] text-secondary">payments</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Instant Micro-Payout</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Bounty funds are automatically disbursed on Hedera directly to participating worker wallets upon HCS receipt.
+                    Paid straight to worker wallets on HCS finality.
                   </p>
                 </div>
                 <span className="font-label-sm text-[10px] text-secondary font-semibold">Direct Wallet Settlement</span>
@@ -815,7 +847,7 @@ export default function PitchDeckPage() {
                     Code4rena Live Competitive Bounty Sync
                   </span>
                   <p className="font-body-sm text-[12px] text-on-surface-variant">
-                    SwarmProof nodes can compete directly on live bug bounties (e.g. Monetrix $22,000 USDC &amp; LoopFi $100k+ Flashlender).
+                    Nodes compete on live bounties — e.g. Monetrix $22k &amp; LoopFi $100k+.
                   </p>
                 </div>
               </div>
@@ -858,38 +890,38 @@ export default function PitchDeckPage() {
                 CRYPTOGRAPHIC ACCOUNTABILITY
               </span>
               <h2 className="font-headline-md text-headline-md text-on-surface font-bold">
-                Verifiable Identities for Autonomous Auditors.
+                Verifiable identity for every agent.
               </h2>
               <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                In SwarmProof, AI models are not anonymous cloud scripts. Each agent registers an on-chain Decentralized Identifier (`did:hedera`), builds a verifiable reputation score, and can be integrated into any IDE with one command.
+                Not anonymous cloud scripts. Each agent registers a `did:hedera`, builds on-chain reputation, and drops into any IDE.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                 <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
                   <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">IDENTITY</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">W3C DID Registry</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Anchored to Hedera Consensus Service for tamper-proof resolution.
+                    Tamper-proof resolution via HCS.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
                   <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">DEV NATIVE</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">Cursor &amp; Windsurf MCP</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Integrate the swarm directly into IDEs via `$ npx -y swarmproof-mcp`.
+                    Install the swarm in IDEs in one command.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
                   <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">WORKER DAEMON</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">Open CLI Node</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    `$ pnpm agent:node --role reentrancy` runs a sovereign auditor daemon.
+                    `$ pnpm agent:node` runs a sovereign auditor.
                   </p>
                 </div>
                 <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
                   <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">REPUTATION</span>
                   <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">On-Chain Credentials</h4>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Verifiable credentials track successful consensus audits on Hedera.
+                    Success is tracked as on-chain credentials.
                   </p>
                 </div>
               </div>
@@ -967,7 +999,7 @@ export default function PitchDeckPage() {
                 STRATEGIC EXECUTION
               </span>
               <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl mt-0.5 font-bold">
-                From Hackathon Prototype to Global Hedera Standard.
+                Prototype today. Global standard next.
               </h2>
             </div>
 
@@ -985,8 +1017,8 @@ export default function PitchDeckPage() {
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
                     • Live Topic 0.0.10417469 on Hedera<br />
                     • 5-Agent Weighted Quorum Pipeline<br />
-                    • Live Solidity Studio with 7 Presets<br />
-                    • Custom .sol Smart Contract File Uploader
+                    • Solidity Studio + 7 presets<br />
+                    • .sol file uploader
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-primary font-semibold">
@@ -1005,9 +1037,9 @@ export default function PitchDeckPage() {
                   <h3 className="font-title-md text-title-md font-semibold text-on-surface mt-2">Open Worker Nodes &amp; MCP</h3>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
                     • `$ pnpm agent:node` Open Auditor CLI<br />
-                    • Task Pool with Code4rena Sync<br />
-                    • Privy B2B Treasury Organization Spend<br />
-                    • Published npm Model Context Protocol package
+                    • Task Pool + Code4rena Sync<br />
+                    • Privy B2B treasury spend<br />
+                    • Published MCP npm package
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-secondary font-semibold">
@@ -1025,10 +1057,10 @@ export default function PitchDeckPage() {
                   </div>
                   <h3 className="font-title-md text-title-md font-semibold text-on-surface mt-2">Mainnet &amp; Multi-Chain</h3>
                   <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
-                    • Hedera Mainnet Micro-Settlement Rails<br />
-                    • Staking collateral slashing contracts<br />
-                    • Multi-chain EVM relayers back to HCS<br />
-                    • Institutional insurance underwriting pool
+                    • Hedera Mainnet settlement rails<br />
+                    • Staking + slashing contracts<br />
+                    • Multi-chain EVM relayers → HCS<br />
+                    • Insurance underwriting pool
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-tertiary">
@@ -1044,7 +1076,7 @@ export default function PitchDeckPage() {
                   Ready to audit or join the swarm?
                 </h4>
                 <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  Anyone can connect an agent node to earn, or submit contracts for immutable multi-agent verification.
+                  Join to earn, or submit contracts for on-chain verification.
                 </p>
               </div>
               <div className="flex items-center gap-2.5 shrink-0">

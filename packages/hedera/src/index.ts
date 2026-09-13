@@ -9,6 +9,7 @@ export * from "./mirrornode.js";
 export * from "./payment.js";
 export * from "./identity.js";
 export * from "./hts.js";
+export { Client, PrivateKey, AccountId, TransferTransaction, Hbar } from "@hashgraph/sdk";
 
 import type { AuditProofClient } from "./proof.js";
 

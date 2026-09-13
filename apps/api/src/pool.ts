@@ -725,6 +725,43 @@ export class AuditTaskPool {
         }
       }
 
+      // Direct on-chain Hedera testnet transfer if payer credentials exist
+      if (!payoutTx && process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY) {
+        const targetPayee = (claim?.paymentAddress && /^\d+\.\d+\.\d+$/.test(claim.paymentAddress))
+          ? claim.paymentAddress
+          : undefined;
+
+        if (targetPayee && targetPayee !== process.env.HEDERA_ACCOUNT_ID) {
+          try {
+            const { Client, PrivateKey, AccountId, TransferTransaction, Hbar } = await import("@swarmproof/hedera");
+            const opId = process.env.HEDERA_ACCOUNT_ID || "0.0.10119346";
+            const rawKey = process.env.HEDERA_PRIVATE_KEY || "3030020100300706052b8104000a042204202960059c00f2267248928cde03878b1438508f0646c2d282a2e1c89a3af8d407";
+            const opKey = rawKey.startsWith("3030")
+              ? PrivateKey.fromStringDer(rawKey)
+              : PrivateKey.fromStringECDSA(rawKey.replace(/^0x/, ""));
+            const client = Client.forTestnet();
+            client.setOperator(AccountId.fromString(opId), opKey);
+
+            const tinybars = Math.max(10_000_000, amountTinybars);
+            const hbarAmount = Hbar.fromTinybars(tinybars);
+
+            const xfer = await new TransferTransaction()
+              .addHbarTransfer(AccountId.fromString(opId), hbarAmount.negated())
+              .addHbarTransfer(AccountId.fromString(targetPayee), hbarAmount)
+              .setTransactionMemo(`SwarmProof Payout: ${item.sub.agentId}`)
+              .execute(client);
+
+            const rec = await xfer.getReceipt(client);
+            if (rec.status.toString() === "SUCCESS") {
+              payoutTx = xfer.transactionId.toString();
+              console.log(`[AuditTaskPool] ✅ Real Hedera on-chain payout transferred to ${targetPayee}: ${payoutTx} (${hbarAmount.toString()})`);
+            }
+          } catch (xferErr) {
+            console.warn(`[AuditTaskPool] Direct Hedera payout notice for ${item.sub.agentId}: ${(xferErr as Error).message}`);
+          }
+        }
+      }
+
       if (!payoutTx) {
         // Fall back to the anchored consensus transaction as on-chain reference
         payoutTx = task.proofReceipt?.transactionId || "0.0.7162784@1788849225.803231622";
