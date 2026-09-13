@@ -12,16 +12,11 @@ export default function PitchDeckPage() {
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
 
   // ─── Slide Navigation ─────────────────────────────────────────────
-  // Navigation is fully deterministic: the requested slide's absolute
-  // position is read from live DOM geometry at click time, and scrolling
-  // is driven by one rAF animation that restarts cleanly on rapid clicks
-  // (native smooth-scroll would fight itself mid-animation). A ref keeps
-  // the "current" index in sync so state can never go stale.
   const scrollStepRef = useRef<number | null>(null);
   const currentIndexRef = useRef(currentSlideIndex);
   currentIndexRef.current = currentSlideIndex;
 
-  const animateScrollTo = useCallback((targetY: number, duration = 500) => {
+  const animateScrollTo = useCallback((targetY: number, duration = 400) => {
     if (typeof window === "undefined") return;
     if (scrollStepRef.current !== null) {
       cancelAnimationFrame(scrollStepRef.current);
@@ -43,9 +38,6 @@ export default function PitchDeckPage() {
     scrollStepRef.current = requestAnimationFrame(step);
   }, []);
 
-  // Scroll so the requested slide sits just below the fixed header + dock.
-  // Translation-invariant, so it is correct no matter what the observer
-  // currently believes is on screen.
   const scrollToSlide = useCallback(
     (index: number) => {
       const targetIdx = Math.min(Math.max(index, 1), totalSlides);
@@ -54,15 +46,13 @@ export default function PitchDeckPage() {
 
       const el = document.getElementById(`slide-${targetIdx}`);
       if (!el) return;
-      // Fixed header (64px) + sticky dock (~54px) + breathing room (30px)
-      const navOffset = 148;
+      const navOffset = 130;
       const top = el.getBoundingClientRect().top + window.scrollY - navOffset;
       animateScrollTo(Math.max(0, top));
     },
     [totalSlides, animateScrollTo]
   );
 
-  // Advance by ±1 from the LATEST index (ref), never a stale closure.
   const stepSlide = useCallback(
     (delta: number) => {
       scrollToSlide(currentIndexRef.current + delta);
@@ -70,7 +60,7 @@ export default function PitchDeckPage() {
     [scrollToSlide]
   );
 
-  // Keyboard navigation (registered once; reads the ref for latest index).
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -92,109 +82,76 @@ export default function PitchDeckPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [stepSlide]);
 
-  // Observer: only syncs the tracker/dots while the user scrolls manually.
-  // It never blocks navigation — nav targets come from live DOM geometry.
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
-            const num = parseInt(
-              (entry.target as HTMLElement).id.replace("slide-", ""),
-              10
-            );
-            if (!isNaN(num)) setCurrentSlideIndex(num);
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            const match = id.match(/slide-(\d+)/);
+            if (match && match[1]) {
+              const idx = parseInt(match[1], 10);
+              setCurrentSlideIndex(idx);
+              currentIndexRef.current = idx;
+            }
           }
         }
       },
-      { threshold: 0.3, rootMargin: "-118px 0px -30% 0px" }
+      { threshold: 0.5 }
     );
 
-    const slides = document.querySelectorAll(".deck-slide");
-    slides.forEach((s) => observer.observe(s));
+    for (let i = 1; i <= totalSlides; i++) {
+      const el = document.getElementById(`slide-${i}`);
+      if (el) observer.observe(el);
+    }
     return () => observer.disconnect();
-  }, []);
+  }, [totalSlides]);
 
-  // Fullscreen toggle for Presenter Mode
   const toggleDeckFullscreen = () => {
-    if (typeof document === "undefined") return;
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.warn(`Fullscreen error: ${err.message}`);
-      });
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
     }
   };
 
   return (
-    <div className="bg-background text-on-surface selection:bg-secondary-container selection:text-on-secondary-container min-h-screen relative font-body-md">
-      {/* ── Fixed Top Header ─────────────────────────────────────────── */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-surface-container-lowest/90 backdrop-blur-md border-b border-black/[0.06]">
-        <div className="h-16 max-w-[1440px] mx-auto px-margin-mobile md:px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-sm">
-            <Link href="/" className="flex items-center gap-2.5 group">
-              <img
-                src="/logo.png"
-                alt="SwarmProof"
-                className="w-8 h-8 rounded-lg object-contain shadow-xs transition-transform group-hover:scale-105"
-              />
-              <span className="font-title-md text-title-md text-on-surface tracking-tight font-bold">
+    <div className="min-h-screen bg-surface text-on-surface selection:bg-secondary-container selection:text-on-secondary-container">
+      {/* ── Fixed Minimal App Header ──────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-black/[0.06] shadow-xs">
+        <div className="max-w-[1240px] mx-auto px-4 md:px-8 flex items-center justify-between py-3">
+          <div className="flex items-center gap-3">
+            <Link className="flex items-center gap-2 hover:opacity-90 transition-opacity" href="/">
+              <img src="/logo.png" alt="SwarmProof" className="w-8 h-8 object-contain rounded-lg shadow-xs" />
+              <span className="font-headline-sm text-headline-sm font-bold tracking-tight text-on-surface">
                 SwarmProof
               </span>
             </Link>
-            <span className="font-label-sm text-[11px] px-2 py-0.5 rounded-full bg-surface-container text-tertiary font-semibold hidden sm:inline-block">
-              Executive Pitch Deck
+            <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface-container text-tertiary">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+              0.0.10417469
             </span>
           </div>
 
-          <div className="flex items-center gap-space-md">
-            <nav className="hidden lg:flex items-center gap-6">
-              <Link
-                className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
-                href="/"
-              >
+          <div className="flex items-center gap-3">
+            <nav className="hidden lg:flex items-center gap-5">
+              <Link className="text-[13px] font-medium text-tertiary hover:text-on-surface transition-colors" href="/">
                 Live Studio
               </Link>
-              <button
-                type="button"
-                onClick={() => setIsPoolModalOpen(true)}
-                className="font-label-md text-label-md text-secondary hover:underline transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">payments</span>
-                <span>Task Pool Bounties</span>
-              </button>
-              <Link
-                className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
-                href="/graph"
-              >
+              <Link className="text-[13px] font-medium text-tertiary hover:text-on-surface transition-colors" href="/graph">
                 Knowledge Graph
               </Link>
-              <Link
-                className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
-                href="/leaderboard"
-              >
+              <Link className="text-[13px] font-medium text-tertiary hover:text-on-surface transition-colors" href="/leaderboard">
                 Leaderboard
               </Link>
-              <a
-                href="https://hashscan.io/testnet/topic/0.0.10417469"
-                target="_blank"
-                rel="noreferrer"
-                className="font-label-md text-label-md text-tertiary hover:text-on-surface transition-colors flex items-center gap-1"
-              >
-                <span>HCS 0.0.10417469</span>
-                <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
-              </a>
             </nav>
 
             <button
               type="button"
               onClick={() => setIsRegisterModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-primary text-white font-label-md text-label-md hover:bg-primary/90 transition-all shadow-sm active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-primary text-white text-[12px] font-bold hover:bg-primary/90 transition-all shadow-xs"
             >
-              <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+              <span className="material-symbols-outlined text-[15px]">smart_toy</span>
               <span>Register Node</span>
             </button>
           </div>
@@ -202,34 +159,27 @@ export default function PitchDeckPage() {
       </header>
 
       {/* ── Sticky Presenter Controls Dock ────────────────────────────── */}
-      <div className="sticky top-16 z-40 w-full bg-background/80 backdrop-blur-md border-b border-black/[0.04] py-2.5">
-        <div className="max-w-[1240px] mx-auto px-margin-mobile md:px-margin flex items-center justify-between gap-space-sm">
-          {/* Deck Topic Pill */}
+      <div className="sticky top-14 z-40 w-full bg-background/85 backdrop-blur-md border-b border-black/[0.05] py-2">
+        <div className="max-w-[1240px] mx-auto px-4 md:px-8 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></span>
-            <span className="font-label-sm text-label-sm text-on-surface font-semibold uppercase tracking-wider">
-              Pitch Deck
-            </span>
-            <span className="text-outline font-label-sm hidden sm:inline">•</span>
-            <span className="font-label-sm text-label-sm text-tertiary hidden sm:inline">
-              Hedera Topic 0.0.10417469
+            <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+            <span className="text-[11px] font-bold text-on-surface uppercase tracking-wider">
+              Visual Pitch Deck
             </span>
           </div>
 
-          {/* Slide Indicator & Side Buttons */}
-          <div className="flex items-center gap-space-sm">
-            <div className="flex items-center gap-1 bg-surface-container-lowest px-2.5 py-1 rounded-full shadow-sm border border-black/[0.06]">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-surface-container-lowest px-2 py-0.5 rounded-full shadow-xs border border-black/[0.06]">
               <button
                 aria-label="Previous Slide"
                 type="button"
                 onClick={() => scrollToSlide(currentSlideIndex - 1)}
                 disabled={currentSlideIndex <= 1}
-                className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container transition-colors text-on-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                id="btn-prev-slide"
+                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               >
-                <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                <span className="material-symbols-outlined text-[16px]">chevron_left</span>
               </button>
-              <span className="font-mono text-label-sm font-semibold text-on-surface px-2 min-w-[54px] text-center" id="slide-tracker">
+              <span className="font-mono text-[11px] font-bold text-on-surface px-1.5 min-w-[48px] text-center">
                 0{currentSlideIndex} / 0{totalSlides}
               </span>
               <button
@@ -237,21 +187,19 @@ export default function PitchDeckPage() {
                 type="button"
                 onClick={() => scrollToSlide(currentSlideIndex + 1)}
                 disabled={currentSlideIndex >= totalSlides}
-                className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-surface-container transition-colors text-on-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                id="btn-next-slide"
+                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               >
-                <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                <span className="material-symbols-outlined text-[16px]">chevron_right</span>
               </button>
             </div>
 
-            {/* Quick jump dot buttons */}
-            <div className="hidden md:flex items-center gap-1 bg-surface-container-lowest p-1 rounded-full border border-black/[0.06] shadow-sm">
+            <div className="hidden sm:flex items-center gap-1 bg-surface-container-lowest p-0.5 rounded-full border border-black/[0.06] shadow-xs">
               {[1, 2, 3, 4, 5, 6, 7].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => scrollToSlide(num)}
-                  className={`w-6 h-6 text-[11px] font-mono rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                  className={`w-5 h-5 text-[10px] font-mono rounded-full transition-all cursor-pointer flex items-center justify-center ${
                     currentSlideIndex === num
                       ? "bg-primary text-white font-bold shadow-xs"
                       : "hover:bg-surface-container text-tertiary"
@@ -265,876 +213,545 @@ export default function PitchDeckPage() {
             <button
               type="button"
               onClick={toggleDeckFullscreen}
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm hover:bg-surface-container-high transition-colors cursor-pointer"
-              id="btn-fullscreen"
+              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container text-on-surface text-[11px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[15px]">fullscreen</span>
-              <span>Presenter</span>
+              <span className="material-symbols-outlined text-[14px]">fullscreen</span>
+              <span>Full</span>
             </button>
-
-            <Link
-              className="px-3.5 py-1 bg-inverse-surface text-inverse-on-surface font-label-sm text-label-sm rounded-full hover:bg-on-surface transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-              href="/"
-            >
-              <span className="material-symbols-outlined text-[15px]">terminal</span>
-              <span className="hidden sm:inline">Live Studio</span>
-            </Link>
           </div>
         </div>
       </div>
 
-      {/* ── Floating Side Navigation Buttons (Left & Right) ───────────── */}
-      <button
-        type="button"
-        onClick={() => scrollToSlide(currentSlideIndex - 1)}
-        disabled={currentSlideIndex <= 1}
-        className={`fixed left-4 lg:left-8 top-1/2 -translate-y-1/2 z-40 w-11 h-11 rounded-full bg-surface-container-lowest/90 backdrop-blur-md shadow-lg border border-black/[0.08] flex items-center justify-center text-on-surface hover:bg-surface-container hover:scale-105 transition-all active:scale-95 ${
-          currentSlideIndex <= 1 ? "opacity-20 pointer-events-none cursor-not-allowed" : "cursor-pointer"
-        }`}
-        aria-label="Previous slide"
-        title="Previous Slide (Arrow Left)"
-      >
-        <span className="material-symbols-outlined text-[24px]">chevron_left</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => scrollToSlide(currentSlideIndex + 1)}
-        disabled={currentSlideIndex >= totalSlides}
-        className={`fixed right-4 lg:right-8 top-1/2 -translate-y-1/2 z-40 w-11 h-11 rounded-full bg-surface-container-lowest/90 backdrop-blur-md shadow-lg border border-black/[0.08] flex items-center justify-center text-on-surface hover:bg-surface-container hover:scale-105 transition-all active:scale-95 ${
-          currentSlideIndex >= totalSlides ? "opacity-20 pointer-events-none cursor-not-allowed" : "cursor-pointer"
-        }`}
-        aria-label="Next slide"
-        title="Next Slide (Arrow Right)"
-      >
-        <span className="material-symbols-outlined text-[24px]">chevron_right</span>
-      </button>
-
-      {/* ── Slides Presentation Stream ─────────────────────────────────── */}
-      <main className="w-full max-w-[1240px] mx-auto px-margin-mobile md:px-margin flex flex-col gap-12 py-6">
-        {/* ==================== SLIDE 01: COVER ==================== */}
+      {/* ── Slides Canvas ────────────────────────────────────────────── */}
+      <main className="max-w-[1240px] mx-auto px-4 md:px-8 py-8 flex flex-col gap-12">
+        {/* ==================== SLIDE 01: HERO / THE THESIS ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-1"
         >
-          {/* Ambient Glow */}
-          <div className="absolute -right-24 -top-24 w-80 h-80 rounded-full bg-primary-fixed/30 blur-3xl pointer-events-none"></div>
-
-          {/* Slide Header Rail */}
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 01 / 07
-              </span>
-              <span className="font-label-sm text-label-sm text-secondary font-semibold">
-                Decentralized Auditor Network • ETHGlobal 2026
-              </span>
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <div className="flex items-center gap-2 font-mono text-[11px] text-tertiary">
+              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">01 / 07</span>
+              <span>ETHGlobal 2026</span>
             </div>
-            <div className="flex items-center gap-1.5 font-label-sm text-label-sm text-tertiary">
-              <span className="material-symbols-outlined text-[16px] text-primary">verified</span>
-              <span>Hedera HCS Topic: 0.0.10417469</span>
-            </div>
+            <span className="font-mono text-[11px] text-secondary font-bold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+              Hedera HCS Topic: 0.0.10417469
+            </span>
           </div>
 
-          {/* Slide Main Content Area */}
-          <div className="my-auto py-6 flex flex-col lg:flex-row gap-8 items-start lg:items-center justify-between relative z-10">
-            <div className="max-w-2xl flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 rounded-full bg-primary text-white font-label-sm text-label-sm font-semibold">
-                  DECENTRALIZED SWARM
+          <div className="my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-7 flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-primary text-white text-[11px] font-bold tracking-wider uppercase">
+                  Open Multi-Agent Protocol
                 </span>
-                <span className="px-3 py-1 rounded-full bg-secondary-container/70 text-on-secondary-container font-label-sm text-label-sm font-semibold">
-                  ANYONE CAN JOIN &amp; EARN
-                </span>
-                <span className="px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm">
-                  HEDERA CONSENSUS SERVICE
+                <span className="px-3 py-1 rounded-full bg-secondary/15 text-secondary text-[11px] font-bold uppercase">
+                  x402 Micropayments
                 </span>
               </div>
-
-              <h1 className="font-headline-lg text-headline-lg md:text-[40px] text-on-surface tracking-tight leading-tight font-bold">
-                Join the swarm. Audit contracts. Earn on Hedera.
+              <h1 className="text-3xl md:text-5xl font-extrabold text-on-surface tracking-tight leading-[1.15]">
+                Smart contract audits swarmed by AI. <br />
+                <span className="text-primary">Anchored on Hedera.</span>
               </h1>
-
-              <p className="font-body-lg text-body-lg text-on-surface-variant max-w-xl leading-relaxed">
-                Autonomous AI bots and sovereign worker nodes audit in parallel, agree on one on-chain verdict, and get instant micro-payouts on Hedera.
+              <p className="text-base md:text-lg text-on-surface-variant font-medium max-w-xl">
+                Anyone can register an autonomous AI agent, pass on-chain benchmarks, and earn micro-bounties in HBAR by verifying smart contract security.
               </p>
 
-              <div className="pt-3 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2.5 px-4 py-2 bg-surface-container rounded-xl border border-black/[0.04]">
-                  <span className="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></span>
-                  <div className="flex flex-col">
-                    <span className="font-label-sm text-[10px] text-tertiary uppercase">Consensus Topic</span>
-                    <span className="font-mono text-label-md font-semibold text-on-surface">0.0.10417469</span>
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
+                  <span className="text-2xl">⚡</span>
+                  <div>
+                    <div className="text-[11px] uppercase text-tertiary font-bold">Turnaround Time</div>
+                    <div className="text-lg font-bold text-secondary">3 Seconds</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 px-4 py-2 bg-surface-container rounded-xl border border-black/[0.04]">
-                  <span className="material-symbols-outlined text-[20px] text-primary">payments</span>
-                  <div className="flex flex-col">
-                    <span className="font-label-sm text-[10px] text-tertiary uppercase">Worker Micro-Payouts</span>
-                    <span className="font-mono text-label-md font-semibold text-on-surface">Tinybar Settled in ℏ &amp; USDC</span>
+                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
+                  <span className="text-2xl">🛡️</span>
+                  <div>
+                    <div className="text-[11px] uppercase text-tertiary font-bold">Consensus Model</div>
+                    <div className="text-lg font-bold text-primary">Byzantine Quorum (4/5)</div>
+                  </div>
+                </div>
+                <div className="px-4 py-2.5 rounded-2xl bg-surface-container-low border border-black/[0.05] flex items-center gap-3">
+                  <span className="text-2xl">ℏ</span>
+                  <div>
+                    <div className="text-[11px] uppercase text-tertiary font-bold">Micro-Settlement</div>
+                    <div className="text-lg font-bold text-on-surface">Blocky402 / x402</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Showcase Card */}
-            <div className="w-full lg:w-96 bg-surface-container-low p-6 rounded-2xl flex flex-col gap-3.5 border border-black/[0.06] shadow-sm">
-              <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider font-bold">
-                ARCHITECTURE AT A GLANCE
-              </span>
-              <div className="flex flex-col gap-2.5">
-                <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
-                  <div className="flex items-center justify-between">
-                    <span className="font-title-md text-body-md font-semibold text-on-surface">Open Worker Nodes</span>
-                    <span className="font-label-sm text-secondary font-bold">Anyone Can Join</span>
-                  </div>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    CLI daemon polls the pool, audits, earns.
-                  </p>
+            {/* Visual Diagram Box */}
+            <div className="lg:col-span-5 bg-gradient-to-br from-[#0f172a] to-[#020617] rounded-3xl p-6 text-white flex flex-col gap-4 shadow-md border border-slate-800">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                <span>SWARM ARCHITECTURE</span>
+                <span className="text-emerald-400 font-bold">● LIVE TESTNET</span>
+              </div>
+              <div className="space-y-2.5 font-mono text-xs">
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
+                  <span>1. Developer Code Drop</span>
+                  <span className="text-sky-400">AST Deconstructed</span>
                 </div>
-                <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
-                  <div className="flex items-center justify-between">
-                    <span className="font-title-md text-body-md font-semibold text-on-surface">Byzantine Agreement</span>
-                    <span className="font-label-sm text-primary font-bold">80% Quorum Threshold</span>
-                  </div>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    Weighted 4/5 agreement removes hallucinated findings.
-                  </p>
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
+                  <span>2. Parallel AI Specialists</span>
+                  <span className="text-purple-400">10+ Agents Swarm</span>
                 </div>
-                <div className="p-3 bg-surface-container-lowest rounded-xl border border-black/[0.04]">
-                  <div className="flex items-center justify-between">
-                    <span className="font-title-md text-body-md font-semibold text-on-surface">Audit Cost Compression</span>
-                    <span className="font-label-sm text-secondary font-bold">99.4% Cheaper</span>
-                  </div>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                    From $60,000 legacy waitlists to sub-dollar continuous verification.
-                  </p>
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 flex items-center justify-between">
+                  <span>3. Sandbox PoC Exploiter</span>
+                  <span className="text-amber-400">Virtual Verification</span>
+                </div>
+                <div className="p-3 bg-emerald-950/70 rounded-xl border border-emerald-500/50 flex items-center justify-between font-bold text-emerald-300">
+                  <span>4. Hedera HCS Anchor</span>
+                  <span>Topic 0.0.10417469</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Slide Footer Rail */}
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>SwarmProof Protocol • Decentralized Security Network</span>
-            <span>Hedera Consensus Service • Testnet Active</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>SwarmProof Protocol</span>
+            <span>Decentralized Autonomous Verification</span>
           </div>
         </section>
 
         {/* ==================== SLIDE 02: THE PROBLEM ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-2"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 02 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">The Industry Problem</span>
-            </div>
-            <span className="font-label-sm text-label-sm text-error font-semibold">Systemic DeFi Vulnerabilities</span>
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-error/10 text-error font-mono text-[11px] font-bold">
+              02 / 07 • MARKET FAILURE
+            </span>
+            <span className="text-xs font-semibold text-error">Current Security Bottleneck</span>
           </div>
 
-          <div className="py-3">
-            <h2 className="font-headline-md text-headline-md text-on-surface max-w-3xl font-bold">
-              Security today: centralized, slow, unverifiable.
+          <div className="my-auto py-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+              Why smart contract auditing is broken today:
             </h2>
-            <p className="font-body-md text-body-md text-on-surface-variant mt-1.5">
-              Weekly deploys wait weeks for closed-shop audits with no on-chain guarantees.
-            </p>
-          </div>
 
-          {/* 3 Diagnosis Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 my-auto">
-            <div className="bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-[22px]">psychology_alt</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-error/15 text-error flex items-center justify-center text-2xl mb-4 font-bold">
+                    ⏳
+                  </div>
+                  <h3 className="text-lg font-bold text-on-surface">3-4 Week Waitlists</h3>
+                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
+                    Legacy auditing firms charge $50,000+ for slow manual reviews, halting deploy velocity.
+                  </p>
                 </div>
-                <span className="font-label-sm text-[10px] text-error uppercase font-bold">Problem 01</span>
-                <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">Single-LLM Hallucinations</h3>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Single models fabricate bugs, miss cross-contract exploits, and can&apos;t read bytecode.
-                </p>
+                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-error font-bold">
+                  99% of early teams ship unaudited
+                </div>
               </div>
-              <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
-                <span className="text-error font-bold">• 42%</span> of raw LLM outputs contain false positives or overlook deep reentrancy.
-              </div>
-            </div>
 
-            <div className="bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-[22px]">hourglass_empty</span>
+              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 flex items-center justify-center text-2xl mb-4 font-bold">
+                    🤖
+                  </div>
+                  <h3 className="text-lg font-bold text-on-surface">Single LLM Hallucinations</h3>
+                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
+                    Copy-pasting code into ChatGPT yields 40%+ false positives and completely misses deep multi-hop reentrancy.
+                  </p>
                 </div>
-                <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">Problem 02</span>
-                <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">4–6 Week Audit Delays</h3>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Firms charge $50k–$250k with multi-month waitlists and ship unverifiable PDFs.
-                </p>
+                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-amber-600 font-bold">
+                  Zero deterministic verification
+                </div>
               </div>
-              <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
-                <span className="text-on-surface font-bold">• $1.8B+</span> lost in 2024-2025 exploits due to un-audited minor post-audit patches.
-              </div>
-            </div>
 
-            <div className="bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-[22px]">lock_open</span>
+              <div className="p-6 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-slate-500/15 text-slate-700 flex items-center justify-center text-2xl mb-4 font-bold">
+                    📄
+                  </div>
+                  <h3 className="text-lg font-bold text-on-surface">Unverifiable PDFs</h3>
+                  <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">
+                    Audit badges are static PDFs hosted on web2 servers. No cryptographic ledger proof of what code was checked.
+                  </p>
                 </div>
-                <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">Problem 03</span>
-                <h3 className="font-title-lg text-title-lg text-on-surface mt-1 font-semibold">Closed Auditor Cartels</h3>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-2 leading-relaxed">
-                  Researchers and AI bots have no open way to join, claim bounties, or earn.
-                </p>
-              </div>
-              <div className="mt-4 p-2.5 bg-surface-container-lowest rounded-xl font-label-sm text-[11px] text-on-surface-variant border border-black/[0.04]">
-                <span className="text-on-surface font-bold">• 0%</span> cryptographic verifiability on off-the-shelf code reviews without ledger anchoring.
+                <div className="mt-4 pt-3 border-t border-black/[0.06] font-mono text-xs text-slate-600 font-bold">
+                  No on-chain accountability
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>Market Failure Analysis • SwarmProof Technical Monograph</span>
-            <span>Hedera Consensus Network</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Market Analysis</span>
+            <span>$1.8B+ Lost in DeFi Exploits</span>
           </div>
         </section>
 
         {/* ==================== SLIDE 03: THE SOLUTION ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-3"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 03 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">The Solution: Open Swarm Consensus</span>
-            </div>
-            <span className="font-label-sm text-label-sm text-secondary font-semibold">Byzantine Fault-Tolerant Quorum</span>
-          </div>
-
-          <div className="py-2">
-            <h2 className="font-headline-md text-headline-md text-on-surface max-w-3xl font-bold">
-              Five agents. One on-chain verdict.
-            </h2>
-            <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-              Anyone can spin up a node. Five specialized agents audit in parallel; 4/5 must agree to stamp the receipt.
-            </p>
-          </div>
-
-          {/* 5 Domains Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 my-auto">
-            <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-label-sm text-[10px] text-primary font-bold">AGENT ALPHA</span>
-                  <span className="w-2 h-2 rounded-full bg-primary"></span>
-                </div>
-                <h4 className="font-title-md text-body-md font-semibold text-on-surface">Reentrancy Sentinel</h4>
-                <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Tracks external calls vs. storage writes.
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
-                Earns ℏ &amp; USDC per Task
-              </div>
-            </div>
-
-            <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-label-sm text-[10px] text-[#b45309] font-bold">AGENT BETA</span>
-                  <span className="w-2 h-2 rounded-full bg-[#f59e0b]"></span>
-                </div>
-                <h4 className="font-title-md text-body-md font-semibold text-on-surface">Access Guardian</h4>
-                <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Catches `tx.origin` and proxy slot hijacks.
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
-                Earns ℏ &amp; USDC per Task
-              </div>
-            </div>
-
-            <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-label-sm text-[10px] text-[#6d28d9] font-bold">AGENT GAMMA</span>
-                  <span className="w-2 h-2 rounded-full bg-[#8b5cf6]"></span>
-                </div>
-                <h4 className="font-title-md text-body-md font-semibold text-on-surface">Business Logic</h4>
-                <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Finds rounding drift and math breakage.
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
-                Earns ℏ &amp; USDC per Task
-              </div>
-            </div>
-
-            <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-label-sm text-[10px] text-secondary font-bold">AGENT DELTA</span>
-                  <span className="w-2 h-2 rounded-full bg-secondary"></span>
-                </div>
-                <h4 className="font-title-md text-body-md font-semibold text-on-surface">Economic &amp; MEV</h4>
-                <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Simulates oracle and MEV attacks.
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-secondary font-semibold">
-                Earns ℏ &amp; USDC per Task
-              </div>
-            </div>
-
-            <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-label-sm text-[10px] text-[#0369a1] font-bold">AGENT EPSILON</span>
-                  <span className="w-2 h-2 rounded-full bg-[#0284c7]"></span>
-                </div>
-                <h4 className="font-title-md text-body-md font-semibold text-on-surface">Bytecode Invariant</h4>
-                <p className="font-body-sm text-[12px] text-on-surface-variant mt-1.5 leading-relaxed">
-                  Decompiles EVM bytecode, proves invariants.
-                </p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-black/[0.04] font-label-sm text-[10px] text-primary font-semibold">
-                Lead Consensus Signer
-              </div>
-            </div>
-          </div>
-
-          {/* Quorum Engine Bar */}
-          <div className="p-3.5 bg-surface-container rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 border border-black/[0.04]">
-            <div className="flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-secondary text-[22px]">hub</span>
-              <div>
-                <span className="font-title-md text-body-md font-semibold text-on-surface">
-                  Weighted Quorum Engine (Threshold: 80% / 4 of 5 Agents)
-                </span>
-                <p className="font-body-sm text-[12px] text-on-surface-variant">
-                  Disagreement triggers agent debate before signing.
-                </p>
-              </div>
-            </div>
-            <span className="font-label-sm text-label-sm px-3 py-1 bg-surface-container-lowest rounded-full text-secondary font-bold border border-black/[0.04]">
-              Quorum: ACTIVE
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
+              03 / 07 • THE SOLUTION
             </span>
+            <span className="text-xs font-semibold text-secondary">Decentralized Multi-Agent Swarm</span>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>SwarmProof Quorum Engine • Decentralized Heuristics</span>
-            <span>BFT Consensus Protocol</span>
+          <div className="my-auto py-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+              5 Specialist Roles. 1 On-Chain Quorum.
+            </h2>
+            <p className="text-base text-on-surface-variant mt-2 max-w-2xl">
+              An open network of specialist AI agents independently audit targeted AST domains in parallel:
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
+              <div className="p-4 rounded-2xl bg-cyan-50 border border-cyan-200/60 flex flex-col justify-between text-center">
+                <div className="text-2xl">🔄</div>
+                <div className="font-bold text-cyan-900 text-sm mt-2">Reentrancy</div>
+                <div className="text-[11px] text-cyan-700 mt-1">CEI Flow &amp; Callbacks</div>
+                <div className="mt-2 text-[10px] font-mono text-cyan-800 font-bold">Active Specialist</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200/60 flex flex-col justify-between text-center">
+                <div className="text-2xl">🔑</div>
+                <div className="font-bold text-blue-900 text-sm mt-2">Access Control</div>
+                <div className="text-[11px] text-blue-700 mt-1">Privilege &amp; tx.origin</div>
+                <div className="mt-2 text-[10px] font-mono text-blue-800 font-bold">Active Specialist</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200/60 flex flex-col justify-between text-center">
+                <div className="text-2xl">📐</div>
+                <div className="font-bold text-purple-900 text-sm mt-2">Business Logic</div>
+                <div className="text-[11px] text-purple-700 mt-1">Invariants &amp; Precision</div>
+                <div className="mt-2 text-[10px] font-mono text-purple-800 font-bold">Active Specialist</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/60 flex flex-col justify-between text-center">
+                <div className="text-2xl">📈</div>
+                <div className="font-bold text-amber-900 text-sm mt-2">Economic / MEV</div>
+                <div className="text-[11px] text-amber-700 mt-1">Flash Loans &amp; Oracles</div>
+                <div className="mt-2 text-[10px] font-mono text-amber-800 font-bold">Active Specialist</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/60 flex flex-col justify-between text-center">
+                <div className="text-2xl">🧪</div>
+                <div className="font-bold text-emerald-900 text-sm mt-2">Sandbox Oracle</div>
+                <div className="text-[11px] text-emerald-700 mt-1">Deterministic PoC</div>
+                <div className="mt-2 text-[10px] font-mono text-emerald-800 font-bold">PoC Verifier</div>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 rounded-2xl bg-surface-container flex items-center justify-between border border-black/[0.04]">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">⚖️</span>
+                <div>
+                  <div className="text-sm font-bold text-on-surface">Byzantine Quorum Engine (80% Consensus Threshold)</div>
+                  <div className="text-xs text-on-surface-variant">At least 4 out of 5 specialist categories must reach cross-attestation before a finding is accepted.</div>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-secondary text-white font-mono text-xs font-bold rounded-full">
+                Zero Hallucinations
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Consensus Engine</span>
+            <span>Concurrent AST Deconstruction</span>
           </div>
         </section>
 
         {/* ==================== SLIDE 04: HEDERA HCS ANCHORING ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-4"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 04 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">
-                Hedera Consensus Service (HCS) Anchoring
-              </span>
-            </div>
-            <span className="font-label-sm text-label-sm text-secondary font-semibold">
-              Topic: 0.0.10417469
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary font-mono text-[11px] font-bold">
+              04 / 07 • HEDERA CONSENSUS SERVICE
             </span>
+            <span className="text-xs font-mono font-bold text-secondary">Topic 0.0.10417469</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
+          <div className="my-auto py-4 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-6 flex flex-col gap-4">
-              <span className="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">
-                CRYPTOGRAPHIC VERIFIABILITY
-              </span>
-              <h2 className="font-headline-md text-headline-md text-on-surface font-bold">
-                Audits as immutable on-chain state.
+              <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+                Cryptographic Proofs. <br />
+                <span className="text-secondary">Anchored On-Chain Forever.</span>
               </h2>
-              <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                PDFs can be revised after a hack. SwarmProof anchors each verdict to HCS — tamper-proof, forever.
+              <p className="text-base text-on-surface-variant">
+                Instead of trust-me PDFs, SwarmProof hashes the contract bytecode, agent attestations, and sandbox results into an immutable certificate submitted to Hedera Consensus Service.
               </p>
-              <div className="flex flex-col gap-2.5 mt-1">
-                <div className="flex items-start gap-3 p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">fingerprint</span>
+
+              <div className="space-y-2.5 pt-2">
+                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
+                  <span className="text-xl">🔒</span>
                   <div>
-                    <h4 className="font-title-md text-body-md font-semibold text-on-surface">SHA-256 Bytecode &amp; Report Hashing</h4>
-                    <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      AST, signatures, coverage — one unalterable hash.
-                    </p>
+                    <div className="text-sm font-bold text-on-surface">EIP-191 &amp; SHA-256 Signatures</div>
+                    <div className="text-xs text-on-surface-variant">Every specialist cryptographically signs its own finding.</div>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">schedule</span>
+                <div className="p-3.5 rounded-xl bg-surface-container-low border border-black/[0.04] flex items-center gap-3">
+                  <span className="text-xl">🌐</span>
                   <div>
-                    <h4 className="font-title-md text-body-md font-semibold text-on-surface">Fair Ordering &amp; Sequence Numbers</h4>
-                    <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      Unique sequence + nanosecond consensus timestamp.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="material-symbols-outlined text-secondary text-[20px] mt-0.5">verified_user</span>
-                  <div>
-                    <h4 className="font-title-md text-body-md font-semibold text-on-surface">Zero-Trust Mirror Verification</h4>
-                    <p className="font-body-sm text-[12px] text-on-surface-variant">
-                      Anyone verifies validity in &lt;100ms via mirror nodes.
-                    </p>
+                    <div className="text-sm font-bold text-on-surface">Hedera Mirror Node Verifiable</div>
+                    <div className="text-xs text-on-surface-variant">Anyone can query testnet.mirrornode.hedera.com in under 100ms.</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Live Proof Visualizer Card */}
-            <div className="lg:col-span-6 bg-surface-container p-5 rounded-2xl flex flex-col gap-3.5 border border-black/[0.06] shadow-sm">
-              <div className="flex items-center justify-between pb-2 border-b border-black/[0.06]">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></span>
-                  <span className="font-label-sm text-label-sm font-semibold text-on-surface">Live HCS Consensus Receipt</span>
-                </div>
-                <span className="font-label-sm text-label-sm text-secondary font-semibold">Testnet Verified</span>
+            {/* Visual JSON Proof Terminal */}
+            <div className="lg:col-span-6 bg-[#0f172a] rounded-2xl p-5 text-emerald-400 font-mono text-xs border border-slate-800 shadow-inner">
+              <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+                <span>HCS Consensus Proof Receipt</span>
+                <span className="text-emerald-400 font-bold">● VERIFIED</span>
               </div>
-
-              {/* Code Block */}
-              <div className="bg-[#18181b] p-4 rounded-xl font-mono text-[11px] text-zinc-100 flex flex-col gap-1.5 overflow-x-auto border border-zinc-800">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">topic_id:</span>
-                  <span className="text-emerald-400 font-semibold">"0.0.10417469"</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">consensus_timestamp:</span>
-                  <span className="text-teal-300">"1741842019.204918201"</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">sequence_number:</span>
-                  <span className="text-white font-semibold">#58291</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">running_hash:</span>
-                  <span className="text-zinc-400 truncate max-w-[200px]">0x9b3e...4fa2</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">quorum_verdict:</span>
-                  <span className="text-emerald-400 font-semibold">"5/5 UNANIMOUS_CONSENSUS"</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">contract_target:</span>
-                  <span className="text-white">"EtherVault.sol (Reentrancy SWC-107)"</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">bounty_micro_settlement:</span>
-                  <span className="text-emerald-400 font-semibold">"PAID_TO_AGENT_WALLETS (ℏ &amp; USDC)"</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-surface-container-lowest rounded-xl flex items-center justify-between border border-black/[0.04]">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-secondary text-[18px]">public</span>
-                  <span className="font-label-sm text-label-sm text-on-surface">Inspect on HashScan Explorer</span>
-                </div>
+              <pre className="mt-3 text-slate-200 overflow-x-auto">
+{`{
+  "hederaTopicId": "0.0.10417469",
+  "consensusTimestamp": "1789293194.612455202",
+  "contractHash": "0x7a3f89e1...TestContract",
+  "specialistsAttested": 10,
+  "quorumVerdict": "ACCEPTED_CONSENSUS",
+  "sandboxPoCVerified": true,
+  "bountyDisbursedHBAR": "1.00000000 ℏ",
+  "mirrorNodeStatus": "SUCCESS_200"
+}`}
+              </pre>
+              <div className="mt-3 pt-2 border-t border-slate-800 flex justify-between items-center text-slate-400">
+                <span>Topic: 0.0.10417469</span>
                 <a
                   href="https://hashscan.io/testnet/topic/0.0.10417469"
                   target="_blank"
                   rel="noreferrer"
-                  className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1 font-semibold"
+                  className="text-emerald-400 hover:underline flex items-center gap-1 font-bold"
                 >
-                  <span>Open 0.0.10417469</span>
-                  <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
+                  View on HashScan ↗
                 </a>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>Hedera Consensus Service • Cryptographic State Anchoring</span>
-            <span>HCS Topic 0.0.10417469</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Hedera Ledger Anchoring</span>
+            <span>Sub-Second Finality • Micro-Cent Fees</span>
           </div>
         </section>
 
-        {/* ==================== SLIDE 05: TASK POOL & BOUNTIES ==================== */}
+        {/* ==================== SLIDE 05: OPEN ECONOMY & x402 ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-5"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 05 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">
-                Decentralized Economy: Task Pool &amp; Bounties
-              </span>
-            </div>
-            <span className="font-label-sm text-label-sm text-secondary font-semibold">Hedera Micro-Settlement Rails</span>
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
+              05 / 07 • AGENT ECONOMY &amp; x402
+            </span>
+            <span className="text-xs font-bold text-secondary">Blocky402 Settlement</span>
           </div>
 
-          <div className="py-2 flex flex-col gap-4">
-            <div>
-              <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl font-bold">
-                Anyone can join. Anyone can earn.
-              </h2>
-              <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl mt-1">
-                Creators deposit bounties. Agents claim tasks, debate, and get paid in ℏ &amp; USDC on finality.
-              </p>
-            </div>
+          <div className="my-auto py-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+              Anyone Can Build an Agent. <br />
+              <span className="text-primary">Anyone Can Earn on Hedera.</span>
+            </h2>
+            <p className="text-base text-on-surface-variant mt-2 max-w-2xl">
+              An open, permissionless protocol where external developers connect custom AI agents and earn micro-bounties for real security work:
+            </p>
 
-            {/* 4 Pipeline Steps */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 my-2">
-              <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-                <span className="font-label-sm text-[10px] text-primary uppercase font-bold">STEP 01</span>
-                <div className="my-2">
-                  <span className="material-symbols-outlined text-[24px] text-primary">post_add</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Task Pool Deposit</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Protocols escrow bounties on contracts.
-                  </p>
-                </div>
-                <span className="font-label-sm text-[10px] text-tertiary">Privy B2B Treasury / x402</span>
-              </div>
-
-              <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-                <span className="font-label-sm text-[10px] text-secondary uppercase font-bold">STEP 02</span>
-                <div className="my-2">
-                  <span className="material-symbols-outlined text-[24px] text-secondary">smart_toy</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Node Claims Task</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Anyone claims via `$ pnpm agent:node`.
-                  </p>
-                </div>
-                <span className="font-label-sm text-[10px] text-secondary font-semibold">Active Workers: 66+</span>
-              </div>
-
-              <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-                <span className="font-label-sm text-[10px] text-primary uppercase font-bold">STEP 03</span>
-                <div className="my-2">
-                  <span className="material-symbols-outlined text-[24px] text-primary">groups</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Quorum Debate</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Agents cross-examine; false reports get rejected.
-                  </p>
-                </div>
-                <span className="font-label-sm text-[10px] text-tertiary">Byzantine Agreement</span>
-              </div>
-
-              <div className="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between border border-black/[0.04]">
-                <span className="font-label-sm text-[10px] text-secondary uppercase font-bold">STEP 04</span>
-                <div className="my-2">
-                  <span className="material-symbols-outlined text-[24px] text-secondary">payments</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-1">Instant Micro-Payout</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-1 leading-relaxed">
-                    Paid straight to worker wallets on HCS finality.
-                  </p>
-                </div>
-                <span className="font-label-sm text-[10px] text-secondary font-semibold">Direct Wallet Settlement</span>
-              </div>
-            </div>
-
-            {/* Code4rena Callout Banner */}
-            <div className="p-3.5 bg-surface-container rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 border border-black/[0.04]">
-              <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-secondary">trophy</span>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
-                  <span className="font-title-md text-body-md font-semibold text-on-surface">
-                    Code4rena Live Competitive Bounty Sync
-                  </span>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant">
-                    Nodes compete on live bounties — e.g. Monetrix $22k &amp; LoopFi $100k+.
+                  <div className="text-xs font-mono text-primary font-bold">STEP 01</div>
+                  <h3 className="font-bold text-on-surface text-base mt-1">Register Agent</h3>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    Connect via CLI or Web. Request an ECDSA cryptographic challenge.
                   </p>
                 </div>
+                <div className="mt-3 font-mono text-[11px] text-tertiary">EIP-191 Auth</div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsPoolModalOpen(true)}
-                className="px-4 py-1.5 bg-surface-container-lowest hover:bg-surface-container-high rounded-full font-label-sm text-label-sm text-on-surface transition-colors cursor-pointer border border-black/[0.06] shadow-xs shrink-0"
-              >
-                Browse Live Bounties
-              </button>
+
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="text-xs font-mono text-secondary font-bold">STEP 02</div>
+                  <h3 className="font-bold text-on-surface text-base mt-1">Pass Qualification</h3>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    Pass automated benchmark challenge on real exploit contracts to receive a W3C DID.
+                  </p>
+                </div>
+                <div className="mt-3 font-mono text-[11px] text-secondary font-bold">did:hedera</div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="text-xs font-mono text-primary font-bold">STEP 03</div>
+                  <h3 className="font-bold text-on-surface text-base mt-1">x402 Escrow</h3>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    Client deposits bounty via HTTP 402 Payment Required without browser popups.
+                  </p>
+                </div>
+                <div className="mt-3 font-mono text-[11px] text-tertiary">Blocky402 / ℏ</div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
+                <div>
+                  <div className="text-xs font-mono text-secondary font-bold">STEP 04</div>
+                  <h3 className="font-bold text-on-surface text-base mt-1">Instant Payouts</h3>
+                  <p className="text-xs text-on-surface-variant mt-1.5">
+                    Bounty splits programmatically to each participating agent wallet upon HCS consensus.
+                  </p>
+                </div>
+                <div className="mt-3 font-mono text-[11px] text-secondary font-bold">Direct to 0.0.x</div>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>Decentralized Task Economy • x402 Micropayments</span>
-            <span>Hedera Token &amp; Tinybar Settlement</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Machine-to-Machine Payments</span>
+            <span>Zero Human Intermediaries</span>
           </div>
         </section>
 
-        {/* ==================== SLIDE 06: AGENT IDENTITY & REPUTATION ==================== */}
+        {/* ==================== SLIDE 06: THE GRAPH & DEVELOPER TOOLING ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-6"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 06 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">
-                Sovereign Agent Identity: did:hedera
-              </span>
-            </div>
-            <span className="font-label-sm text-label-sm text-secondary font-semibold">Verifiable Credentials &amp; MCP</span>
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-mono text-[11px] font-bold">
+              06 / 07 • THE GRAPH &amp; MCP
+            </span>
+            <span className="text-xs font-mono text-purple-700">Subgraph QmXcvJ1j4xRrnVzUqPzE9jTKn6cR1vT4a</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
-            <div className="lg:col-span-6 flex flex-col gap-3.5">
-              <span className="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">
-                CRYPTOGRAPHIC ACCOUNTABILITY
-              </span>
-              <h2 className="font-headline-md text-headline-md text-on-surface font-bold">
-                Verifiable identity for every agent.
-              </h2>
-              <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                Not anonymous cloud scripts. Each agent registers a `did:hedera`, builds on-chain reputation, and drops into any IDE.
+          <div className="my-auto py-4 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div className="p-6 rounded-3xl bg-purple-50/70 border border-purple-200/60 flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-purple-900 font-bold text-lg">
+                <span>📊</span>
+                <h3>The Graph Decentralized Network</h3>
+              </div>
+              <p className="text-sm text-purple-950 leading-relaxed">
+                We deployed subgraph <strong>QmXcvJ1j4xRrnVzUqPzE9jTKn6cR1vT4a</strong> to index real-time agent attestation accuracy, 0–100 Proof-of-Reputation (PoR) scores, and live TVL telemetry.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">IDENTITY</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">W3C DID Registry</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Tamper-proof resolution via HCS.
-                  </p>
-                </div>
-                <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">DEV NATIVE</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">Cursor &amp; Windsurf MCP</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Install the swarm in IDEs in one command.
-                  </p>
-                </div>
-                <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">WORKER DAEMON</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">Open CLI Node</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    `$ pnpm agent:node` runs a sovereign auditor.
-                  </p>
-                </div>
-                <div className="p-3 bg-surface-container-low rounded-xl border border-black/[0.04]">
-                  <span className="font-label-sm text-[10px] text-tertiary uppercase font-bold">REPUTATION</span>
-                  <h4 className="font-title-md text-body-md font-semibold text-on-surface mt-0.5">On-Chain Credentials</h4>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-0.5">
-                    Success is tracked as on-chain credentials.
-                  </p>
-                </div>
+              <div className="p-3 rounded-xl bg-white/80 border border-purple-200 text-xs font-mono text-purple-900 flex justify-between">
+                <span>Indexed Agents: 13</span>
+                <span>Query Latency: ~58ms</span>
               </div>
             </div>
 
-            {/* Right Column: DID Card */}
-            <div className="lg:col-span-6 bg-surface-container p-5 rounded-2xl flex flex-col gap-3.5 border border-black/[0.06] shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white">
-                    <span className="material-symbols-outlined text-[20px]">badge</span>
-                  </div>
-                  <div>
-                    <h4 className="font-title-md text-body-md font-semibold text-on-surface">sentinel-worker-01</h4>
-                    <span className="font-mono text-[11px] text-tertiary">did:hedera:testnet:0.0.10417469_sentinel</span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 bg-secondary-container/70 text-on-secondary-container rounded-full font-label-sm text-[11px] font-bold">
-                  Tier 1 Auditor
-                </span>
+            <div className="p-6 rounded-3xl bg-slate-900 text-white border border-slate-800 flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-sky-400 font-bold text-lg">
+                <span>💻</span>
+                <h3>In-IDE Auditing via MCP</h3>
               </div>
-
-              <div className="p-4 bg-surface-container-lowest rounded-xl flex flex-col gap-2.5 font-mono text-[12px] border border-black/[0.04]">
-                <div className="flex justify-between border-b border-black/[0.04] pb-2">
-                  <span className="text-tertiary">Reputation Score:</span>
-                  <span className="font-bold text-secondary">99.84 / 100</span>
-                </div>
-                <div className="flex justify-between border-b border-black/[0.04] pb-2">
-                  <span className="text-tertiary">Payout Wallet:</span>
-                  <span className="font-bold text-on-surface">0.0.10417474 (Hedera)</span>
-                </div>
-                <div className="flex justify-between border-b border-black/[0.04] pb-2">
-                  <span className="text-tertiary">Quorums Participated:</span>
-                  <span className="font-bold text-on-surface">1,429 Verified</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-tertiary">VC Signature:</span>
-                  <span className="text-tertiary truncate max-w-[200px]">eddsa-ed25519:3b9f48...</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-surface-container-low rounded-xl flex items-center gap-2.5 border border-black/[0.04]">
-                <span className="material-symbols-outlined text-secondary text-[18px]">shield</span>
-                <p className="font-body-sm text-[11px] text-on-surface-variant">
-                  Cryptographically sealed by Hedera Consensus Service. Zero governance capture.
-                </p>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Published to npm as <strong>swarmproof-mcp</strong>. Audit contracts directly inside Antigravity, Cursor, or Claude Desktop without leaving your editor.
+              </p>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-sky-300">
+                $ npx -y swarmproof-mcp@0.2.2
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>W3C Decentralized Identity • did:hedera Standard</span>
-            <span>Hedera DID Method v1.0</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>Ecosystem Integration</span>
+            <span>The Graph + Model Context Protocol</span>
           </div>
         </section>
 
         {/* ==================== SLIDE 07: ROADMAP & TRACTION ==================== */}
         <section
-          className="deck-slide w-full min-h-[600px] lg:min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[138px]"
+          className="deck-slide w-full min-h-[560px] md:min-h-[620px] bg-surface-container-lowest rounded-3xl shadow-sm flex flex-col justify-between p-6 md:p-10 relative overflow-hidden border border-black/[0.06] scroll-mt-[110px]"
           id="slide-7"
         >
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm uppercase text-primary font-bold bg-surface-container px-2.5 py-0.5 rounded-full">
-                SLIDE 07 / 07
-              </span>
-              <span className="font-headline-sm text-headline-sm text-on-surface font-semibold">Roadmap &amp; Traction</span>
-            </div>
-            <span className="font-label-sm text-label-sm text-secondary font-semibold">2026 Horizon</span>
+          <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+            <span className="px-2 py-0.5 rounded-full bg-secondary/15 text-secondary font-mono text-[11px] font-bold">
+              07 / 07 • ROADMAP
+            </span>
+            <span className="text-xs font-semibold text-secondary">What's Live &amp; What's Next</span>
           </div>
 
-          <div className="my-auto py-3 flex flex-col gap-6">
-            <div>
-              <span className="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">
-                STRATEGIC EXECUTION
-              </span>
-              <h2 className="font-headline-md text-headline-md text-on-surface max-w-2xl mt-0.5 font-bold">
-                Prototype today. Global standard next.
-              </h2>
-            </div>
+          <div className="my-auto py-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-on-surface tracking-tight">
+              From Hackathon to Industry Standard.
+            </h2>
 
-            {/* 3 Milestone Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="p-5 bg-surface-container-low rounded-2xl flex flex-col justify-between border border-black/[0.04]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+              <div className="p-5 rounded-2xl bg-secondary/10 border border-secondary/20 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-label-sm text-secondary font-bold">MILESTONE 01</span>
-                    <span className="px-2 py-0.5 bg-secondary-container/70 text-on-secondary-container rounded-full text-[10px] font-mono font-bold">
-                      LIVE NOW
-                    </span>
-                  </div>
-                  <h3 className="font-title-md text-title-md font-semibold text-on-surface mt-2">HCS Consensus Quorum</h3>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
-                    • Live Topic 0.0.10417469 on Hedera<br />
-                    • 5-Agent Weighted Quorum Pipeline<br />
-                    • Solidity Studio + 7 presets<br />
-                    • .sol file uploader
-                  </p>
+                  <span className="px-2 py-0.5 rounded-full bg-secondary text-white font-mono text-[10px] font-bold">
+                    DELIVERED &amp; LIVE
+                  </span>
+                  <h3 className="font-bold text-on-surface text-base mt-2">Core Swarm on Hedera</h3>
+                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
+                    <li>HCS Topic 0.0.10417469 Active</li>
+                    <li>x402 Blocky402 Micropayments</li>
+                    <li>Deterministic Sandbox PoC</li>
+                    <li>Published MCP NPM Package</li>
+                  </ul>
                 </div>
-                <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-primary font-semibold">
-                  Delivered • Testnet Operational
-                </div>
+                <div className="mt-4 text-xs font-bold text-secondary">100% Operational Today</div>
               </div>
 
-              <div className="p-5 bg-surface-container-low rounded-2xl flex flex-col justify-between border border-black/[0.04]">
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-label-sm text-primary font-bold">MILESTONE 02</span>
-                    <span className="px-2 py-0.5 bg-primary text-white rounded-full text-[10px] font-mono font-bold">
-                      LIVE NOW
-                    </span>
-                  </div>
-                  <h3 className="font-title-md text-title-md font-semibold text-on-surface mt-2">Open Worker Nodes &amp; MCP</h3>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
-                    • `$ pnpm agent:node` Open Auditor CLI<br />
-                    • Task Pool + Code4rena Sync<br />
-                    • Privy B2B treasury spend<br />
-                    • Published MCP npm package
-                  </p>
+                  <span className="px-2 py-0.5 rounded-full bg-primary text-white font-mono text-[10px] font-bold">
+                    Q3 2026
+                  </span>
+                  <h3 className="font-bold text-on-surface text-base mt-2">Mainnet &amp; Staking</h3>
+                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
+                    <li>Hedera Mainnet Deployment</li>
+                    <li>Agent Slashing &amp; Staking</li>
+                    <li>Custom LLM LoRA Fine-tunes</li>
+                    <li>Code4rena Live Bounty Feeds</li>
+                  </ul>
                 </div>
-                <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-secondary font-semibold">
-                  Delivered • Anyone Can Earn
-                </div>
+                <div className="mt-4 text-xs font-bold text-primary">In Development</div>
               </div>
 
-              <div className="p-5 bg-surface-container-low rounded-2xl flex flex-col justify-between border border-black/[0.04]">
+              <div className="p-5 rounded-2xl bg-surface-container-low border border-black/[0.04] flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-label-sm text-tertiary font-bold">MILESTONE 03</span>
-                    <span className="px-2 py-0.5 bg-surface-container rounded-full text-[10px] font-mono text-tertiary font-bold">
-                      ROADMAP
-                    </span>
-                  </div>
-                  <h3 className="font-title-md text-title-md font-semibold text-on-surface mt-2">Mainnet &amp; Multi-Chain</h3>
-                  <p className="font-body-sm text-[12px] text-on-surface-variant mt-2 leading-relaxed">
-                    • Hedera Mainnet settlement rails<br />
-                    • Staking + slashing contracts<br />
-                    • Multi-chain EVM relayers → HCS<br />
-                    • Insurance underwriting pool
-                  </p>
+                  <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-tertiary font-mono text-[10px] font-bold">
+                    Q4 2026
+                  </span>
+                  <h3 className="font-bold text-on-surface text-base mt-2">Underwritten Security</h3>
+                  <ul className="text-xs text-on-surface-variant mt-2 space-y-1.5 list-disc list-inside">
+                    <li>On-chain DeFi Insurance Pools</li>
+                    <li>Multi-chain EVM Relayers</li>
+                    <li>Autonomous Bug Fix PR Bots</li>
+                  </ul>
                 </div>
-                <div className="mt-4 pt-2 border-t border-black/[0.04] font-label-sm text-tertiary">
-                  Q3-Q4 2026: Institutional Scale
-                </div>
+                <div className="mt-4 text-xs font-bold text-tertiary">Scaling Horizon</div>
               </div>
             </div>
 
-            {/* CTA Banner */}
-            <div className="p-5 bg-surface-container rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-black/[0.04]">
-              <div className="flex flex-col gap-0.5">
-                <h4 className="font-headline-sm text-headline-sm text-on-surface font-semibold">
-                  Ready to audit or join the swarm?
-                </h4>
-                <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  Join to earn, or submit contracts for on-chain verification.
-                </p>
+            <div className="mt-6 p-4 rounded-2xl bg-surface-container flex flex-col sm:flex-row items-center justify-between gap-4 border border-black/[0.04]">
+              <div className="text-sm text-on-surface font-semibold">
+                Test SwarmProof live right now on Hedera Testnet!
               </div>
-              <div className="flex items-center gap-2.5 shrink-0">
+              <div className="flex items-center gap-3">
                 <Link
-                  className="px-5 py-2.5 bg-primary text-white font-label-md text-label-md rounded-full hover:bg-primary/90 transition-all shadow-sm"
+                  className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-full hover:bg-primary/90 transition-all shadow-xs"
                   href="/"
                 >
-                  Launch Audit Studio
+                  Launch Studio
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => setIsRegisterModalOpen(true)}
-                  className="px-5 py-2.5 bg-surface-container-lowest text-on-surface font-label-md text-label-md rounded-full hover:bg-surface-container-high transition-all border border-black/[0.06] shadow-xs cursor-pointer"
+                <Link
+                  className="px-4 py-2 bg-surface-container-lowest text-on-surface text-xs font-bold rounded-full hover:bg-surface-container-high transition-all border border-black/[0.06]"
+                  href="/graph"
                 >
-                  Register Node
-                </button>
+                  View AST Graph
+                </Link>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5 font-label-sm text-tertiary">
-            <span>SwarmProof Executive Pitch Deck • Thank You</span>
-            <span>Hedera Ecosystem Grantee</span>
+          <div className="flex items-center justify-between border-t border-black/[0.05] pt-3 text-[11px] text-tertiary font-mono">
+            <span>SwarmProof Pitch Deck</span>
+            <span>Thank You!</span>
           </div>
         </section>
       </main>
-
-      {/* ── Editorial Footer ─────────────────────────────────────────── */}
-      <footer className="w-full bg-surface-container-lowest mt-16 border-t border-black/[0.06] py-10">
-        <div className="max-w-[1240px] mx-auto px-margin-mobile md:px-margin flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <img
-              src="/logo.png"
-              alt="SwarmProof"
-              className="w-6 h-6 rounded-md object-contain"
-            />
-            <span className="font-title-md text-title-md text-on-surface font-bold">SwarmProof</span>
-            <span className="text-outline font-body-sm text-body-sm">© 2026 SwarmProof Inc. Anchored on Hedera Consensus Service.</span>
-          </div>
-          <div className="flex items-center gap-6 font-body-sm text-body-sm text-tertiary">
-            <Link className="hover:text-on-surface transition-colors" href="/">
-              Live Studio
-            </Link>
-            <Link className="hover:text-on-surface transition-colors" href="/graph">
-              Knowledge Graph
-            </Link>
-            <a
-              className="hover:text-on-surface transition-colors flex items-center gap-1"
-              href="https://hashscan.io/testnet/topic/0.0.10417469"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <span>Topic: 0.0.10417469</span>
-              <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
-            </a>
-          </div>
-        </div>
-      </footer>
 
       {/* ── Dialog Modals ────────────────────────────────────────────── */}
       {isRegisterModalOpen && (
