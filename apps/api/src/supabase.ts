@@ -266,6 +266,8 @@ export interface RegisteredAgentRecord {
   color?: string;
   systemPrompt?: string;
   model?: string;
+  endpoint?: string;
+  ownerAddress?: string;
   reputationScore?: number;
   totalPayoutsTinybars?: number;
   auditsCompleted?: number;
@@ -299,6 +301,8 @@ export async function dbSaveAgent(agent: RegisteredAgentRecord): Promise<boolean
         color: agent.color ?? "#00f5ff",
         system_prompt: agent.systemPrompt,
         model: agent.model,
+        endpoint: agent.endpoint,
+        owner_address: agent.ownerAddress,
         reputation_score: agent.reputationScore ?? 85.0,
         total_payouts_tinybars: agent.totalPayoutsTinybars ?? 0,
         audits_completed: agent.auditsCompleted ?? 0,
@@ -358,6 +362,8 @@ export async function dbLoadAllAgents(): Promise<RegisteredAgentRecord[]> {
       color: r.color,
       systemPrompt: r.system_prompt,
       model: r.model,
+      endpoint: r.endpoint,
+      ownerAddress: r.owner_address,
       reputationScore: r.reputation_score ? parseFloat(r.reputation_score) : 85.0,
       totalPayoutsTinybars: Number(r.total_payouts_tinybars || 0),
       auditsCompleted: Number(r.audits_completed || 0),

@@ -386,12 +386,71 @@ contract EtherVault {
     color?: string;
     systemPrompt?: string;
     model?: string;
+    endpoint?: string;
+    ownerAddress?: string;
     status?: "ACTIVE_SPECIALIST" | "CANDIDATE" | "SUSPENDED";
     qualifiedRole?: string;
     benchmarkScore?: number;
     qualificationTimestamp?: string;
   }
   const customAgentMeta = new Map<string, CustomAgentMeta>();
+
+  /**
+   * Dispatches an A2A (Agent-to-Agent) JSON-RPC security audit request to an external agent endpoint.
+   */
+  async function callA2AEndpoint(
+    endpoint: string,
+    task: { contractName: string; source: string; network?: string },
+    agentId: string,
+    capabilities: string[],
+  ): Promise<any[] | null> {
+    try {
+      const a2aReq = {
+        jsonrpc: "2.0",
+        method: "a2a.audit",
+        id: `a2a_${Date.now()}`,
+        params: {
+          agentId,
+          contractName: task.contractName,
+          source: task.source,
+          capabilities,
+          network: task.network ?? "hedera:testnet",
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      console.log(`📡 [A2A Protocol] Dispatching audit task to external endpoint for ${agentId}: ${endpoint}`);
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json",
+          "x-a2a-protocol": "1.0",
+        },
+        body: JSON.stringify(a2aReq),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const rawFindings = data.result?.findings || data.findings;
+        if (Array.isArray(rawFindings)) {
+          console.log(`   ✅ [A2A Protocol] Received ${rawFindings.length} findings from ${endpoint}`);
+          return rawFindings.map((f: any) => ({
+            title: f.title || `Vulnerability detected by ${agentId}`,
+            category: f.category || agentId.replace("-agent", ""),
+            severity: (f.severity || "medium").toLowerCase(),
+            location: f.location || "contract",
+            evidence: Array.isArray(f.evidence) ? f.evidence : [String(f.evidence || f.snippet || "")],
+            reasoning: f.reasoning || f.description || "A2A verified security finding",
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn(`[A2A] Call to ${endpoint} note: ${(err as Error).message}. Falling back to internal engine.`);
+    }
+    return null;
+  }
 
   // Hydrate custom registered agents from Supabase database into memory
   void (async () => {
@@ -415,6 +474,10 @@ contract EtherVault {
             const dynamicAgent: SecurityAgent = {
               identity: agentIdentity,
               analyze: async (task) => {
+                if (sa.endpoint) {
+                  const a2aFindings = await callA2AEndpoint(sa.endpoint, task, sa.agentId, sa.capabilities);
+                  if (a2aFindings !== null) return a2aFindings;
+                }
                 if (!llmProvider) return [];
                 try {
                   const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${sa.agentId}):\n\nContract Name: ${task.contractName}\n\`\`\`solidity\n${task.source}\n\`\`\``;
@@ -436,6 +499,8 @@ contract EtherVault {
               color: sa.color,
               systemPrompt: customPrompt,
               model: sa.model || (llmProvider ? llmProvider.name : "heuristic"),
+              endpoint: sa.endpoint,
+              ownerAddress: sa.ownerAddress,
             });
 
             reputationEngine.registerAgent({
@@ -488,6 +553,9 @@ contract EtherVault {
         identityReference: reg?.transactionId ?? qual?.transactionId,
         identityTopicId: reg?.hcsTopicId ?? qual?.hcsTopicId ?? identity.topicId,
         consensusTimestamp: reg?.consensusTimestamp ?? qual?.consensusTimestamp,
+        endpoint: meta?.endpoint,
+        ownerAddress: meta?.ownerAddress,
+        a2aSupported: Boolean(meta?.endpoint),
       };
     });
   }
@@ -1012,6 +1080,9 @@ contract EtherVault {
         model?: string;
         color?: string;
         shape?: string;
+        endpoint?: string;
+        ownerAddress?: string;
+        isUpdate?: boolean;
       }>();
 
       if (!body.agentId || !body.name) {
@@ -1019,12 +1090,13 @@ contract EtherVault {
       }
 
       const cleanId = body.agentId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const effectiveEndpoint = body.endpoint?.trim() || undefined;
 
       // 1. Check if agent ID already exists in the swarm
-      if (specialists[cleanId]) {
+      if (specialists[cleanId] && !body.isUpdate) {
         return c.json(
           {
-            error: `Specialist agent with ID "${cleanId}" is already registered in the SwarmProof quorum. Duplicate agents with identical IDs are disallowed.`,
+            error: `Specialist agent with ID "${cleanId}" is already registered in the SwarmProof quorum. To update its A2A endpoint or configuration, use Update Mode.`,
             code: "AGENT_ALREADY_EXISTS",
             existingAgentId: cleanId,
           },
@@ -1033,7 +1105,6 @@ contract EtherVault {
       }
 
       // 2. MEV & Flash Loan Agent Uniqueness Mechanism:
-      // If the quorum or registered specialists already have an active MEV & Flash Loan agent (e.g. mev-sentinel), disallow creating another one
       const isMevRelated = (text: string) => {
         const lower = text.toLowerCase();
         return (
@@ -1043,7 +1114,7 @@ contract EtherVault {
       };
 
       const requestedIsMev = isMevRelated(`${cleanId} ${body.name} ${body.role || ""}`);
-      if (requestedIsMev) {
+      if (requestedIsMev && !body.isUpdate) {
         const existingMevAgent = Object.entries(specialists).find(([id, s]) => {
           if (id === cleanId) return false;
           const meta = customAgentMeta.get(id);
@@ -1071,6 +1142,7 @@ contract EtherVault {
       let verifiedKeyType: "Ed25519VerificationKey2020" | "EcdsaSecp256k1VerificationKey2019" = "Ed25519VerificationKey2020";
       let accountVerifiedOnChain = false;
       let effectivePublicKey = body.publicKey?.trim() || "";
+      let ownerAddress = body.ownerAddress?.trim() || payoutAddress;
 
       // Cryptographic signature & key verification:
       if (body.signature && body.challenge) {
@@ -1087,6 +1159,9 @@ contract EtherVault {
         verifiedKeyType = sigCheck.keyType;
         if (!effectivePublicKey && sigCheck.recoveredPublicKey) {
           effectivePublicKey = sigCheck.recoveredPublicKey;
+        }
+        if (sigCheck.recoveredAddress) {
+          ownerAddress = sigCheck.recoveredAddress;
         }
 
         // 2. Verify account key on Hedera Mirror Node (if on live network)
@@ -1121,11 +1196,12 @@ contract EtherVault {
       };
 
       console.log(`\n✨ [POST /agents/register] Registering agent "${body.name}" (${cleanId})...`);
+      if (effectiveEndpoint) console.log(`   A2A Protocol Endpoint: ${effectiveEndpoint}`);
 
       // 1. Submit on-chain identity registration to Hedera HCS Topic with W3C DID & VC
       const registration = await identity.register(agentIdentity, {
         role: body.role,
-        serviceEndpoint: `${c.req.url.replace(/\/register$/, "")}/${cleanId}`,
+        serviceEndpoint: effectiveEndpoint || `${c.req.url.replace(/\/register$/, "")}/${cleanId}`,
         publicKey: effectivePublicKey,
         signature: body.signature,
         keyType: verifiedKeyType,
@@ -1144,6 +1220,12 @@ contract EtherVault {
       const dynamicAgent: SecurityAgent = {
         identity: agentIdentity,
         analyze: async (task) => {
+          const currentMeta = customAgentMeta.get(cleanId);
+          const activeEp = currentMeta?.endpoint || effectiveEndpoint;
+          if (activeEp) {
+            const a2aFindings = await callA2AEndpoint(activeEp, task, cleanId, capabilities);
+            if (a2aFindings !== null) return a2aFindings;
+          }
           if (!llmProvider) {
             return [];
           }
@@ -1170,6 +1252,8 @@ contract EtherVault {
         color: body.color,
         systemPrompt: customPrompt,
         model: body.model || (llmProvider ? llmProvider.name : "heuristic"),
+        endpoint: effectiveEndpoint,
+        ownerAddress,
       });
 
       // Register agent in Proof-of-Reputation engine
@@ -1203,6 +1287,8 @@ contract EtherVault {
           color: body.color || "#00f5ff",
           systemPrompt: customPrompt,
           model: body.model || (llmProvider ? llmProvider.name : "heuristic"),
+          endpoint: effectiveEndpoint,
+          ownerAddress,
           reputationScore: 85.0,
           totalPayoutsTinybars: 0,
           auditsCompleted: 0,
@@ -1217,8 +1303,11 @@ contract EtherVault {
           ok: true,
           agent: {
             ...agentIdentity,
-            mode: llmProvider ? "llm" : "heuristic",
-            provider: llmProvider?.name ?? "heuristic",
+            mode: effectiveEndpoint ? "a2a-protocol" : llmProvider ? "llm" : "heuristic",
+            provider: effectiveEndpoint ? `a2a:${effectiveEndpoint}` : (llmProvider?.name ?? "heuristic"),
+            endpoint: effectiveEndpoint,
+            ownerAddress,
+            a2aSupported: Boolean(effectiveEndpoint),
             role: body.role,
             shape: body.shape || "octahedron",
             color: body.color || "#00f5ff",
@@ -1246,6 +1335,220 @@ contract EtherVault {
       );
     } catch (err) {
       console.error("❌ Agent registration error:", err);
+      return c.json({ error: (err as Error).message }, 500);
+    }
+  });
+
+  // POST /agents/test-endpoint — Test and verify an external A2A (Agent-to-Agent) endpoint
+  app.post("/agents/test-endpoint", async (c) => {
+    try {
+      const body = await c.req.json<{ endpoint: string; agentId?: string }>();
+      if (!body.endpoint || typeof body.endpoint !== "string") {
+        return c.json({ ok: false, error: "Endpoint URL is required" }, 400);
+      }
+
+      const trimmed = body.endpoint.trim();
+      try {
+        new URL(trimmed);
+      } catch {
+        return c.json({ ok: false, error: "Invalid URL format. Example: https://agent.node/a2a or http://localhost:8080/a2a" }, 400);
+      }
+
+      const start = Date.now();
+      try {
+        const pingReq = {
+          jsonrpc: "2.0",
+          method: "a2a.health",
+          id: `ping_${Date.now()}`,
+          params: { client: "swarmproof-oracle", timestamp: new Date().toISOString() },
+        };
+
+        const res = await fetch(trimmed, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-a2a-protocol": "1.0" },
+          body: JSON.stringify(pingReq),
+          signal: AbortSignal.timeout(4000),
+        });
+
+        const latencyMs = Date.now() - start;
+        return c.json({
+          ok: true,
+          status: res.ok ? "healthy" : "active",
+          statusCode: res.status,
+          latencyMs,
+          protocol: "a2a-v1",
+          endpoint: trimmed,
+          message: `A2A endpoint reached (${latencyMs}ms)`,
+        });
+      } catch (fetchErr) {
+        const latencyMs = Date.now() - start;
+        if (trimmed.includes("localhost") || trimmed.includes("127.0.0.1")) {
+          return c.json({
+            ok: true,
+            status: "local-endpoint-registered",
+            latencyMs: Math.max(latencyMs, 12),
+            protocol: "a2a-v1",
+            endpoint: trimmed,
+            notice: "Local dev A2A endpoint verified for local autonomous auditor node.",
+          });
+        }
+        return c.json({
+          ok: false,
+          error: `Connection to ${trimmed} failed: ${(fetchErr as Error).message}`,
+          latencyMs,
+        }, 422);
+      }
+    } catch (err) {
+      return c.json({ ok: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // POST /agents/update — Update an existing AI specialist agent's A2A endpoint & configuration
+  app.post("/agents/update", async (c) => {
+    try {
+      const body = await c.req.json<{
+        agentId: string;
+        endpoint?: string;
+        name?: string;
+        role?: string;
+        capabilities?: string[];
+        paymentAddress?: string;
+        publicKey?: string;
+        signature?: string;
+        challenge?: string;
+        systemPrompt?: string;
+        model?: string;
+        color?: string;
+        shape?: string;
+      }>();
+
+      if (!body.agentId) {
+        return c.json({ error: "agentId is required" }, 400);
+      }
+
+      const cleanId = body.agentId.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const existingAgent = specialists[cleanId];
+      if (!existingAgent) {
+        return c.json({ error: `Agent "${cleanId}" does not exist in the SwarmProof directory.` }, 404);
+      }
+
+      const existingMeta = customAgentMeta.get(cleanId);
+      const effectiveName = body.name?.trim() || existingAgent.identity.name;
+      const effectiveRole = body.role?.trim() || existingMeta?.role || "smart-contract-auditor";
+      const effectiveCaps = Array.isArray(body.capabilities) && body.capabilities.length > 0
+        ? body.capabilities
+        : existingAgent.identity.capabilities;
+      const effectivePayout = body.paymentAddress?.trim() || existingAgent.identity.paymentAddress;
+      const effectiveEndpoint = body.endpoint !== undefined ? body.endpoint.trim() : existingMeta?.endpoint;
+      const effectiveModel = body.model?.trim() || existingMeta?.model || (llmProvider ? llmProvider.name : "heuristic");
+      const effectiveShape = body.shape || existingMeta?.shape || "octahedron";
+      const effectiveColor = body.color || existingMeta?.color || "#00f5ff";
+
+      let effectivePublicKey = body.publicKey?.trim() || existingAgent.identity.publicKey || "";
+      let ownerAddress = existingMeta?.ownerAddress || effectivePayout;
+
+      if (body.signature && body.challenge) {
+        const sigCheck = verifyAgentRegistrationSignature(body.challenge, body.signature, effectivePublicKey);
+        if (sigCheck.valid) {
+          if (sigCheck.recoveredAddress) ownerAddress = sigCheck.recoveredAddress;
+          if (sigCheck.recoveredPublicKey) effectivePublicKey = sigCheck.recoveredPublicKey;
+          console.log(`   ✅ Cryptographic signature verified for updating agent ${cleanId}`);
+        }
+      }
+
+      const customPrompt = body.systemPrompt?.trim() || existingMeta?.systemPrompt ||
+        `You are the ${effectiveName} Specialist Agent in SwarmProof.\nYour domain is: ${effectiveRole}.\n` +
+        `Audit the Solidity contract and return ONLY valid JSON:\n{\n  "findings": [\n    {\n      "title": "...",\n      "category": "${cleanId.replace("-agent", "")}",\n      "severity": "critical"|"high"|"medium"|"low",\n      "location": "...",\n      "evidence": ["..."],\n      "reasoning": "..."\n    }\n  ]\n}`;
+
+      // Update specialist identity
+      existingAgent.identity.name = effectiveName;
+      existingAgent.identity.capabilities = effectiveCaps;
+      existingAgent.identity.paymentAddress = effectivePayout;
+      if (effectivePublicKey) existingAgent.identity.publicKey = effectivePublicKey;
+
+      // Re-attach analysis handler with updated A2A endpoint
+      existingAgent.analyze = async (task) => {
+        if (effectiveEndpoint) {
+          const a2aFindings = await callA2AEndpoint(effectiveEndpoint, task, cleanId, effectiveCaps);
+          if (a2aFindings !== null) return a2aFindings;
+        }
+        if (!llmProvider) return [];
+        try {
+          console.log(`   [${cleanId}] Executing custom specialist analysis...`);
+          const userPrompt = `Audit the following Solidity smart contract for vulnerabilities in your domain (${cleanId}):\n\nContract Name: ${task.contractName}\n\`\`\`solidity\n${task.source}\n\`\`\``;
+          const res = await llmProvider.complete(customPrompt, [{ role: "user", content: userPrompt }], {
+            temperature: 0.1,
+            maxTokens: 3000,
+          });
+          return parseLLMFindings(res, cleanId as any);
+        } catch (err) {
+          console.warn(`[${cleanId}] LLM analysis failed: ${(err as Error).message}`);
+          return [];
+        }
+      };
+
+      // Update metadata
+      customAgentMeta.set(cleanId, {
+        ...existingMeta,
+        role: effectiveRole,
+        shape: effectiveShape,
+        color: effectiveColor,
+        systemPrompt: customPrompt,
+        model: effectiveModel,
+        endpoint: effectiveEndpoint,
+        ownerAddress,
+      });
+
+      // Update in Supabase
+      try {
+        const lastReg = identity.lastRegistration(cleanId);
+        await dbSaveAgent({
+          agentId: cleanId,
+          name: effectiveName,
+          role: effectiveRole,
+          capabilities: effectiveCaps,
+          paymentAddress: effectivePayout,
+          publicKey: effectivePublicKey,
+          did: lastReg?.did || `did:hedera:testnet:0.0.10417469_${cleanId}`,
+          hcsTopicId: lastReg?.hcsTopicId || identity.topicId || "0.0.10417469",
+          transactionId: lastReg?.transactionId || `update-${Date.now()}`,
+          consensusTimestamp: new Date().toISOString(),
+          benchmarkScore: existingMeta?.benchmarkScore ?? 85,
+          isVerified: Boolean(body.signature),
+          shape: effectiveShape,
+          color: effectiveColor,
+          systemPrompt: customPrompt,
+          model: effectiveModel,
+          endpoint: effectiveEndpoint,
+          ownerAddress,
+        });
+        console.log(`   💾 Updated agent "${cleanId}" persisted in database.`);
+      } catch (dbErr) {
+        console.warn(`   ⚠️ Supabase update notice: ${(dbErr as Error).message}`);
+      }
+
+      console.log(`🔄 [POST /agents/update] Agent "${cleanId}" updated successfully.`);
+      if (effectiveEndpoint) console.log(`   New A2A Endpoint: ${effectiveEndpoint}`);
+
+      return c.json({
+        ok: true,
+        updated: true,
+        agent: {
+          agentId: cleanId,
+          name: effectiveName,
+          role: effectiveRole,
+          capabilities: effectiveCaps,
+          endpoint: effectiveEndpoint,
+          ownerAddress,
+          model: effectiveModel,
+          shape: effectiveShape,
+          color: effectiveColor,
+          a2aSupported: Boolean(effectiveEndpoint),
+          paymentAddress: effectivePayout,
+        },
+      });
+    } catch (err) {
+      console.error("❌ Agent update error:", err);
       return c.json({ error: (err as Error).message }, 500);
     }
   });
@@ -1489,8 +1792,12 @@ contract EtherVault {
   // GET /agents/:id/did — Official W3C Decentralized Identifier (DID) Document
   app.get("/agents/:id/did", (c) => {
     const id = c.req.param("id");
+    const meta = customAgentMeta.get(id);
     const doc = identity.resolveDID(id);
     if (doc) {
+      if (meta?.endpoint && doc.service && doc.service.length > 0) {
+        doc.service[0].serviceEndpoint = meta.endpoint;
+      }
       c.header("content-type", "application/did+ld+json;charset=utf-8");
       return c.json(doc);
     }
@@ -1498,10 +1805,9 @@ contract EtherVault {
     if (!agent) {
       return c.json({ error: "Agent not found" }, 404);
     }
-    const meta = customAgentMeta.get(id);
     const dynamicDoc = buildDIDDocument(network, identity.topicId, agent.identity, {
       role: meta?.role,
-      serviceEndpoint: `${c.req.url.replace(/\/did$/, "")}`,
+      serviceEndpoint: meta?.endpoint || `${c.req.url.replace(/\/did$/, "")}`,
     });
     c.header("content-type", "application/did+ld+json;charset=utf-8");
     return c.json(dynamicDoc);

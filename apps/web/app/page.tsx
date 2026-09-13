@@ -1710,6 +1710,7 @@ export default function Page() {
       {isRegisterModalOpen && (
         <RegisterAgentModal
           onClose={() => setIsRegisterModalOpen(false)}
+          existingAgents={allAgents}
           onRegistered={(newAgent) => {
             setAllAgents((prev) => ({ ...prev, [newAgent.id]: newAgent }));
             setIsRegisterModalOpen(false);

@@ -524,6 +524,26 @@ export function AgentInspectorModal({
                 </div>
               </div>
 
+              {/* A2A Protocol Endpoint */}
+              {agent.endpoint && (
+                <div style={{ padding: 12, borderRadius: 8, backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>📡</span> A2A (Agent-to-Agent) Protocol Endpoint
+                    </span>
+                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "1px 6px", borderRadius: 4, backgroundColor: "#dcfce7", color: "#15803d", fontWeight: 700 }}>
+                      a2a-v1 active
+                    </span>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#09090b", backgroundColor: "#ffffff", padding: "6px 10px", borderRadius: 6, border: "1px solid #bbf7d0", wordBreak: "break-all" }}>
+                    {agent.endpoint}
+                  </div>
+                  <span style={{ fontSize: 11, color: "#166534" }}>
+                    Swarm consensus orchestrator dispatches JSON-RPC <code>a2a.audit</code> tasks to this node.
+                  </span>
+                </div>
+              )}
+
               {/* Cryptographic Keypair & Sovereign Wallet */}
               <div style={{ padding: 14, borderRadius: 8, backgroundColor: "#fafafa", border: "1px solid #e4e4e7", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -697,7 +717,7 @@ export function AgentInspectorModal({
                               {
                                 id: `${agent.did || `did:hedera:testnet:${agent.identityTopicId || "0.0.10417469"}_${agent.id}`}#security-audit-agent`,
                                 type: "SecurityAuditAgent",
-                                serviceEndpoint: `http://localhost:3001/agents/${agent.id}`,
+                                serviceEndpoint: agent.endpoint || `http://localhost:3001/agents/${agent.id}`,
                                 description: agent.role,
                                 paymentAddress: agent.paymentAddress || "0.0.10417474",
                                 capabilities: agent.capabilities,

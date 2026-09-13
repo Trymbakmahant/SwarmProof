@@ -25,6 +25,9 @@ export interface SpecialistAgentMeta {
   didDocumentUrl?: string;
   credentialUrl?: string;
   w3cStandard?: string;
+  endpoint?: string;
+  ownerAddress?: string;
+  a2aSupported?: boolean;
   sampleFinding: {
     title: string;
     category: string;
@@ -422,6 +425,9 @@ export function createAgentMetaFromBackend(backendAgent: {
   identityTopicId?: string;
   consensusTimestamp?: string;
   did?: string;
+  endpoint?: string;
+  ownerAddress?: string;
+  a2aSupported?: boolean;
 }): SpecialistAgentMeta {
   const topicId = backendAgent.identityTopicId || "0.0.10417469";
   const did = backendAgent.did || `did:hedera:testnet:${topicId}_${backendAgent.agentId}`;
@@ -443,6 +449,9 @@ export function createAgentMetaFromBackend(backendAgent: {
       publicKey: backendAgent.publicKey ?? existing.publicKey,
       mode: backendAgent.mode ?? existing.mode,
       provider: backendAgent.provider ?? existing.provider,
+      endpoint: backendAgent.endpoint ?? existing.endpoint,
+      ownerAddress: backendAgent.ownerAddress ?? existing.ownerAddress,
+      a2aSupported: backendAgent.a2aSupported ?? Boolean(backendAgent.endpoint),
     };
   }
 
@@ -487,6 +496,9 @@ export function createAgentMetaFromBackend(backendAgent: {
     publicKey: backendAgent.publicKey,
     mode: backendAgent.mode,
     provider: backendAgent.provider,
+    endpoint: backendAgent.endpoint,
+    ownerAddress: backendAgent.ownerAddress,
+    a2aSupported: backendAgent.a2aSupported ?? Boolean(backendAgent.endpoint),
     isCustom: true,
     sampleFinding: {
       title: `Specialist finding by ${backendAgent.name}`,
