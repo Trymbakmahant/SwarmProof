@@ -97,6 +97,11 @@ export default function LeaderboardPage() {
           setTimeout(() => setFlashAgentIds(new Set()), 2000);
         }
 
+        if (incomingAgents.length === 0) {
+          fallbackLocalData();
+          return;
+        }
+
         setAgents(incomingAgents);
         setMeta({
           network: data.network || "testnet",

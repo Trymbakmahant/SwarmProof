@@ -128,6 +128,13 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
   const [isConnectingWallet, setIsConnectingWallet] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
 
+  // Competency Benchmark Qualification Exam State
+  const [isQualifying, setIsQualifying] = useState(false);
+  const [qualifyStatus, setQualifyStatus] = useState<"idle" | "running" | "passed" | "failed">("idle");
+  const [qualifyResult, setQualifyResult] = useState<any | null>(null);
+  const [qualifyError, setQualifyError] = useState<string | null>(null);
+  const [qualifyProgressStep, setQualifyProgressStep] = useState("");
+
   // Registration Lifecycle
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [stepMessage, setStepMessage] = useState("");
@@ -357,6 +364,109 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
       });
     } finally {
       setIsTestingEndpoint(false);
+    }
+  };
+
+  // Helper to map specialty role to official benchmark suite key
+  const getBenchmarkRole = (roleStr: string): string => {
+    const norm = (roleStr || "").toLowerCase();
+    if (norm.includes("reentranc")) return "reentrancy";
+    if (norm.includes("access")) return "access-control";
+    if (norm.includes("static")) return "static-analysis";
+    if (norm.includes("business") || norm.includes("logic")) return "business-logic";
+    if (norm.includes("economic") || norm.includes("oracle") || norm.includes("mev")) return "economic-oracle";
+    if (norm.includes("verif") || norm.includes("poc")) return "verification";
+    return "reentrancy";
+  };
+
+  const handleTestA2AEndpointWithUrl = async (urlToTest: string) => {
+    try {
+      setIsTestingEndpoint(true);
+      setEndpointTestResult(null);
+      const res = await fetch(`${API_BASE}/agents/test-endpoint`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ endpoint: urlToTest.trim(), agentId }),
+      });
+
+      const data = await res.json();
+      setEndpointTestResult(data);
+    } catch (err) {
+      setEndpointTestResult({
+        ok: false,
+        error: `Test failed: ${(err as Error).message}`,
+      });
+    } finally {
+      setIsTestingEndpoint(false);
+    }
+  };
+
+  const handleUseDemoEndpoint = () => {
+    const demoUrl = "http://localhost:8080/a2a";
+    setEndpoint(demoUrl);
+    void handleTestA2AEndpointWithUrl(demoUrl);
+  };
+
+  // Run autonomous competency benchmark exam (Stage A.3)
+  const handleRunQualificationExam = async () => {
+    try {
+      setIsQualifying(true);
+      setQualifyStatus("running");
+      setQualifyError(null);
+      setQualifyProgressStep("1/3: Dispatching ground-truth exploit suite to benchmark agent AST reasoning...");
+
+      const benchmarkRole = getBenchmarkRole(role);
+      const payload = {
+        agentId: agentId || name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        name: name.trim() || "Security Specialist",
+        role: benchmarkRole,
+        paymentAddress: paymentAddress.trim() || "0.0.10119346",
+        publicKey: publicKey.trim(),
+        signature: signature.trim(),
+        challenge,
+        shape,
+        color,
+        systemPrompt,
+        model,
+        endpoint: endpoint.trim() || undefined,
+      };
+
+      const timer1 = setTimeout(() => {
+        setQualifyProgressStep("2/3: Calculating precision, recall & scoring against false-positive traps...");
+      }, 3500);
+
+      const timer2 = setTimeout(() => {
+        setQualifyProgressStep("3/3: Anchoring qualification proof to Hedera Consensus Service Topic 0.0.10417469...");
+      }, 7000);
+
+      const res = await fetch(`${API_BASE}/agents/qualify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `Qualification exam failed (HTTP ${res.status})`);
+      }
+
+      setQualifyResult(data);
+      if (data.passed) {
+        setQualifyStatus("passed");
+        setVerificationStatus("signed");
+      } else {
+        setQualifyStatus("failed");
+      }
+    } catch (err) {
+      console.error("Benchmark qualification exam error:", err);
+      setQualifyError((err as Error).message || "Autonomous qualification exam failed");
+      setQualifyStatus("failed");
+    } finally {
+      setIsQualifying(false);
+      setQualifyProgressStep("");
     }
   };
 
@@ -1447,6 +1557,32 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                   </button>
                 </div>
 
+                {/* Quick Demo Endpoint Quick-Fill */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Quick Endpoint:</span>
+                  <button
+                    type="button"
+                    onClick={handleUseDemoEndpoint}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 11,
+                      fontFamily: "var(--font-mono)",
+                      borderRadius: 5,
+                      backgroundColor: "#ffffff",
+                      border: "1px solid #86efac",
+                      color: "#15803d",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>✨</span>
+                    <span>Use Demo A2A Endpoint (http://localhost:8080/a2a)</span>
+                  </button>
+                </div>
+
                 {/* Endpoint Ping Result Feedback */}
                 {endpointTestResult && (
                   <div
@@ -1478,46 +1614,242 @@ export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: Re
                   <div
                     style={{
                       padding: 12,
-                      borderRadius: 8,
+                      borderRadius: 6,
                       backgroundColor: "#ffffff",
-                      border: "1px solid #bbf7d0",
+                      border: "1px solid #86efac",
                       fontSize: 11,
                       fontFamily: "var(--font-mono)",
-                      color: "#3f3f46",
+                      color: "#166534",
+                      overflowX: "auto",
+                      maxHeight: "180px",
                     }}
                   >
-                    <div style={{ fontWeight: 700, color: "#166534", marginBottom: 6 }}>
-                      Standard A2A (Agent-to-Agent) Interface:
-                    </div>
-                    <pre style={{ margin: 0, padding: 8, backgroundColor: "#09090b", color: "#22c55e", borderRadius: 6, overflowX: "auto" }}>
-{`// SwarmProof dispatches:
-POST \${endpoint}
-Headers: { "x-a2a-protocol": "1.0", "content-type": "application/json" }
-Body: {
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Standard A2A JSON-RPC 2.0 Spec:</div>
+                    <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+{`// SwarmProof consensus engine dispatches:
+{
   "jsonrpc": "2.0",
-  "method": "a2a.audit",
+  "method": "swarmproof_audit_contract",
   "params": {
+    "taskId": "task_${Date.now()}",
     "contractName": "EtherVault",
     "source": "contract EtherVault { ... }",
     "capabilities": ["${capabilitiesStr.split(",")[0]?.trim() || "reentrancy"}"]
   }
-}
-
-// Your node responds:
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "findings": [
-      {
-        "title": "Checks-Effects-Interactions violation",
-        "severity": "high",
-        "location": "withdraw()",
-        "evidence": ["msg.sender.call{value: bal}() before balance reset"]
-      }
-    ]
-  }
 }`}
                     </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* ── AUTONOMOUS COMPETENCY BENCHMARK EXAM (STAGE A.3) ── */}
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  backgroundColor: qualifyStatus === "passed" ? "#f0fdf4" : qualifyStatus === "failed" ? "#fef2f2" : "#f8fafc",
+                  border: qualifyStatus === "passed" ? "1.5px solid #86efac" : qualifyStatus === "failed" ? "1.5px solid #fca5a5" : "1.5px solid #e2e8f0",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>🎓</span>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: qualifyStatus === "passed" ? "#166534" : "#0f172a" }}>
+                        Autonomous Competency Benchmark Exam (Stage A.3)
+                      </h4>
+                      <p style={{ margin: "2px 0 0 0", fontSize: 11, color: "#64748b" }}>
+                        Before an agent can claim bounties, it must prove AST analysis capability against ground-truth exploit suites. Passing threshold: <strong>≥ 80%</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {qualifyStatus === "passed" ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 800,
+                        backgroundColor: "#dcfce7",
+                        color: "#15803d",
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid #bbf7d0",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span>✓</span> EXAM PASSED ({qualifyResult?.score ?? 80}/100)
+                    </span>
+                  ) : qualifyStatus === "failed" ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 800,
+                        backgroundColor: "#fee2e2",
+                        color: "#b91c1c",
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid #fecaca",
+                      }}
+                    >
+                      ✕ FAILED ({qualifyResult?.score ?? 0}/100)
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        backgroundColor: "#f1f5f9",
+                        color: "#475569",
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                      }}
+                    >
+                      Awaiting Exam
+                    </span>
+                  )}
+                </div>
+
+                {/* Exam Action Bar */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={handleRunQualificationExam}
+                    disabled={isQualifying}
+                    className="btn-swarm-primary"
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      backgroundColor: qualifyStatus === "passed" ? "#166534" : "#4f46e5",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{isQualifying ? "⏳" : "🚀"}</span>
+                    <span>
+                      {isQualifying
+                        ? "Running Benchmark Suite..."
+                        : qualifyStatus === "passed"
+                        ? "Re-run Benchmark Exam"
+                        : "Take Benchmark Qualification Exam"}
+                    </span>
+                  </button>
+
+                  <span style={{ fontSize: 11, color: "#64748b" }}>
+                    Target Role Suite: <strong>{getBenchmarkRole(role)}</strong>
+                  </span>
+                </div>
+
+                {/* Live Progress feedback while testing */}
+                {isQualifying && (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 6,
+                      backgroundColor: "#eff6ff",
+                      border: "1px solid #bfdbfe",
+                      fontSize: 12,
+                      color: "#1d4ed8",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)" }}>
+                      ⏳ {qualifyProgressStep || "Executing deterministic benchmark test suite & anchoring to Hedera..."}
+                    </span>
+                  </div>
+                )}
+
+                {/* Error feedback */}
+                {qualifyError && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      backgroundColor: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      fontSize: 12,
+                      color: "#dc2626",
+                    }}
+                  >
+                    ⚠️ {qualifyError}
+                  </div>
+                )}
+
+                {/* Passed Exam Result Card */}
+                {qualifyStatus === "passed" && qualifyResult && (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      backgroundColor: "#ffffff",
+                      border: "1px solid #86efac",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                        🏆 Hedera Competency Proof Anchored
+                      </span>
+                      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 700, color: "#15803d" }}>
+                        Score: {qualifyResult.score}/100 (Pass threshold: 80%)
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: 11, color: "#374151" }}>
+                      {qualifyResult.message || `Congratulations! Agent passed the competency exam with score ${qualifyResult.score}/100.`}
+                    </div>
+
+                    {qualifyResult.qualificationProof && (
+                      <div
+                        style={{
+                          backgroundColor: "#f8fafc",
+                          padding: "8px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #e2e8f0",
+                          fontSize: 11,
+                          fontFamily: "var(--font-mono)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ color: "#64748b" }}>Hedera HCS Topic:</span>
+                          <span style={{ color: "#09090b", fontWeight: 600 }}>{qualifyResult.qualificationProof.hcsTopicId || "0.0.10417469"}</span>
+                        </div>
+                        {qualifyResult.qualificationProof.transactionId && (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "#64748b" }}>Transaction ID:</span>
+                            <a
+                              href={qualifyResult.qualificationProof.hashscanUrl || `https://hashscan.io/testnet/transaction/${qualifyResult.qualificationProof.transactionId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                            >
+                              {qualifyResult.qualificationProof.transactionId.slice(0, 24)}... ↗
+                            </a>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ color: "#64748b" }}>W3C DID:</span>
+                          <span style={{ color: "#09090b" }}>{qualifyResult.qualificationProof.did || `did:hedera:testnet:0.0.10417469_${agentId}`}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -140,39 +140,55 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   // Initialize pool from Supabase database if configured
   void taskPool.init().catch((err) => console.warn(`[Supabase] Pool init: ${(err as Error).message}`));
 
-  // Seed an initial demo audit task in the pool
-  taskPool.createTask({
-    contractName: "EtherVault",
-    source: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+  // Seed initial demo audit tasks in the pool
+  const seedContracts = [
+    {
+      contractName: "EtherVault",
+      source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract EtherVault {\n    mapping(address => uint256) public balances;\n    function deposit() external payable { balances[msg.sender] += msg.value; }\n    function withdraw() external {\n        uint256 bal = balances[msg.sender];\n        require(bal > 0);\n        (bool s, ) = msg.sender.call{value: bal}("");\n        require(s);\n        balances[msg.sender] = 0;\n    }\n}`,
+      window: 600,
+      bounty: "1.50",
+      autoOpen: true,
+    },
+    {
+      contractName: "FlashLoanLender",
+      source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract FlashLoanLender {\n    address public oracle;\n    function flashLoan(uint256 amount) external {\n        uint256 price = IOracle(oracle).getPrice();\n        require(price > 0);\n    }\n}`,
+      window: 480,
+      bounty: "2.00",
+      autoOpen: true,
+    },
+    {
+      contractName: "CrossChainBridge",
+      source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract CrossChainBridge {\n    address public admin;\n    function relayTx(bytes calldata data) external {\n        (bool ok,) = address(this).delegatecall(data);\n        require(ok);\n    }\n}`,
+      window: 300,
+      bounty: "3.00",
+      autoOpen: true,
+    },
+    {
+      contractName: "StakingRewardsPool",
+      source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract StakingRewardsPool {\n    mapping(address => uint256) public staked;\n    function claimReward() external {\n        uint256 r = staked[msg.sender] * 10 / 100;\n        payable(msg.sender).transfer(r);\n    }\n}`,
+      window: 120,
+      bounty: "2.50",
+      autoOpen: true,
+    },
+    {
+      contractName: "B2BTreasuryVault",
+      source: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract B2BTreasuryVault {\n    address public multisig;\n    function releaseFunds(address to, uint256 amt) external {\n        require(msg.sender == multisig);\n        payable(to).transfer(amt);\n    }\n}`,
+      window: 900,
+      bounty: "5.00",
+      autoOpen: false,
+    },
+  ];
 
-contract EtherVault {
-    mapping(address => uint256) public balances;
-    address public owner;
-
-    constructor() { owner = msg.sender; }
-
-    function deposit() external payable {
-        balances[msg.sender] += msg.value;
-    }
-
-    function withdraw() external {
-        uint256 bal = balances[msg.sender];
-        require(bal > 0, "No balance");
-        (bool success, ) = msg.sender.call{value: bal}("");
-        require(success, "Transfer failed");
-        balances[msg.sender] = 0;
-    }
-
-    function emergencyDrain(address to) external {
-        payable(to).transfer(address(this).balance);
-    }
-}`,
-    submissionWindowSeconds: 600,
-    autoOpen: true,
-    bountyTotal: "1.00",
-    currency: "USD",
-  });
+  for (const c of seedContracts) {
+    taskPool.createTask({
+      contractName: c.contractName,
+      source: c.source,
+      submissionWindowSeconds: c.window,
+      autoOpen: c.autoOpen,
+      bountyTotal: c.bounty,
+      currency: "USD",
+    });
+  }
 
   // Payment Lab signer — the "consumer agent wallet". Uses dedicated payer
   // creds (X402_PAYER_*), falling back to the HCS operator (HEDERA_*), so a

@@ -576,6 +576,15 @@ export default function Page() {
             >
               Task Pool
             </button>
+            <Link
+              href="/leaderboard"
+              className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1.5"
+            >
+              <span>Leaderboard</span>
+              <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.2 rounded border border-amber-200">
+                PoR
+              </span>
+            </Link>
             <a
               href="#studio-sandbox"
               className="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
