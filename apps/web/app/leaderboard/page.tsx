@@ -5,8 +5,6 @@ import Link from "next/link";
 import { AgentInspectorModal } from "../components/AgentInspectorModal";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 interface LeaderboardAgent {
   agentId: string;
   name: string;
@@ -26,6 +24,7 @@ interface LeaderboardAgent {
 }
 
 export default function LeaderboardPage() {
+  const API_BASE = getApiBase();
   const [agents, setAgents] = useState<LeaderboardAgent[]>([]);
   const [sortBy, setSortBy] = useState<"reputationScore" | "accuracyRate" | "totalEarningsUSD" | "totalAudits">("reputationScore");
   const [loading, setLoading] = useState(true);

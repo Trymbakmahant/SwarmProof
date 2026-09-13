@@ -1795,7 +1795,7 @@ contract EtherVault {
     const meta = customAgentMeta.get(id);
     const doc = identity.resolveDID(id);
     if (doc) {
-      if (meta?.endpoint && doc.service && doc.service.length > 0) {
+      if (meta?.endpoint && doc.service && doc.service[0]) {
         doc.service[0].serviceEndpoint = meta.endpoint;
       }
       c.header("content-type", "application/did+ld+json;charset=utf-8");

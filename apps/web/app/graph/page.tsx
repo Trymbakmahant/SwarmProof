@@ -6,8 +6,6 @@ import { RegisterAgentModal } from "../components/RegisterAgentModal";
 import { CONTRACT_GRAPHS, type ContractGraphConfig, type GraphNode } from "./contractGraphs";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 interface ActivityRow {
   id: string;
   queryExpression: string;
@@ -80,6 +78,7 @@ const INITIAL_ACTIVITY_ROWS: ActivityRow[] = [
 ];
 
 export default function GraphExplorerPage() {
+  const API_BASE = getApiBase();
   const [selectedContractKey, setSelectedContractKey] = useState<string>("flashlender");
   const activeGraph = (CONTRACT_GRAPHS[selectedContractKey] ?? CONTRACT_GRAPHS["flashlender"])!;
 

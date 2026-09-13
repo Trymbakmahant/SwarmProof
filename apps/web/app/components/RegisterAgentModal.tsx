@@ -4,8 +4,6 @@ import { useState, useEffect } from "react";
 import { type SpecialistAgentMeta, SHAPE_METAS } from "./agentData";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 interface RegisterAgentModalProps {
   onClose: () => void;
   onRegistered: (newAgent: SpecialistAgentMeta) => void;
@@ -77,6 +75,8 @@ const AGENT_PRESETS: PresetTemplate[] = [
 ];
 
 export function RegisterAgentModal({ onClose, onRegistered, existingAgents }: RegisterAgentModalProps) {
+  const API_BASE = getApiBase();
+
   // Operational Mode: Register New Agent vs Update Existing Agent
   const [modalMode, setModalMode] = useState<"register" | "update">("register");
 

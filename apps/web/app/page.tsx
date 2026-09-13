@@ -12,8 +12,6 @@ import { PrivyB2BSpendModal } from "./components/PrivyB2BSpendModal";
 import { type SpecialistAgentMeta, SPECIALIST_AGENTS, createAgentMetaFromBackend } from "./components/agentData";
 import { getApiBase } from "./lib/api";
 
-const API_BASE = getApiBase();
-
 interface PresetItem {
   file: string;
   name: string;
@@ -341,6 +339,7 @@ contract Flashlender is ReentrancyGuard {
 };
 
 export default function Page() {
+  const API_BASE = getApiBase();
   const [selectedPresetKey, setSelectedPresetKey] = useState<string>("reentrancy");
   const activePreset: PresetItem = PRESETS[selectedPresetKey] ?? PRESETS.reentrancy!;
   const [isCustomMode, setIsCustomMode] = useState(false);

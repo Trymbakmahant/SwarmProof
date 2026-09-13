@@ -14,5 +14,8 @@ export function getApiBase(): string {
       return "https://swarm-proof-api.vercel.app";
     }
   }
+  if (typeof process !== "undefined" && (process.env?.VERCEL || process.env?.NODE_ENV === "production")) {
+    return "https://swarm-proof-api.vercel.app";
+  }
   return "http://localhost:3001";
 }

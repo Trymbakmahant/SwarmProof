@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react";
 import { type SpecialistAgentMeta, SHAPE_METAS } from "./agentData";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 interface AgentCompetencyExamViewProps {
   onQualified: (newAgent: SpecialistAgentMeta) => void;
   onCancel: () => void;
@@ -356,6 +354,7 @@ export function AgentCompetencyExamView({
   initialSignature = "",
   initialChallenge = "",
 }: AgentCompetencyExamViewProps) {
+  const API_BASE = getApiBase();
   const [benchmarks, setBenchmarks] = useState<BenchmarkSuiteItem[]>([]);
   const [selectedRole, setSelectedRole] = useState<string>("reentrancy");
   const [benchmarkContract, setBenchmarkContract] = useState<{ contractName: string; contractSource: string; instructions: string } | null>(null);

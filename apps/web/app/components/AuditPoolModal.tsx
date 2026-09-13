@@ -6,8 +6,6 @@ import { PrivyB2BSpendModal } from "./PrivyB2BSpendModal";
 import { useWallet } from "../context/WalletContext";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 export interface TaskPayoutRecord {
   agentId: string;
   role: string;
@@ -103,6 +101,7 @@ const toHashScanUrl = (txId?: string) => {
 };
 
 export function AuditPoolModal({ onClose }: AuditPoolModalProps) {
+  const API_BASE = getApiBase();
   const { wallet } = useWallet();
   const [tasks, setTasks] = useState<PoolTask[]>([]);
   const [loading, setLoading] = useState(true);

@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getApiBase } from "../lib/api";
 
-const API_BASE = getApiBase();
-
 /* ------------------------------------------------------------------ */
 /* Sample contracts (mirror of contracts/vulnerable)                  */
 /* ------------------------------------------------------------------ */
@@ -75,7 +73,7 @@ const hashscan = (tx: string) => `https://hashscan.io/testnet/transaction/${tx}`
 const tinybarsToHbar = (tinybars: string) => `${(Number(tinybars) / 1e8).toFixed(6)} ℏ`;
 
 export default function X402Lab() {
-  const [apiBase, setApiBase] = useState(API_BASE);
+  const [apiBase, setApiBase] = useState(getApiBase());
   const [sample, setSample] = useState<string>("ReentrancyVault.sol");
   const [total, setTotal] = useState("1.00");
   const [steps, setSteps] = useState<StepLog[]>([]);
